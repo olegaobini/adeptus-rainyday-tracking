@@ -53,13 +53,23 @@ if ~isempty(T)
         end
 
         % Trajectory
-        plot(X*s, Y*s, 'k--', 'LineWidth', 1.2);
+        ht = plot(X*s, Y*s, 'k--', 'LineWidth', 1.2, 'Color', [1 0 0]);
+
+        % FIX: Hide 2nd+ target from legend so the legend doesn't get confused
+        if ti > 1
+            ht.Annotation.LegendInformation.IconDisplayStyle = 'off';
+        end
 
         % Current truth position marker (triangle)
         lastValid = find(~isnan(X) & ~isnan(Y), 1, 'last');
         if ~isempty(lastValid)
-            plot(X(lastValid)*s, Y(lastValid)*s, 'k^', ...
-                'MarkerFaceColor','k', 'MarkerSize',6);
+            hm = plot(X(lastValid)*s, Y(lastValid)*s, 'k^', ...
+                'MarkerFaceColor','k', 'MarkerSize',6, 'Color', [1 0 0]);
+            
+            % FIX: Hide 2nd+ target marker from legend
+            if ti > 1
+                hm.Annotation.LegendInformation.IconDisplayStyle = 'off';
+            end
         end
     end
 end
@@ -98,7 +108,7 @@ end
 if opts.ShowLastScanOnly
     [xNow, yNow] = scanXY(D{end});
     if ~isempty(xNow)
-        plot(xNow*s, yNow*s, 'o', 'MarkerSize',5, 'LineWidth',1.0);
+        plot(xNow*s, yNow*s, 'o', 'MarkerSize',5, 'LineWidth',1.0, 'Color', [0 0 1]);
     end
 else
     if opts.ShowHistory
@@ -118,14 +128,8 @@ else
             end
         end
     end
-
-    % Last scan on top
-    [xNow, yNow] = scanXY(D{end});
-    if ~isempty(xNow)
-        plot(xNow*s, yNow*s, 'o', 'MarkerSize',5, 'LineWidth',1.0);
-    end
 end
 
-legend({'Trajectory','Targets','Detections (history)','Detections (last scan)'}, 'Location','best');
+legend({'Trajectory','Targets','Detections (history)'}, 'Location','best');
 if opts.EqualAxis, axis equal; end
 end

@@ -1,0 +1,496 @@
+% -------------------------------------------------------------------------
+% Tracking Closely Spaced Targets Under Ambiguity
+%
+% PURPOSE
+%   Run a consistent simulation + tracking pipeline to compare:
+%     - Trackers: GNN, TOMHT, JPDA
+%     - Motion models: CV vs IMM
+%   across two scenarios:
+%     - IDEAL  : clean detections, low clutter assumptions
+%     - RAINY  : degraded detections, higher ambiguity + clutter assumptions
+%
+% BASELINE SOURCE
+%   Adapted from MathWorks example:
+%   https://www.mathworks.com/help/fusion/ug/tracking-closely-spaced-targets-under-ambiguity.html
+%
+% PROJECT EXTENSIONS 
+%   - Scenario toggle (IDEAL vs RAINY) that changes "knobs" consistently
+%   - Automated tracker runs for all combinations (tracker + motion model)
+%   - Automated JPDA tracker tuning for ideal/nonideal scenarios
+%   - Reporting: track-level and truth-level performance metrics + timing
+%
+% NOTES FOR TEAM
+%   - This is the top-level driver script. All "real work" happens in helpers:
+%       helperCreateScenario3D   -> scenario definition (truth + radar)
+%       helperRunDetections      -> generates detection logs
+%       helperRunTracker         -> runs a tracker and produces metrics
+%       initCVFilter/initIMMFilter -> defines the filter used per track
+%   - If something looks "off", most debugging starts in helperRunDetections
+%     (time stamps, measurement noise, clutter injection, etc.).
+%
+% -------------------------------------------------------------------------
+
+clc; clear; close all;
+
+%% ---------- Scenario Toggle ----------
+%% ---------- Scenario Toggle ----------
+enableDegradation = true;
+enableAutoTune = true;
+
+% --------- Tracker tuning state (modifiable by auto-tune) ---------
+tune.gateGNN      = 30;
+tune.gateMHT      = 35;
+tune.gateJPDA     = 40;
+
+tune.beta         = 1e-13;     % starting point
+tune.farScaleGNN  = 10;        % <-- THIS is the new knob
+
+autoTuneOnlyGNN = true;      % keep it focused; you can expand later
+
+% ------------------------------------
+
+fprintf("\n==============================\n");
+fprintf(" RUN START | Scenario = %s\n", ternary(enableDegradation,"RAINY","IDEAL"));
+fprintf("==============================\n\n");
+
+%% Create scenario + detections
+scenario = helperCreateScenario3D("NumTargets",4,"SceneDuration",60);
+dataLog  = helperRunDetections(scenario, enableDegradation);
+
+% Visualization: plot of truth + detections.
+plotInitialScenario(dataLog);
+
+%% Quick stats on detection count per scan
+nPerScan = cellfun(@numel, dataLog.Detections);
+fprintf("Detections/scan stats: min=%g, mean=%.2f, max=%g\n", ...
+    min(nPerScan), mean(nPerScan), max(nPerScan));
+
+%% =================== Sensor metrics (for reporting + tuning) ===================
+sensorM = helperEstimateSensorMetrics(dataLog, 400);
+
+fprintf("Sensor metrics (per scan): Pd_soft=%.3f | Pd_est=%.3f | FA/scan=%.3f | meanDets/scan=%.3f | scanT=%.3fs\n\n", ...
+    sensorM.Pd_soft, sensorM.Pd_est, sensorM.FalseAlarmsPerScan, ...
+    sensorM.MeanDetectionsPerScan, sensorM.ScanPeriod);
+
+%% Export to generate detection file for previous capstone Kalman Filter
+if enableDegradation
+    exportMateoV5FromDataLog(dataLog, "MateoV5_nonideal.txt", ...
+        'Mode', "range", ...
+        'PickRule', "closestToPrev", ...
+        'WriteMissing', "hold", ...
+        'MaxJumpMeters', 200);
+else 
+    exportMateoV5FromDataLog(dataLog, "MateoV5_ideal.txt", ...
+        'Mode', "range", ...
+        'PickRule', "closestToPrev", ...
+        'WriteMissing', "hold", ...
+        'MaxJumpMeters', 200);
+end 
+
+%% Global tracker knobs (shared baseline assumptions)
+numTracks = 500;
+
+% IMPORTANT: vol should represent the region you *allow* measurements from.
+% If you gate to an ROI box, use that box volume. Otherwise use something conservative.
+% ROI volume (must match gateDetectionsROI bounds)
+xMin = -8000;  xMax =  8000;
+yMin = -26000; yMax = -16000;
+zMin = -8000;  zMax =   500;
+vol  = (xMax-xMin) * (yMax-yMin) * (zMax-zMin);  % m^3
+
+% --- Sensor-based assumed Pd (count-based; can be inflated by clutter) ---
+pd = max(0.05, min(0.99, sensorM.Pd_soft));
+
+% In RAINY, clamp Pd to something realistic so score logic doesn't over-trust
+% measurements and spawn tracks aggressively.
+if enableDegradation
+    pd = min(pd, 0.85);
+end
+
+% --- Sensor-based clutter density per scan (false alarms / m^3 / scan) ---
+% dataLog is per scan (logged at IsScanDone), so do NOT divide by ScanPeriod here.
+if vol > 0
+    clutterDensity_from_data = sensorM.FalseAlarmsPerScan / vol;  % 1/m^3 per scan
+else
+    clutterDensity_from_data = 1e-12; % fallback
+end
+
+% sane bounds (still <<1)
+clutterDensity_from_data = max(1e-15, min(1e-3, clutterDensity_from_data));
+
+%% Scenario-dependent knobs (gating + initiation/clutter assumptions)
+% Separate gates so we can be stricter for GNN (reduces false track spawns)
+if enableDegradation
+    gateGNN  = 30;   % was 35 (tighter => less track spam)
+    gateMHT  = 35;   % keep TOMHT a bit looser to handle ambiguity
+    gateJPDA = 40;   % JPDA often wants looser than GNN, but not huge
+else
+    gateGNN  = 45;
+    gateMHT  = 45;
+    gateJPDA = 45;
+end
+
+% --- Beta controls track birth intensity (most important knob for track spam) ---
+% Your run showed lots of NaN tracks => beta is too "encouraging" under clutter.
+if enableDegradation
+    beta = 1e-13;   % was 1e-14 (two orders lower)
+else
+    beta = 1e-14;
+end
+
+% Scale clutter assumptions per tracker type (still sensor-driven)
+if enableDegradation
+    farGNN  = clutterDensity_from_data * farScaleGNN;   % permissive clutter model for GNN
+    farMHT  = clutterDensity_from_data * 1;
+    farJPDA = clutterDensity_from_data * 1;
+else
+    farGNN  = clutterDensity_from_data * 1;
+    farMHT  = clutterDensity_from_data * 1;
+    farJPDA = clutterDensity_from_data * 1;
+end
+
+% JPDA expects clutter density (false alarms per m^3)
+clutterDensityJPDA = farJPDA;
+
+fprintf("Scenario: %s | gateGNN=%.2f gateMHT=%.2f gateJPDA=%.2f | FAR(GNN)=%.3g 1/m^3 | FAR(MHT)=%.3g 1/m^3 | CD(JPDA)=%.3g 1/m^3 | pd=%.2f | vol=%.3g | beta=%.3g\n\n", ...
+    ternary(enableDegradation,"RAINY","IDEAL"), gateGNN, gateMHT, gateJPDA, farGNN, farMHT, clutterDensityJPDA, pd, vol, beta);
+
+%% TOMHT-only thresholds (score-based track management)
+if enableDegradation
+    confirmThresh = 35;  % slightly higher => fewer clutter tracks confirm
+    deleteThresh  = -10; % slightly less aggressive deletion of real tracks
+else
+    confirmThresh = 20;
+    deleteThresh  = -5;
+end
+
+%% TOMHT scenario-dependent knobs
+% Scale thresholds relative to TOMHT gate
+if enableDegradation
+    tomhtThresh = [0.2, 5, 5] * gateMHT;
+    maxBranches = 3;
+else
+    tomhtThresh = [0.2, 1, 1] * gateMHT;
+    maxBranches = 5;
+end
+
+%% JPDA scenario-dependent knobs (initiation + anti-spam controls)
+if enableDegradation
+    betaJPDA    = 1e-12;      % was 1e-11 (slightly less spam)
+    timeTolJPDA = 0.05;
+    numTracksJPDA = 120;      % cap down from 200
+else
+    betaJPDA    = beta;
+    timeTolJPDA = 0.05;
+    numTracksJPDA = numTracks;
+end
+
+
+%% ============ GNN + CV ============
+fprintf("\n============ GNN + CV ============\n");
+
+% Baseline knobs for GNN
+tune = struct();
+tune.enableDegradation = enableDegradation;
+tune.gateGNN = gateGNN;
+tune.beta = beta;
+tune.pd = pd;
+tune.maxNumTracksGNN = 80;  % cap during autotune to prevent spam (set [] to disable)
+
+% ----- Run #1 -----
+maxTracks1 = numTracks;
+if enableAutoTune && ~isempty(tune.maxNumTracksGNN)
+    maxTracks1 = tune.maxNumTracksGNN;
+end
+
+tracker = trackerGNN( ...
+    'FilterInitializationFcn', @initCVFilter, ...
+    'MaxNumTracks', maxTracks1, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', tune.gateGNN, ...
+    'TrackLogic', 'Score', ...
+    'DetectionProbability', tune.pd, ...
+    'FalseAlarmRate', farGNN, ...
+    'Volume', vol, ...
+    'Beta', tune.beta);
+
+[trackSummary1, truthSummary1, trackMetrics1, truthMetrics1, timeGNNCV1] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary1); disp(truthSummary1);
+disp(trackMetrics1); disp(truthMetrics1);
+
+trackerAfterActionReport("GNN + CV (baseline)", trackSummary1, truthSummary1, sensorM, tune.gateGNN, tune.beta, tune.pd);
+
+% ----- AUTO-TUNE: one iteration -----
+if enableAutoTune
+    tune2 = autoTuneGNNOnce(trackSummary1, truthSummary1, sensorM, tune);
+
+    maxTracks2 = numTracks;
+    if ~isempty(tune2.maxNumTracksGNN)
+        maxTracks2 = tune2.maxNumTracksGNN;
+    end
+
+    fprintf("\n============ GNN + CV (AUTO-TUNED ONCE) ============\n");
+    tracker = trackerGNN( ...
+        'FilterInitializationFcn', @initCVFilter, ...
+        'MaxNumTracks', maxTracks2, ...
+        'MaxNumSensors', 1, ...
+        'AssignmentThreshold', tune2.gateGNN, ...
+        'TrackLogic', 'Score', ...
+        'DetectionProbability', tune2.pd, ...
+        'FalseAlarmRate', farGNN, ...
+        'Volume', vol, ...
+        'Beta', tune2.beta);
+
+    [trackSummary2, truthSummary2, trackMetrics2, truthMetrics2, timeGNNCV2] = helperRunTracker(dataLog, tracker, false);
+    disp(trackSummary2); disp(truthSummary2);
+    disp(trackMetrics2); disp(truthMetrics2);
+
+    trackerAfterActionReport("GNN + CV (autotuned)", trackSummary2, truthSummary2, sensorM, tune2.gateGNN, tune2.beta, tune2.pd);
+    printDelta(truthSummary1, truthSummary2, trackSummary1, trackSummary2);
+
+    % Optionally apply tuned knobs globally for later tracker runs
+    if ~autoTuneOnlyGNN
+        gateGNN = tune2.gateGNN;
+        beta    = tune2.beta;
+        pd      = tune2.pd;
+    end
+end
+
+%% ============ GNN + IMM ============
+fprintf("\n============ GNN + IMM ============\n");
+tracker = trackerGNN( ...
+    'FilterInitializationFcn', @initIMMFilter, ...
+    'MaxNumTracks', numTracks, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', gateGNN, ...
+    'TrackLogic', 'Score', ...
+    'DetectionProbability', pd, ...
+    'FalseAlarmRate', farGNN, ...   % <-- FA/s
+    'Volume', vol, ...
+    'Beta', beta);
+
+[trackSummary, truthSummary, trackMetrics, truthMetrics, timeGNNIMM] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary); disp(truthSummary);
+disp(trackMetrics); disp(truthMetrics);
+
+%% ============ TOMHT + CV ============
+fprintf("\n============ TOMHT + CV ============\n");
+tracker = trackerTOMHT( ...
+    'FilterInitializationFcn', @initCVFilter, ...
+    'MaxNumTracks', numTracks, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', tomhtThresh, ...
+    'DetectionProbability', pd, ...
+    'FalseAlarmRate', farMHT, ...   % <-- FA/s
+    'Volume', vol, ...
+    'Beta', beta, ...
+    'ConfirmationThreshold', confirmThresh, ...
+    'DeletionThreshold', deleteThresh, ...
+    'MaxNumHistoryScans', 10, ...
+    'MaxNumTrackBranches', maxBranches, ...
+    'NScanPruning', 'Hypothesis', ...
+    'OutputRepresentation', 'Tracks');
+
+[trackSummary, truthSummary, trackMetrics, truthMetrics, timeTOMHTCV] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary); disp(truthSummary);
+disp(trackMetrics); disp(truthMetrics);
+
+%% ============ TOMHT + IMM ============
+fprintf("\n============ TOMHT + IMM ============\n");
+tracker = trackerTOMHT( ...
+    'FilterInitializationFcn', @initIMMFilter, ...
+    'MaxNumTracks', numTracks, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', tomhtThresh, ...
+    'DetectionProbability', pd, ...
+    'FalseAlarmRate', farMHT, ...   % <-- FA/s
+    'Volume', vol, ...
+    'Beta', beta, ...
+    'ConfirmationThreshold', confirmThresh, ...
+    'DeletionThreshold', deleteThresh, ...
+    'MaxNumHistoryScans', 10, ...
+    'MaxNumTrackBranches', maxBranches, ...
+    'NScanPruning', 'Hypothesis', ...
+    'OutputRepresentation', 'Tracks');
+
+[trackSummary, truthSummary, trackMetrics, truthMetrics, timeTOMHTIMM] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary); disp(truthSummary);
+disp(trackMetrics); disp(truthMetrics);
+
+%% ============ JPDA + CV ============
+fprintf("\n============JPDA + CV==================\n");
+tracker = trackerJPDA( ...
+    'FilterInitializationFcn', @initCVFilter, ...
+    'MaxNumTracks', numTracksJPDA, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', gateJPDA, ...
+    'TrackLogic', 'Integrated', ...
+    'DetectionProbability', pd, ...
+    'ClutterDensity', clutterDensityJPDA, ...  % <-- 1/m^3
+    'NewTargetDensity', betaJPDA, ...
+    'TimeTolerance', timeTolJPDA);
+
+[trackSummary, truthSummary, trackMetrics, truthMetrics, timeJPDACV] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary); disp(truthSummary);
+disp(trackMetrics); disp(truthMetrics);
+
+%% ============ JPDA + IMM ============
+fprintf("\n============JPDA + IMM==================\n");
+tracker = trackerJPDA( ...
+    'FilterInitializationFcn', @initIMMFilter, ...
+    'MaxNumTracks', numTracksJPDA, ...
+    'MaxNumSensors', 1, ...
+    'AssignmentThreshold', gateJPDA, ...
+    'TrackLogic', 'Integrated', ...
+    'DetectionProbability', pd, ...
+    'ClutterDensity', clutterDensityJPDA, ...  % <-- 1/m^3
+    'NewTargetDensity', betaJPDA, ...
+    'TimeTolerance', timeTolJPDA);
+
+[trackSummary, truthSummary, trackMetrics, truthMetrics, timeJPDAIMM] = helperRunTracker(dataLog, tracker, false);
+disp(trackSummary); disp(truthSummary);
+disp(trackMetrics); disp(truthMetrics);
+
+fprintf("\n==============================\n");
+fprintf(" RUN END | Scenario = %s\n", ternary(enableDegradation,"RAINY","IDEAL"));
+fprintf("==============================\n\n");
+
+%% -------- Local helper: ternary --------
+function out = ternary(cond, a, b)
+if cond
+    out = a;
+else
+    out = b;
+end
+end
+
+function trackerAfterActionReport(trackerName, trackSummary, truthSummary, sensorM, gate, beta, pd)
+fprintf("Assumed clutter scale (GNN): %.1f × sensor\n", tune.farScaleGNN);
+
+fprintf("\n--- After-Action Tracker Report: %s ---\n", trackerName);
+
+% ---------------- Track-level symptoms ----------------
+numTracks = height(trackSummary);
+shortTracks = sum(trackSummary.TotalLength < 5);
+deadTracks  = sum(~trackSummary.Surviving);
+meanLen     = mean(trackSummary.TotalLength);
+
+fprintf("Tracks created: %d | Mean length: %.1f | Short tracks (<5): %d\n", ...
+    numTracks, meanLen, shortTracks);
+
+% ---------------- Truth-level symptoms ----------------
+meanBreaks = mean(truthSummary.BreakCount);
+maxBreaks  = max(truthSummary.BreakCount);
+estFail = sum(isnan(truthSummary.AssociatedTrackID));
+
+
+fprintf("Truth breaks: mean=%.2f | max=%d | failed establishment=%d/%d\n", ...
+    meanBreaks, maxBreaks, estFail, height(truthSummary));
+
+% ---------------- Sensor context ----------------
+fprintf("Sensor context: Pd_est=%.2f | FA/scan=%.2f | scanT=%.2fs\n", ...
+    sensorM.Pd_est, sensorM.FalseAlarmsPerScan, sensorM.ScanPeriod);
+
+fprintf("Assumed Pd used by tracker: %.2f\n", pd);
+
+% ================= Recommendations =================
+fprintf("\nRecommended tuning actions:\n");
+
+% Track spam
+if numTracks > 5*height(truthSummary)
+    fprintf(" • TRACK SPAM detected → Reduce Beta (current %.1e)\n", beta);
+end
+
+% Short tracks
+if shortTracks > height(truthSummary)
+    fprintf(" • Many short-lived tracks → Tighten gate (current %.1f) or reduce Beta\n", gate);
+end
+
+% Breaks
+if meanBreaks > 3
+    fprintf(" • Frequent truth breaks → Increase gate by +5 (current %.1f)\n", gate);
+end
+
+% Establishment failure
+if estFail > 0
+    fprintf(" • Track initiation weak → Increase Beta or reduce gate\n");
+end
+
+% Pd mismatch checks
+if pd > sensorM.Pd_est + 0.1
+    fprintf(" • Pd too optimistic → Lower Pd toward %.2f\n", sensorM.Pd_est);
+end
+
+if pd < sensorM.Pd_est - 0.2
+    fprintf(" • Pd too pessimistic → Increase Pd to avoid track breaks\n");
+end
+
+% Healthy case
+if meanBreaks <= 1 && shortTracks < height(truthSummary)
+    fprintf(" • Tracker behavior is STABLE — no immediate tuning needed\n");
+end
+
+fprintf("--- End After-Action Report ---\n\n");
+end
+
+
+
+function tune = autoTuneGNNOnce(trackSummary, truthSummary, sensorM, tune)
+%AUTOTUNEGNNONCE One iteration: adjust beta/gate based on symptoms.
+
+numTruth  = height(truthSummary);
+numTracks = height(trackSummary);
+shortTracks = sum(trackSummary.TotalLength < 5);
+meanBreaks  = mean(truthSummary.BreakCount);
+maxBreaks   = max(truthSummary.BreakCount);
+
+% Track spam heuristic
+spam = (numTracks > 20*numTruth) || (shortTracks > 10*numTruth);
+
+% Break heuristic
+breaky = (meanBreaks >= 3) || (maxBreaks >= 10);
+
+fprintf("\n[AUTO-TUNE] spam=%d | breaky=%d | tracks=%d | short=%d | meanBreaks=%.2f | maxBreaks=%d\n", ...
+    spam, breaky, numTracks, shortTracks, meanBreaks, maxBreaks);
+
+% Keep pd clamped in rainy
+if tune.enableDegradation
+    tune.pd = min(tune.pd, 0.85);
+end
+
+% 1) If spam, reduce beta hard
+if spam
+    if tune.beta > 1e-14
+        old = tune.beta;
+        tune.beta = max(1e-14, tune.beta/10);
+        fprintf("[AUTO-TUNE] Track spam → beta %.1e -> %.1e\n", old, tune.beta);
+    else
+        % beta already at floor: increase clutter assumption to suppress false births
+        old = tune.farScaleGNN;
+        tune.farScaleGNN = min(50, tune.farScaleGNN*2);
+        fprintf("[AUTO-TUNE] Track spam (beta floor) → farScaleGNN %.1f -> %.1f\n", old, tune.farScaleGNN);
+    end
+end
+
+
+% 2) If breaky, increase gate modestly (helps maintain associations)
+if breaky
+    old = tune.gateGNN;
+    tune.gateGNN = min(60, tune.gateGNN + 5);
+    fprintf("[AUTO-TUNE] Frequent breaks → gateGNN %.1f -> %.1f\n", old, tune.gateGNN);
+end
+
+fprintf("[AUTO-TUNE] New knobs: gateGNN=%.1f | beta=%.1e | pd=%.2f\n\n", ...
+    tune.gateGNN, tune.beta, tune.pd);
+end
+
+
+function printDelta(beforeTruth, afterTruth, beforeTracks, afterTracks)
+fprintf("\n=== AUTO-TUNE DELTA (Before -> After) ===\n");
+fprintf("Tracks created: %d -> %d\n", height(beforeTracks), height(afterTracks));
+fprintf("Short tracks (<5): %d -> %d\n", ...
+    sum(beforeTracks.TotalLength < 5), sum(afterTracks.TotalLength < 5));
+fprintf("Mean BreakCount: %.2f -> %.2f\n", mean(beforeTruth.BreakCount), mean(afterTruth.BreakCount));
+fprintf("Max BreakCount : %d -> %d\n", max(beforeTruth.BreakCount), max(afterTruth.BreakCount));
+fprintf("========================================\n\n");
+end
