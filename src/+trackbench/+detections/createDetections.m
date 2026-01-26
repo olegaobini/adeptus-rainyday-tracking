@@ -59,10 +59,18 @@ restart(scenario);
 % Buffer detections until a scan completes
 scanBuffer = {};
 
-% Initialize output log
-dataLog.Time = [];
-dataLog.Truth = [];
-dataLog.Detections = {};
+% Estimate number of scans (rough estimate)
+% Scan rate = radar.UpdateRate / fov(1) = updaterate / azimuth_resolution
+% For now, assume ~10 Hz scan rate over scenario duration
+estimatedScans = ceil(scenario.SimulationTime * 10 * 1.1);  % 10% buffer
+
+% Pre-allocate arrays (much faster than concatenation)
+dataLog.Time = zeros(1, estimatedScans);
+dataLog.Truth = cell(1, estimatedScans);  % Use cell array instead of struct array
+dataLog.Detections = cell(1, estimatedScans);
+
+% Track current scan index
+scanIdx = 0;
 
 % Fix random seed so degradation and clutter are repeatable
 s = rng;
@@ -178,26 +186,48 @@ while advance(scenario)
         fprintf("t=%.2f: dets=%d (before=%d, clutterAdded=%d)\n", ...
             simTime, numel(scanBuffer), nBefore, nFalse);
 
-        % Log results
-        dataLog.Time = [dataLog.Time, simTime];
-        dataLog.Truth = [dataLog.Truth, targets];
-        dataLog.Detections = [dataLog.Detections(:)', {scanBuffer}];
-
+        % Log results (no concatenation, just indexing)
+        scanIdx = scanIdx + 1;
+        dataLog.Time(scanIdx) = simTime;
+        dataLog.Truth{scanIdx} = targets;
+        dataLog.Detections{scanIdx} = scanBuffer;
+        
         % Reset for next scan
         scanBuffer = {};
     end
-end
+end  
+
+% Trim unused pre-allocated space
+dataLog.Time = dataLog.Time(1:scanIdx);
+dataLog.Truth = dataLog.Truth(1:scanIdx);
+dataLog.Detections = dataLog.Detections(1:scanIdx);
 
 % Restore RNG state
 rng(s);
 disp('Detections generation complete.')
 
     function w = weatherSeverity(t)
-        %weatherSeverity  Simple on/off storm model
-        stormStart = 15;   % seconds
-        stormEnd   = 30;   % seconds
-        w = double(t >= stormStart && t <= stormEnd);
+    %weatherSeverity  Smooth weather degradation model
+    
+    % Returns 0 (clear) to 1 (severe) based on time.
+    % Uses sine ramp instead of binary on/off for realism.
+    
+    stormStart = 15;    % seconds
+    stormEnd = 30;      % seconds
+    
+    if t < stormStart
+        % Before storm: clear
+        w = 0;
+    elseif t > stormEnd
+        % After storm: clear again
+        w = 0;
+    else
+        % During storm window: smooth sine ramp
+        % Maps [stormStart, stormEnd] to [0, pi], then sine gives [0, 1, 0]
+        progress = (t - stormStart) / (stormEnd - stormStart);  % 0 to 1
+        w = sin(progress * pi);  % smooth rise then fall
     end
+end
 
     function meas = falseMeasInSurveillanceVolume()
         %falseMeasInSurveillanceVolume  Generate plausible clutter measurement
@@ -220,9 +250,9 @@ function detsOut = gateDetectionsROI(detsIn)
     end
 
     % ROI bounds (meters)
-    xMin = -8000;  xMax =  8000;
-    yMin = -26000; yMax = -16000;
-    zMin = -8000;  zMax =  500;
+    xMin = -2000;  xMax =  2000;
+    yMin = -21000; yMax = -18000;
+    zMin = -4500;  zMax =  -1500;
 
     keep = false(numel(detsIn),1);
     for ii = 1:numel(detsIn)
