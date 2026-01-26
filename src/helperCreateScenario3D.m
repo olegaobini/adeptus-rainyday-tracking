@@ -153,8 +153,8 @@ switch idx
         wp = [ ...
             -2000    -20000   -3000;   % start (~3 km altitude)
              0       -20000   -3000;   % straight north
-             800     -19800   -4000;   % climb to ~4 km
-             1200    -19000   -4000;   % turn / move east
+             800     -19800   -3300;   % climb to ~4 km
+             1200    -19000   -3600;   % turn / move east
              1500    -18000   -4000];
 
         % Compute piecewise-constant velocities from waypoint differences
@@ -175,8 +175,8 @@ switch idx
         wp = [ ...
             2000     -19000   -3500;
             800      -19000   -3500;
-            200      -19500   -3200;  % descend
-            -600     -20000   -3200;
+            200      -19500   -3400;  % descend
+            -600     -20000   -3300;
             -1200    -20500   -3200];
 
         vel = zeros(numel(t),3);

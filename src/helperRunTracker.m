@@ -113,13 +113,13 @@ end
 
 % maxGap controls how long a truth/track can go without an assignment being
 % considered "unreported". Larger tolerates missed detections; too large hides breaks.
-maxGap = max(2*scanTime, 0.2);
+maxGap = max(25*scanTime, 0.2);
 
 % trackAssignmentMetrics (tam):
 %   Tracks which track is assigned to which truth and detects events like divergence.
 tam = trackAssignmentMetrics( ...
-    'AssignmentThreshold', 3, ...       % distance threshold for assignment (units depend on truth/track format)
-    'DivergenceThreshold', 5, ...       % when considered diverged
+    'AssignmentThreshold', 300, ...       % distance threshold for assignment (units depend on truth/track format)
+    'DivergenceThreshold', 350, ...       % when considered diverged
     'MaxUnreportedPeriod', maxGap);     % prevents continuity errors under missed detections
 
 % trackErrorMetrics (tem):
@@ -273,6 +273,59 @@ trackSummary = trackMetricsTable(tam);
 truthSummary = truthMetricsTable(tam);
 trackMetrics = cumulativeTrackMetrics(tem);
 truthMetrics = cumulativeTruthMetrics(tem);
+
+% --- CUSTOM METRIC: Quality Score (0-100%) ---
+% PURPOSE: 
+%   Convert the raw "Root Mean Square Error" (RMSE) in meters into a 
+%   human-readable percentage "grade" for the track.
+%   - 100% Score = Perfect tracking (0 meters error).
+%   - 0% Score   = Error exceeds the tolerance threshold.
+
+% Define the "Failure Threshold" in meters.
+% If a track's average error is >300m, it is considered a 0% quality track.
+tolerance = 300; 
+
+% Initialize a string array to hold the formatted scores (e.g., "95.2%")
+scoreStrings = strings(height(trackMetrics), 1); 
+
+% 1. Identify the Data Source
+% We are looking for the 'posRMS' column in the metrics table.
+% (Ensure this column name matches your specific MATLAB version's output)
+rmseCol = 'posRMS';
+
+% 2. Calculate Scores for Each Track
+for k = 1:height(trackMetrics)
+    % Safety Check: Ensure we actually found the column before trying to read it
+    if isempty(rmseCol)
+        scoreStrings(k) = "Error (Col Not Found)";
+    else
+        % Extract the RMSE value for the current track
+        rmse = trackMetrics.(rmseCol)(k);
+        
+        % Handle "Ghost" or Unassigned Tracks
+        % If RMSE is NaN, it means this track was never associated with a 
+        % ground truth object (it tracked clutter or nothing).
+        if isnan(rmse)
+            scoreStrings(k) = "0.0% (Unassigned)";
+        else
+            % LINEAR SCORING FORMULA:
+            % Score = 1.0 - (Current Error / Max Tolerable Error)
+            val = 1 - (rmse / tolerance);
+            
+            % Clamp the result to ensure it stays between 0.0 and 1.0
+            % (Prevents negative scores if error > tolerance)
+            finalScore = max(0, min(1, val)) * 100;
+            
+            % Format as a percentage string with 1 decimal place
+            scoreStrings(k) = sprintf("%.1f%%", finalScore);
+        end
+    end
+end
+
+% 3. Add to Table
+% Convert to categorical so it prints without quotes
+trackMetrics.Quality = categorical(scoreStrings);
+% ---------------------------------------------
 
 % Remove columns we don't use in our report to keep tables readable.
 trVarsToRemove = {'DivergenceCount','DeletionStatus','DeletionLength','DivergenceLength', ...

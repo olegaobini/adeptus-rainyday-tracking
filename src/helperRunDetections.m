@@ -221,9 +221,9 @@ function detsOut = gateDetectionsROI(detsIn)
     end
 
     % ROI bounds (meters)
-    xMin = -2000;  xMax =  2000;
-    yMin = -21000; yMax = -18000;
-    zMin = -4500;  zMax =  -1500;
+    xMin = -8000;  xMax =  8000;
+    yMin = -26000; yMax = -16000;
+    zMin = -8000;  zMax =  500;
 
     keep = false(numel(detsIn),1);
     for ii = 1:numel(detsIn)

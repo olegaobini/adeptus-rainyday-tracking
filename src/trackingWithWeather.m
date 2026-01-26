@@ -77,8 +77,40 @@ fprintf("==============================\n\n");
 % scenario = helperCreateScenario;
 % dataLog  = helperRunDetections(scenario, enableDegradation);
 
-scenario = helperCreateScenario3D("NumTargets",2,"SceneDuration",60);
-dataLog  = helperRunDetections(scenario, enableDegradation);
+%scenario = helperCreateScenario3D("NumTargets",4,"SceneDuration",60);
+%dataLog = helperRunDetections(scenario, enableDegradation);
+
+%% Create scenario + detections
+% ================= DETECTION SOURCE =================
+useSavedDataLog = true;                 % true = load, false = generate+save
+dataLogFile = "cache/myRun1.mat";
+% ====================================================
+
+% ================= SCENARIO SELECT ==================
+scenarioMode = "3D";   % "2D" uses helperCreateScenario
+                        % "3D" uses helperCreateScenario3D
+NumTargets    = 4;     % only used for 3D
+SceneDuration = 60;    % only used for 3D
+% ====================================================
+
+if useSavedDataLog
+    load(dataLogFile,"dataLog");
+    fprintf("[replay] Loaded dataLog from %s\n", dataLogFile);
+
+else
+    % ---- pick scenario builder ----
+    if scenarioMode == "3D"
+        scenario = helperCreateScenario3D("NumTargets",NumTargets,"SceneDuration",SceneDuration);
+    else
+        scenario = helperCreateScenario();
+    end
+
+    dataLog = helperRunDetections(scenario, enableDegradation);
+
+    if ~exist("cache","dir"), mkdir("cache"); end
+    save(dataLogFile,"dataLog","-v7.3");
+    fprintf("[record] Saved dataLog to %s\n", dataLogFile);
+end
 
 % Visualization: plot of truth + detections.
 plotInitialScenario(dataLog);
@@ -145,7 +177,8 @@ end
 numTracks = 500;
 vol  = 1e9;
 beta = 1e-14;
-pd   = 0.8;
+if (enableDegradation) pd = 0.7;
+else pd = 0.9; end
 
 %% Scenario-dependent knobs (gating + clutter assumptions)
 % gate:
@@ -184,8 +217,13 @@ fprintf("Scenario: %s | gate=%.2f | farGNN=%.3g | farMHT=%.3g | farJPDA=%.3g | p
 %   score level needed before a track is considered confirmed
 % DeletionThreshold:
 %   score level below which tracks are deleted
-confirmThresh = 20;
-deleteThresh  = -5;
+if enableDegradation
+    confirmThresh = 30;
+    deleteThresh = -15;
+else
+    confirmThresh = 20;
+    deleteThresh = -5;
+end
 
 %% TOMHT scenario-dependent knobs
 % tomhtThresh:
@@ -196,7 +234,7 @@ deleteThresh  = -5;
 %   Limits branching factor of hypotheses.
 %   Higher = can represent more ambiguity, but costs time and may explode.
 if enableDegradation
-    tomhtThresh = [0.2, 1, 1] * gate;
+    tomhtThresh = [0.2, 5, 5] * gate;
     maxBranches = 3;
 else
     tomhtThresh = [0.2, 1, 1] * gate;
