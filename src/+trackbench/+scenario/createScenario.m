@@ -68,7 +68,7 @@ radar = fusionRadarSensor(1,'Rotator', ...
 
 % MountingLocation is relative to the platform body frame.
 % Here we place the radar slightly "down" (positive Down in NED).
-radar.MountingLocation = [0 0 -15];
+radar.MountingLocation = radarCfg.mounting_location;
 
 % Create tower platform with the radar sensor attached.
 % We don't assign a trajectory => tower stays fixed at origin.
