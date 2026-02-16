@@ -45,25 +45,11 @@ radarCfg = config.radar;  % Shorthand for easier access
 % trackingScenario holds platforms and advances time via advance(scenario)
 scenario = trackingScenario;
 
-%% ---------------- Radar definition ----------------
-% We keep radar settings close to the baseline example for comparability.
-%
-% rpm / scanrate:
-%   Defines how quickly the radar sweeps azimuth.
-% fov:
-%   [azimuth; elevation] degrees
-% updaterate:
-%   The sensor returns detections once per "azimuth resolution cell" as it scans.
-rpm = 25;
-fov = [1.5;10];               % [Az; El] degrees
-scanrate   = rpm*360/60;      % deg/s
-updaterate = scanrate/fov(1); % Hz (updates per azimuth resolution)
-
-% DetectionProbability and FalseAlarmRate are radar-level assumptions.
-% NOTE: In our "RAINY" experiments we may also inject degradation at the
-% detection level after sensor output (see helperRunDetections).
-pd  = 0.8;
-far = 1e-6;
+%% ---------------- Radar definition (CONFIG-DRIVEN) ----------------
+% Calculate derived parameters from config
+fov = [radarCfg.fov_azimuth; radarCfg.fov_elevation];
+scanrate   = radarCfg.rpm * 360 / 60;           % deg/s
+updaterate = scanrate / radarCfg.fov_azimuth;   % Hz
 
 % fusionRadarSensor configured as a mechanical rotator
 radar = fusionRadarSensor(1,'Rotator', ...
