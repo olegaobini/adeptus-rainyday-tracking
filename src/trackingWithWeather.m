@@ -82,15 +82,12 @@ if useSavedDataLog
     fprintf("[INFO] Loaded dataLog from %s\n", dataLogFile);
 else
     if scenarioMode == "3D"
-        scenario = createScenario3D( ...
-            "NumTargets", numTargets, ...
-            "SceneDuration", sceneDuration);
+        scenario = createScenario3D(config);
     else
         error("Only 3D scenarios are currently supported.");
     end
 
     dataLog = runDetections(scenario, enableDegradation);
-
     if config.data_logging.save_after_generation
         save(dataLogFile, "dataLog", "-v7.3");
         fprintf("[INFO] Saved dataLog to %s\n", dataLogFile);
@@ -345,4 +342,5 @@ root = pwd;
 addpath(genpath(fullfile(root, "src", "helpers")));
 addpath(genpath(fullfile(root, "src", "visualization")));
 end
+
 
