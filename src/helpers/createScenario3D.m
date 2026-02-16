@@ -37,14 +37,10 @@ function scenario = createScenario3D(config)
 %   scenario : trackingScenario object containing platforms + radar sensor
 % -------------------------------------------------------------------------
 
-%% Parse inputs
-p = inputParser;
-addParameter(p,"NumTargets",2,@(x)isnumeric(x)&&isscalar(x)&&x>=1);
-addParameter(p,"SceneDuration",50,@(x)isnumeric(x)&&isscalar(x)&&x>0);
-parse(p,varargin{:});
-numTargets = p.Results.NumTargets;
-sceneDuration = p.Results.SceneDuration;
-
+%% Extract parameters from config
+numTargets = config.scenario.num_targets;
+sceneDuration = config.scenario.duration_s;
+radarCfg = config.radar;  % Shorthand for easier access
 %% Create scenario container
 % trackingScenario holds platforms and advances time via advance(scenario)
 scenario = trackingScenario;
