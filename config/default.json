@@ -1,13 +1,28 @@
 
 {
 
-  "version": "1.0",
+  "version": "1.1",
   "description": "Base configuration for Boeing sensor tracking simulation",
 
   "scenario": {
     "mode": "3D",
     "num_targets": 1,
     "duration_s": 10
+  },
+
+  "radar": {
+    "type": "fusionRadarSensor",
+    "rpm": 25,
+    "fov_azimuth": 1.5,
+    "fov_elevation": 10,
+    "azimuth_limits": [250, 290],
+    "elevation_tilt": 2,
+    "reference_range": 111000,
+    "reference_rcs": 0,
+    "range_resolution": 135,
+    "detection_probability": 0.8,
+    "false_alarm_rate": 1e-6,
+    "mounting_location": [0, 0, -15]
   },
 
   "degradation": {
