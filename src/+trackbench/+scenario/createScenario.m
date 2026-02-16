@@ -77,8 +77,7 @@ tower = platform(scenario, 'Sensors', radar); %#ok<NASGU>
 % Enable elevation scanning geometry.
 % MechanicalElevationLimits: [min max] degrees relative to mount.
 radar.HasElevation = true;
-tilt = 2; % deg
-radar.MechanicalElevationLimits = [-fov(2) 0] - tilt;
+radar.MechanicalElevationLimits = [-fov(2) 0] - radarCfg.elevation_tilt;
 radar.FieldOfView(2) = fov(2) + 1e-3; % small epsilon prevents edge issues
 
 % Set scenario update rate to match radar update rate for clean alignment.
