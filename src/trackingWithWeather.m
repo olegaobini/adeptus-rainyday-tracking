@@ -64,9 +64,11 @@ fprintf("==============================\n\n");
 %     - detection dropouts (effective Pd)
 %     - inflated measurement noise
 %     - added clutter (false alarms)
-
+% Datalog will contain
+%    - detections measurements
+%    - Ground Truth
 useSavedDataLog = config.data_logging.use_saved_datalog;
-dataLogFile = fullfile(pwd, config.data_logging.datalog_file); % Look at this
+dataLogFile = fullfile(pwd, config.data_logging.datalog_file); % Creates the path
 dataLogDir  = fileparts(dataLogFile);
 
 % Create directory if it doesn't exist
@@ -74,6 +76,7 @@ if ~exist(dataLogDir, "dir")
     mkdir(dataLogDir);
 end
 
+% load cached or generate new data
 if useSavedDataLog
     load(dataLogFile, "dataLog");
     fprintf("[INFO] Loaded dataLog from %s\n", dataLogFile);
@@ -342,3 +345,4 @@ root = pwd;
 addpath(genpath(fullfile(root, "src", "helpers")));
 addpath(genpath(fullfile(root, "src", "visualization")));
 end
+
