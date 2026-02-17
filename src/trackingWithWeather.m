@@ -1,4 +1,3 @@
-
 function trackingWithWeather(configName)
 % trackingWithWeather: Top-level driver for tracking + degradation experiments.
 %
@@ -14,7 +13,7 @@ function trackingWithWeather(configName)
 %
 % BASELINE SOURCE
 %   Adapted from MathWorks example:
-%   https://www.mathworks.com/help/fusion/ug/tracking-closely-spaced-targets-under-ambiguity.html
+%   https://www.mathworks.com/help/fusion/ug/tracking-closealy-spaced-targets-under-ambiguity.html
 % 
 % NOTES FOR TEAM
 %   - This is the top-level driver script. All "real work" happens in helpers:
@@ -342,5 +341,4 @@ root = pwd;
 addpath(genpath(fullfile(root, "src", "helpers")));
 addpath(genpath(fullfile(root, "src", "visualization")));
 end
-
 
