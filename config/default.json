@@ -1,7 +1,5 @@
-
 {
-
-  "version": "1.1",
+  "version": "1.0",
   "description": "Base configuration for Boeing sensor tracking simulation",
 
   "scenario": {
@@ -137,5 +135,4 @@
     "save_figures": true,
     "results_directory": "results"
   }
-
 }
