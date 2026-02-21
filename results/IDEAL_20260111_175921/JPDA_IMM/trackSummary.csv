@@ -1,3 +1,0 @@
-TrackID,AssignedTruthID,Surviving,TotalLength,UnreportedStatus,MeanTimeBetweenReports,MaxTimeBetweenReports,DivergenceStatus
-1,1,1,191,0,0.259999999999993,0.260000000000044,1
-2,2,1,191,0,0.259999999999993,0.260000000000044,0
