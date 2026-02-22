@@ -1,0 +1,26 @@
+{
+  "_description": "Airborne fighter: AESA nose radar + FLIR targeting pod",
+  "sensors": [
+    {
+      "name": "AESA Fighter Radar",
+      "type": "AESA",
+      "enabled": true,
+      "platform": "aircraft",
+      "params": {
+        "sector": [-60, 60],
+        "rangeLimits": [0, 300000],
+        "refRCS": 10,
+        "mountingLoc": [0, 0, 0]
+      }
+    },
+    {
+      "name": "FLIR Targeting Pod",
+      "type": "FLIR",
+      "enabled": true,
+      "platform": "aircraft",
+      "params": {
+        "mountingLoc": [0, 0, 0]
+      }
+    }
+  ]
+}

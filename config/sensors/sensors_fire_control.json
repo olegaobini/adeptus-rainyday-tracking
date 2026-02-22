@@ -1,0 +1,25 @@
+{
+  "_description": "Fire control: Dedicated narrow-beam track radar + search radar",
+  "sensors": [
+    {
+      "name": "Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "rangeLimits": [0, 111120],
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "Fire Control Radar",
+      "type": "FIRE_CONTROL",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "mountingLoc": [0, 0, -12]
+      }
+    }
+  ]
+}

@@ -1,0 +1,182 @@
+{
+  "_description": "Sensor catalog for V2 tracking simulation. Enable/disable sensors and override parameters as needed. All sensors are built via buildSensor.m.",
+  "_usage": "Each entry maps to a buildSensor() type. Set 'enabled':true to include in scenario. Override any default parameter in 'params'.",
+  "_note": "SensorIndex is auto-assigned in order of enabled sensors (1, 2, 3...). Do not set it manually.",
+
+  "sensors": [
+    {
+      "name": "DASR Primary Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 30],
+        "tilt": 2,
+        "pd": 0.9,
+        "far": 1e-6,
+        "rangeLimits": [0, 111120],
+        "rangeRes": 93,
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "DASR Secondary Surveillance Radar (MSSR/IFF)",
+      "type": "SSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 10],
+        "tilt": 2,
+        "pd": 0.99,
+        "far": 1e-7,
+        "rangeLimits": [0, 222240],
+        "rangeRes": 100,
+        "refRCS": 20,
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "Airport Surveillance Radar",
+      "type": "ASR",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "Air Route Surveillance Radar",
+      "type": "ARSR",
+      "enabled": false,
+      "platform": "tower",
+      "params": {
+        "rpm": 5,
+        "rangeLimits": [0, 463000]
+      }
+    },
+    {
+      "name": "Precision Approach Radar",
+      "type": "PAR",
+      "enabled": false,
+      "platform": "tower",
+      "params": {
+        "sector": [170, 190],
+        "rangeLimits": [0, 37040]
+      }
+    },
+    {
+      "name": "Track-While-Scan Phased Array",
+      "type": "TWS",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "AESA Fighter Radar",
+      "type": "AESA",
+      "enabled": false,
+      "platform": "aircraft",
+      "params": {
+        "sector": [-60, 60],
+        "mountingLoc": [0, 0, 0]
+      }
+    },
+    {
+      "name": "Fire Control Radar",
+      "type": "FIRE_CONTROL",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "Weather Radar (NEXRAD-class)",
+      "type": "WEATHER",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "Maritime Surface Search Radar",
+      "type": "MARITIME",
+      "enabled": false,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, -20]
+      }
+    },
+    {
+      "name": "IR Search & Track",
+      "type": "IRST",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "Staring IR Sensor",
+      "type": "IR_STARING",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "Forward-Looking Infrared",
+      "type": "FLIR",
+      "enabled": false,
+      "platform": "aircraft",
+      "params": {
+        "mountingLoc": [0, 0, 0]
+      }
+    },
+    {
+      "name": "Active Sonar",
+      "type": "ACTIVE_SONAR",
+      "enabled": false,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, 5]
+      }
+    },
+    {
+      "name": "Passive Sonar",
+      "type": "PASSIVE_SONAR",
+      "enabled": false,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, 5]
+      }
+    },
+    {
+      "name": "Towed Array Sonar",
+      "type": "TOWED_ARRAY",
+      "enabled": false,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, -100, 10]
+      }
+    },
+    {
+      "name": "Lidar",
+      "type": "LIDAR",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    },
+    {
+      "name": "ADS-B Transponder",
+      "type": "ADSB_TX",
+      "enabled": false,
+      "platform": "aircraft",
+      "params": {
+        "ICAO": "A1B2C3",
+        "Category": "Heavy"
+      }
+    },
+    {
+      "name": "ADS-B Receiver",
+      "type": "ADSB_RX",
+      "enabled": false,
+      "platform": "tower",
+      "params": {}
+    }
+  ]
+}

@@ -1,0 +1,26 @@
+{
+  "_description": "Phased array: TWS ground radar + AESA airborne fighter radar",
+  "sensors": [
+    {
+      "name": "Ground TWS Phased Array",
+      "type": "TWS",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rangeLimits": [0, 200000],
+        "mountingLoc": [0, 0, -20]
+      }
+    },
+    {
+      "name": "AESA Fighter Radar",
+      "type": "AESA",
+      "enabled": true,
+      "platform": "aircraft",
+      "params": {
+        "sector": [-60, 60],
+        "rangeLimits": [0, 300000],
+        "mountingLoc": [0, 0, 0]
+      }
+    }
+  ]
+}

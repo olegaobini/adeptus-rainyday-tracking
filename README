@@ -1,403 +1,197 @@
-# Rainy Day: Advanced Radar Tracking in Degraded Weather
+# Rainy Day: Advanced Radar Tracking in Degraded Weather (V2)
 
-## Project Overview
+## Quick Start
 
-**Rainy Day** is a Boeing-sponsored senior capstone project focused on developing advanced radar tracking algorithms that maintain accuracy under adverse weather conditions. The project advances multi-target tracking by implementing sophisticated data association and motion modeling techniques beyond basic Kalman filtering.
+```matlab
+% cd to the adeptus-rainyday-tracking folder, then:
+addpath(genpath(fullfile(pwd, 'src')));
 
-### The Problem We're Solving
+% 1. See available scenarios
+trackbench.scenario.loadScenarioCatalog
 
-Radar sensors perform well in ideal conditions, but degrade significantly in rain, clouds, and atmospheric interference. When sensors output fewer detections, noisier measurements, and false alarms, traditional tracking algorithms struggle to:
-- Correctly associate detections to targets
-- Maintain continuous tracks during ambiguity
-- Accurately predict target motion during maneuvers
+% 2. Load a scenario (builds sensors + targets + config)
+[scenario, config, sensors, metas] = trackbench.scenario.loadScenario("crossing_targets");
 
-Our solution: Compare multiple tracking approaches (GNN, JPDA, TOMHT) paired with advanced motion models (Constant Velocity, Interacting Multiple Models) to find the best balance of accuracy, speed, and robustness.
-
----
-
-## Project Goals
-
-1. **Develop and compare advanced tracking algorithms** for closely-spaced targets
-2. **Quantify performance degradation** under simulated weather conditions
-3. **Generate actionable recommendations** for sensor operating parameters
-4. **Transition from MATLAB simulation to embedded C++ deployment** on NVIDIA Jetson platforms
-
-### Success Metrics
-
-- Track accuracy: Position error < 100m, velocity error < 10 m/s
-- Target establishment: Targets confirmed within 3-5 scans
-- Robustness: Maintain tracks through ambiguous regions and clutter
-- Comparison: Identify best tracker/filter combination for production use
-
----
-
-## Architecture Overview
-
-### High-Level Data Flow
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│ MATLAB Simulation Pipeline                                  │
-├─────────────────────────────────────────────────────────────┤
-│                                                             │
-│  Scenario Creation          Detection Generation            │
-│  (Ground Truth)             (Radar Output)                  │
-│         ↓                           ↓                       │
-│  helperCreateScenario3D  →  helperRunDetections             │
-│  - N aircraft targets       - Radar sampling/scan buffers   │
-│  - 3D waypoint trajectories - IDEAL detections              │
-│  - Radar sensor geometry    - RAINY degradation (opt.)      │
-│                               • Detection dropouts          │
-│                               • Inflated noise              │
-│                               • False alarms/clutter        │
-│                                                             │
-│                  ↓                                          │
-│            dataLog struct                                   │
-│     (Time, Truth, Detections)                               │
-│                  ↓                                          │
-│            Tracker Comparison                               │
-│     helperRunTracker × 6 configurations                     │
-│     - GNN + CV                                              │
-│     - GNN + IMM                                             │
-│     - TOMHT + CV                                            │
-│     - TOMHT + IMM                                           │
-│     - JPDA + CV                                             │
-│     - JPDA + IMM                                            │
-│                  ↓                                          │
-│          Performance Metrics                                │
-│     - Position/velocity error (RMSE)                        │
-│     - Track assignment continuity                           │
-│     - Execution time                                        │
-│     - Quality score (0-100%)                                │
-│                                                             │
-└─────────────────────────────────────────────────────────────┘
+% 3. Generate detections and run a tracker
+dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled);
+tracker = trackbench.tracking.buildTracker('GNN', 'IMM', config.active_params, ...
+    config.tracker_global, config.filter_params, config.active_params.pd, numel(sensors.tower));
+[trkSum, trSum] = trackbench.tracking.runTracker(dataLog, tracker);
 ```
 
-### Core Files and Their Roles
+## What Changed from V1 → V2
 
-#### **Main Driver**
-- **`trackingWithWeather.m`** - Top-level orchestration script
-  - Toggles IDEAL vs RAINY scenarios with single boolean flag
-  - Loads or generates detections
-  - Runs all 6 tracker configurations
-  - Displays results and timing comparisons
+1. **DASR sensor architecture** — PSR + MSSR co-rotating (not single generic radar)
+2. **19 sensor types** — Radar, IR, Sonar, Lidar, ADS-B via universal `buildSensor` factory
+3. **18 pre-built scenarios** — Airport, military, maritime, airborne, layered defense
+4. **JSON-driven config** — Scenarios, sensors, tracker params all in JSON catalogs
+5. **Track swap analysis** — Detects and reports identity swaps between targets
+6. **Detectable track IDs** — GNN/JPDA don't penalize tracks outside sensor FOV
+7. **Assignment timeline plots** — Visual track-to-truth assignment with swap overlay
+8. **Dynamic ROI gating** — Bounding box computed from actual target positions
+9. **Batch runner** — `runAllScenarios` runs all enabled scenario × tracker combos
+10. **+trackbench namespace** — Clean MATLAB package structure
 
-#### **Scenario & Detections**
-- **`helperCreateScenario3D.m`** - Configurable scenario builder
-  - Creates a stationary radar tower with realistic parameters
-  - Generates N aircraft targets with 3D waypoint trajectories
-  - Supports custom duration and target count
-  - Returns `trackingScenario` object (MATLAB simulation container)
+## Project Structure
 
-- **`helperRunDetections.m`** - Detection log generator
-  - Advances scenario forward in time, collecting radar outputs
-  - Buffers detections per scan (important for rotating radar)
-  - **Optional degradation injection:**
-    - Detection dropouts (Pd reduction)
-    - Measurement noise inflation
-    - Poisson-distributed false alarms
-  - Applies measurement-space ROI gating
-  - Outputs `dataLog` struct: `{Time, Truth, Detections}`
+```
+adeptus-rainyday-tracking/
+├── config/
+│   ├── default.json                 ← Base config (tracker params, toggles)
+│   ├── sensors.json                 ← Sensor catalog (19 types, enable/disable)
+│   ├── scenarios/
+│   │   └── scenario_catalog.json    ← All 18 scenario definitions
+│   └── trackers/
+│       └── jpda.json                ← Tracker-specific overrides
+│
+├── src/+trackbench/
+│   ├── +config/
+│   │   └── loadConfig.m             ← JSON config loader with overrides
+│   ├── +detections/
+│   │   └── runDetections.m          ← DASR detection generator (PSR+MSSR)
+│   ├── +scenario/
+│   │   ├── createScenario.m         ← DASR scenario builder
+│   │   ├── loadScenario.m           ← Load scenario from catalog
+│   │   └── loadScenarioCatalog.m    ← List available scenarios
+│   ├── +tracking/
+│   │   ├── buildTracker.m           ← Tracker factory (GNN/TOMHT/JPDA)
+│   │   ├── initCVFilter.m           ← Constant Velocity filter
+│   │   ├── initIMMFilter.m          ← IMM filter
+│   │   └── runTracker.m             ← Run tracker + metrics + visualization
+│   ├── +sensors/
+│   │   ├── buildSensor.m            ← Universal sensor factory (19 types)
+│   │   ├── buildCustomFusionRadarSensor.m
+│   │   ├── buildIFFSensor.m         ← MSSR/IFF sensor builder
+│   │   └── loadSensors.m            ← Load sensors from JSON catalog
+│   ├── +visualization/
+│   │   ├── plotInitialScenario.m    ← 3D animated truth + detections
+│   │   ├── plotScenarioAndDetections.m
+│   │   ├── plotPlatformToTrackAssignment.m ← Assignment timeline
+│   │   ├── plotTrackSwapAnalysis.m  ← Swap analysis figure
+│   │   └── tabbedAxes.m            ← Tabbed figure manager
+│   ├── +analysis/
+│   │   └── analyzeTrackSwaps.m      ← Track swap detection
+│   └── +batch/
+│       └── runAllScenarios.m        ← Batch runner for all scenarios
+│
+├── scripts/
+│   ├── runExperiment.m              ← Main driver (config → detect → track → metrics)
+│   └── runTrackingWithWeather.m     ← Same driver (alias)
+│
+├── syncAdeptusFromV2.m              ← Sync script: copies V2 sources into this structure
+├── cache/                           ← Saved detection logs
+└── results/                         ← Saved run results
+```
 
-#### **Tracking & Evaluation**
-- **`helperRunTracker.m`** - Tracker runner + metrics calculator
-  - Feeds detections to tracker scan-by-scan
-  - Computes `trackAssignmentMetrics` (track-to-truth association)
-  - Computes `trackErrorMetrics` (position/velocity error)
-  - Generates quality scores (0-100% based on RMSE)
-  - Creates interactive tabbed visualization (detections, tracks, trajectories)
+## Sync Script
 
-#### **Filter Initialization**
-- **`initCVFilter.m`** - Constant Velocity Kalman Filter
-  - Single motion model: assumes target moves in straight line
-  - Fast but struggles with maneuvering targets
-  - Tuned for high-speed aircraft (300+ km/h)
+If V2 sources are updated, re-sync the adeptus repo:
 
-- **`initIMMFilter.m`** - Interacting Multiple Model (IMM) Filter
-  - Dual motion models: constant velocity + constant turn rate
-  - Automatically switches models based on likelihood
-  - Better at tracking turns but computationally more expensive
-  - Tuned for the same high-speed scenario
+```matlab
+cd('path/to/V2')
+run('adeptus-rainyday-tracking/syncAdeptusFromV2.m')
+```
 
-#### **Visualization & Utilities**
-- **`plotInitialScenario.m`** - 3D animated visualization of scenario evolution
-- Helper functions: `weatherSeverity()`, `gateDetectionsROI()`, `falseMeasInSurveillanceVolume()`
+This copies all V2 helper/visualization files into the +trackbench package structure.
 
----
+## How To: Run Everything
+
+### Option A: Single scenario, single tracker
+```matlab
+addpath(genpath(fullfile(pwd, 'src')));
+[scen, cfg, sens, m] = trackbench.scenario.loadScenario("dasr_ideal");
+dataLog = trackbench.detections.runDetections(scen, cfg.degradation.enabled);
+tracker = trackbench.tracking.buildTracker('GNN', 'IMM', cfg.active_params, ...
+    cfg.tracker_global, cfg.filter_params, cfg.active_params.pd, numel(sens.tower));
+[trkS, trS, trkM, trM, t, aLog, swap] = trackbench.tracking.runTracker(dataLog, tracker);
+```
+
+### Option B: Full comparison (all enabled trackers)
+```matlab
+addpath(genpath(fullfile(pwd, 'src')));
+% Uses scripts/runExperiment.m which reads default.json toggles
+runExperiment("default")
+```
+
+### Option C: Batch all scenarios × all trackers
+```matlab
+addpath(genpath(fullfile(pwd, 'src')));
+trackbench.batch.runAllScenarios("default")
+```
+
+## Available Scenarios (18)
+
+| Scenario | Sensors | What It Tests |
+|----------|---------|---------------|
+| dasr_ideal | PSR+SSR | Baseline clear weather |
+| dasr_degraded | PSR+SSR | Rain — tracker robustness |
+| crossing_targets | PSR+SSR | Track swap — two targets crossing |
+| head_on | PSR+SSR | Identity — targets approaching |
+| high_density | PSR+SSR | Stress test — 5 targets |
+| maneuvering_evasive | PSR+SSR | S-maneuver, IMM vs CV |
+| storm_window | PSR+SSR | Max degradation — heavy rain |
+| approach_pattern | PSR+SSR | Landing approach |
+| long_range_arsr | ARSR+SSR | 250nm en-route surveillance |
+| par_approach | PSR+SSR+PAR | Precision approach |
+| phased_array_intercept | TWS+AESA | Phased array fusion |
+| fire_control_engagement | PSR+Fire Control | Search-to-track handoff |
+| ir_radar_fusion | PSR+IRST+IR | Passive+active complementarity |
+| ir_degraded_weather | PSR+IRST+IR | Rain — radar degrades, IR doesn't |
+| maritime_surface | Maritime+Sonar | Surface+subsurface tracking |
+| fighter_intercept | AESA+FLIR | Fighter tracking bogey |
+| layered_defense | PSR+SSR+IRST+FC+TWS | 5-sensor fusion |
+| layered_defense_storm | PSR+SSR+IRST+FC+TWS | Same in heavy rain |
+
+## Available Sensor Types (19)
+
+| Type | What It Is | Range |
+|------|-----------|-------|
+| PSR | Primary Search Radar | 60 nm |
+| SSR | Secondary Surveillance (IFF) | 120 nm |
+| ASR | Airport Surveillance | 60 nm |
+| ARSR | Air Route Surveillance | 250 nm |
+| PAR | Precision Approach | 20 nm |
+| TWS | Track-While-Scan Phased Array | 200 km |
+| AESA | Active Electronic Scan Array | 300 km |
+| FIRE_CONTROL | Fire Control Radar | 150 km |
+| WEATHER | Weather Radar (NEXRAD) | 250 nm |
+| MARITIME | Maritime Surface Search | 40 nm |
+| IRST | IR Search & Track | 100 km |
+| IR_STARING | Staring IR Sensor | 50 km |
+| FLIR | Forward-Looking Infrared | 30 km |
+| ACTIVE_SONAR | Active Sonar | 20 km |
+| PASSIVE_SONAR | Passive Sonar | 50 km |
+| TOWED_ARRAY | Towed Array Sonar | 80 km |
+| LIDAR | Lidar Point Cloud | 200 m |
+| ADSB_TX | ADS-B Transponder | — |
+| ADSB_RX | ADS-B Receiver | — |
 
 ## Key Algorithms
 
-### Data Association Trackers
+| Tracker | Strength | Best For |
+|---------|----------|----------|
+| GNN | Fast, deterministic | Sparse, low-clutter |
+| JPDA | Probabilistic, soft assignment | Medium clutter, real-time |
+| TOMHT | Multiple hypotheses, optimal | Dense scenarios, highest accuracy |
 
-| Tracker | Strength | Weakness | Best For |
-|---------|----------|----------|----------|
-| **GNN** (Global Nearest Neighbor) | Fast, simple, deterministic | Can break tracks in ambiguity regions | Sparse, low-clutter scenarios |
-| **JPDA** (Joint Probabilistic Data Association) | Soft assignment, probabilistic | Sub-optimal (one-scan memory) | Medium clutter, real-time constraints |
-| **TOMHT** (Track-Oriented MHT) | Multiple hypotheses, optimal | Slow, memory-intensive | Dense scenarios, highest accuracy needed |
+| Motion Model | Assumption | Use Case |
+|-------------|-----------|----------|
+| CV | Straight line | Fast targets, baseline |
+| IMM | Switches between straight & turn | Maneuvering aircraft |
 
-### Motion Models
+## Required Toolboxes
 
-| Model | Assumption | Use Case |
-|-------|-----------|----------|
-| **CV** (Constant Velocity) | Target moves in straight line at constant speed | Fast, simple targets; computational baseline |
-| **IMM** (Interacting Multiple Models) | Target switches between straight flight and coordinated turns | Maneuvering targets; aircraft scenarios |
+- Sensor Fusion and Tracking Toolbox (R2025b+)
 
-### Degradation Mechanism (RAINY Mode)
+## Team
 
-In `helperRunDetections.m`, when `enableDegradation = true`:
-
-```matlab
-% Per-update degradation (after radar call)
-pdEff = (1-w)*0.95 + w*0.70;           % detection probability (clear/storm)
-Rmult = 1 + 2*w;                       % measurement noise multiplier
-
-% Per-scan false alarms (after scan completion)
-lambdaFalsePerScan = (1-w)*0.0 + w*3.0; % expected clutter count
-```
-
-Where `w = weatherSeverity(t)` is 0 (clear) or 1 (storm).
-
----
-
-## Usage
-
-### Basic Run: Compare Trackers
-
-```matlab
-% In MATLAB command window:
->> trackingWithWeather
-
-% This will:
-% 1. Run scenario in RAINY mode (enableDegradation = true at top of script)
-% 2. Generate detections with degradation
-% 3. Run all 6 tracker combos
-% 4. Print metric tables and timing
-% 5. Display tabbed figures with visualization
-```
-
-### Toggle IDEAL vs RAINY
-
-At the top of `trackingWithWeather.m`:
-```matlab
-enableDegradation = true;   % RAINY (degraded radar)
-enableDegradation = false;  % IDEAL (clean radar)
-```
-
-### Load/Save Detection Cache
-
-To speed up repeated runs:
-```matlab
-useSavedDataLog = true;               % Load from cache
-dataLogFile = "cache/myRun1.mat";
-```
-
-### Customize Scenario
-
-```matlab
-% In trackingWithWeather.m, around line ~80:
-NumTargets = 4;           % Number of aircraft
-SceneDuration = 60;       % Seconds
-scenarioMode = "3D";      % Use 3D scenario builder
-```
-
-Or pass parameters directly:
-```matlab
-scenario = helperCreateScenario3D("NumTargets", 5, "SceneDuration", 120);
-```
-
-### Tune Tracker Parameters
-
-Edit `trackingWithWeather.m` sections like:
-```matlab
-% GNN-specific knobs
-gate = 35;                    % Association threshold
-farGNN = 1e-2;                % False alarm rate assumption
-pd = 0.7;                     % Detection probability
-
-% TOMHT-specific knobs
-confirmThresh = 30;           % Score threshold for confirmation
-maxBranches = 3;              % Hypothesis limit per track
-```
-
----
-
-## Output & Metrics
-
-### Tables Printed to Console
-
-1. **trackSummary** - Per-track assignment history
-   - TrackID, NumberOfDetections, Established (yes/no), etc.
-
-2. **truthSummary** - Per-truth coverage
-   - TruthID, IsValid, AssignedTrackID, Completeness, etc.
-
-3. **trackMetrics** - Error statistics per track
-   - **posRMS** - Position error (meters) ✓ **Primary metric**
-   - **velRMS** - Velocity error (m/s)
-   - Quality - Custom 0-100% score
-
-4. **truthMetrics** - Aggregated error per ground-truth target
-
-### Visual Outputs
-
-- **Tabbed figure** - One tab per tracker configuration showing:
-  - Ground truth trajectories (solid lines)
-  - Detections (orange dots)
-  - Estimated tracks (colored lines with velocity vectors)
-  - Track labels for debugging
-
-
-- **3D animation** (`plotInitialScenario.m`) - Animated 3D scenario evolution
-
-### Regenerating Saved Artifacts
-
-Running `trackingWithWeather.m` can write generated artifacts to `cache/`, `results/`, `Plots/`, `images/`, and `html/`. These outputs are derived from the scenario run and are intentionally gitignored, so re-run the script to recreate them as needed.
-
----
-
-## Current Status & Next Steps
-
-### ✅ Complete
-- Scenario generation (3D configurable, NED coordinate frame)
-- Detection generation with optional weather degradation
-- All 6 tracker/filter combinations implemented and compared
-- Metric computation and visualization
-- Export functions for downstream Kalman filter testing
-
-### 🚧 In Progress / Upcoming
-- **C++ Conversion** - Converting MATLAB algorithms to embedded C++
-  - Using Eigen library for matrix operations
-  - Integrating into ROS2 framework
-  - Target: NVIDIA Jetson Orin Nano deployment
-  
-- **Extended Environmental Models** - Beyond simple on/off storm
-  - Rain attenuation by altitude
-  - Clutter correlation structure
-  - Atmospheric refraction effects
-
-- **Real Sensor Validation** - Testing with TI IWR6843ISK radar
-  - Hardware integration (Arduino control)
-  - Real-world data collection
-  - Algorithm tuning with actual degradation
-
----
-
-## File Dependencies & MATLAB Toolboxes
-
-### Required Toolboxes
-- Sensor Fusion and Tracking Toolbox
-  - `trackingScenario`, `fusionRadarSensor`
-  - `trackerGNN`, `trackerJPDA`, `trackerTOMHT`
-  - `trackingKF`, `trackingIMM`
-  - Metrics: `trackAssignmentMetrics`, `trackErrorMetrics`
-
-### File Call Graph
-```
-trackingWithWeather.m
-├── helperCreateScenario3D.m
-│   └── addAircraft() [nested]
-├── helperRunDetections.m
-│   ├── weatherSeverity() [nested]
-│   ├── falseMeasInSurveillanceVolume() [nested]
-│   └── gateDetectionsROI() [nested]
-├── initCVFilter.m
-├── initIMMFilter.m
-├── helperRunTracker.m
-│   ├── gateDetectionsROI() [duplicated locally]
-│   └── trackAssignmentMetrics / trackErrorMetrics [toolbox]
-└── plotInitialScenario.m
-    └── plotInitialScenario() [nested]
-```
-
----
-
-## Key Design Decisions
-
-### 1. **Scan Buffering in Detection Generation**
-Why do we buffer detections until a scan completes?
-- Rotating radar produces detections over multiple updates
-- Trackers expect a batch of detections at a single timestamp
-- Buffering + time-snapping prevents time-gating issues (especially for JPDA)
-
-### 2. **Degradation as Tracker-Input Degradation**
-Why inject degradation AFTER the radar model, not before?
-- Radar sensor model parameters are fixed (can't change them easily)
-- Tracker tuning (Q/R matrices) handles actual noisy measurements
-- Keeps physics separate from tracker assumptions
-
-### 3. **6 Tracker Configurations (Not 3)**
-Why test each tracker with both CV and IMM?
-- CV is the computational baseline (faster)
-- IMM handles maneuvers better (more accurate)
-- Comparison shows the tradeoff for your application
-
-### 4. **NED Coordinate Frame**
-Why North-East-Down, not XYZ or ENU?
-- MATLAB `trackingScenario` standard
-- Altitude = more negative Z (Down direction)
-- Consistent with aviation/radar industry
-
----
-
-## Common Issues & Troubleshooting
-
-### Issue: Tracks keep breaking in degraded scenarios
-- **Cause**: `MaxUnreportedPeriod` too short for missed detections
-- **Solution**: In `helperRunTracker.m`, increase `maxGap` parameter
-
-### Issue: JPDA fails to initiate tracks
-- **Cause**: `NewTargetDensity` (betaJPDA) too low
-- **Solution**: In `trackingWithWeather.m`, raise `betaJPDA` (try 1e-11)
-
-### Issue: Clutter explodes in RAINY mode
-- **Cause**: `lambdaFalsePerScan` too high, or ROI gate miscalibrated
-- **Solution**: Check `weatherSeverity()` and `gateDetectionsROI()` bounds
-
-### Issue: Runtime is slow
-- **Cause**: TOMHT + IMM is computationally expensive
-- **Solution**: Cap `maxBranches` lower, or use GNN/JPDA for real-time work
-
----
-
-## References & Resources
-
-### Tracking Textbooks
-- *Design and Analysis of Modern Tracking Systems* - Blackman & Popoli
-- *Multitarget-Multisensor Tracking* - Bar-Shalom
-- *Tracking and Data Fusion* - Bar-Shalom, Willett, Tian
-
-### Online Resources
-- [MathWorks Tracking Examples](https://www.mathworks.com/help/fusion/tracking.html)
-- [Sensor Fusion and Tracking Toolbox Docs](https://www.mathworks.com/help/fusion/)
-- [Stone Soup Library](https://stonesoup.readthedocs.io/) - Python alternative
-
-### Project Documents
-- `RainyDay_PLAN.docx` - Original project scope & milestones
-- `Copy_of_Final_Report.docx` - Previous team's findings (baseline Kalman filter)
-- `Design_Specification.docx` - Hardware/software architecture (WIP)
-- `Test_Plan.docx` - Detailed testing procedures
-
----
-
-## Team Roles & Contact
-
-
----
+Boeing-sponsored senior capstone project.
 
 ## License
 
-Boeing Proprietary. Contact team lead for details.
+Boeing Proprietary.
 
 ---
 
-## Changelog
-
-| Version | Date | Changes |
-|---------|------|---------|
-| 1.0 | Jan 2026 | Initial multi-tracker comparison pipeline; IDEAL/RAINY toggling; full metrics suite |
-| 0.9 | Dec 2025 | Single tracker baseline (GNN+CV); basic scenario generation |
-
----
-
-**Last Updated:** January 26, 2026  
-**Current Phase:** Algorithm validation (MATLAB) → C++ conversion (upcoming)
+**Last Updated:** February 21, 2026
+**Version:** 2.0

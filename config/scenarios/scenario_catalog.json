@@ -1,0 +1,576 @@
+{
+  "_description": "Scenario catalog — defines reusable scenario templates",
+  "_usage": "Each scenario overrides default.json fields. Load via load_config('scenarios/<name>'). Sensors come from the sensor_config file referenced here.",
+
+  "_available_target_behaviors": [
+    "constant_velocity  — straight line, fixed speed",
+    "gentle_turn        — gradual heading change",
+    "s_maneuver         — S-shaped evasive maneuver",
+    "crossing           — two targets crossing paths (close approach)",
+    "head_on            — targets approaching each other head-on",
+    "parallel           — same heading, different offsets",
+    "orbit              — circular holding pattern",
+    "approach           — inbound to radar site (landing approach)",
+    "departure          — outbound from radar site (takeoff/climb)",
+    "random             — randomized waypoints within bounds"
+  ],
+
+  "scenarios": {
+
+    "dasr_ideal": {
+      "description": "DASR baseline — clear weather, 2 gentle-turn targets, PSR+SSR",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 50,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/dasr_ideal.mat"
+      },
+      "targets": [
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 900,
+          "start_pos": [-2000, -20000, -3000],
+          "altitude_m": 3000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [2000, -19000, -3500],
+          "altitude_m": 3500
+        }
+      ]
+    },
+
+    "dasr_degraded": {
+      "description": "DASR in rain — degraded Pd, tuned tracker params, PSR+SSR",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 50,
+        "scenario.num_targets": 2,
+        "degradation.enabled": true,
+        "degradation.type": "rain",
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/dasr_degraded.mat"
+      },
+      "targets": [
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 900,
+          "start_pos": [-2000, -20000, -3000],
+          "altitude_m": 3000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [2000, -19000, -3500],
+          "altitude_m": 3500
+        }
+      ]
+    },
+
+    "crossing_targets": {
+      "description": "Two targets crossing paths at close range — tests track swap handling",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/crossing.mat"
+      },
+      "targets": [
+        {
+          "behavior": "crossing",
+          "speed_kmh": 800,
+          "start_pos": [-5000, -20000, -3000],
+          "end_pos": [5000, -20000, -3000],
+          "altitude_m": 3000,
+          "_note": "West to east"
+        },
+        {
+          "behavior": "crossing",
+          "speed_kmh": 800,
+          "start_pos": [0, -25000, -3200],
+          "end_pos": [0, -15000, -3200],
+          "altitude_m": 3200,
+          "_note": "South to north, crosses target 1 around midpoint"
+        }
+      ]
+    },
+
+    "head_on": {
+      "description": "Two targets approaching head-on — tests identity maintenance under merge",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 40,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/head_on.mat"
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [-10000, -20000, -3000],
+          "heading_deg": 90,
+          "altitude_m": 3000,
+          "_note": "Eastbound"
+        },
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [10000, -20000, -3000],
+          "heading_deg": 270,
+          "altitude_m": 3000,
+          "_note": "Westbound — passes target 1 at origin"
+        }
+      ]
+    },
+
+    "high_density": {
+      "description": "5 targets in busy airspace — stress test for data association",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 5,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/high_density.mat",
+        "tracker_global.max_num_tracks": 500
+      },
+      "targets": [
+        {"behavior": "constant_velocity", "speed_kmh": 900, "start_pos": [-3000, -22000, -3000], "heading_deg": 45, "altitude_m": 3000},
+        {"behavior": "constant_velocity", "speed_kmh": 800, "start_pos": [2000, -18000, -3500], "heading_deg": 200, "altitude_m": 3500},
+        {"behavior": "gentle_turn", "speed_kmh": 700, "start_pos": [0, -20000, -2800], "altitude_m": 2800},
+        {"behavior": "s_maneuver", "speed_kmh": 850, "start_pos": [-1000, -21000, -3200], "altitude_m": 3200},
+        {"behavior": "orbit", "speed_kmh": 600, "start_pos": [1000, -19500, -4000], "orbit_radius_m": 3000, "altitude_m": 4000}
+      ]
+    },
+
+    "maneuvering_evasive": {
+      "description": "Single target with aggressive S-maneuver — tests IMM advantage over CV",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 1,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/maneuvering.mat"
+      },
+      "targets": [
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 900,
+          "start_pos": [-5000, -20000, -3000],
+          "turn_rate_dps": 3,
+          "altitude_m": 3000,
+          "_note": "3 deg/s turns — should show clear IMM vs CV difference"
+        }
+      ]
+    },
+
+    "storm_window": {
+      "description": "Heavy rain — maximum degradation, tests tracker robustness",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 2,
+        "degradation.enabled": true,
+        "degradation.type": "heavy_rain",
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/storm_window.mat",
+        "tracker_params.degraded.gate": 100,
+        "tracker_params.degraded.confirm_threshold": 12,
+        "tracker_params.degraded.delete_threshold": -5,
+        "tracker_global.detection_probability.degraded": 0.5
+      },
+      "targets": [
+        {"behavior": "constant_velocity", "speed_kmh": 900, "start_pos": [-2000, -20000, -3000], "heading_deg": 90, "altitude_m": 3000},
+        {"behavior": "constant_velocity", "speed_kmh": 700, "start_pos": [2000, -19000, -3500], "heading_deg": 270, "altitude_m": 3500}
+      ]
+    },
+
+    "long_range_arsr": {
+      "description": "Long range surveillance — ARSR at 250nm with slow scan",
+      "sensor_config": "sensors_long_range",
+      "overrides": {
+        "scenario.duration_s": 120,
+        "scenario.num_targets": 3,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/long_range.mat",
+        "tracker_params.ideal.gate": 120,
+        "tracker_params.ideal.confirm_threshold": 10,
+        "filter_params.scale_accel_horz": 50
+      },
+      "targets": [
+        {"behavior": "constant_velocity", "speed_kmh": 900, "start_pos": [-50000, -200000, -10000], "heading_deg": 45, "altitude_m": 10000},
+        {"behavior": "constant_velocity", "speed_kmh": 850, "start_pos": [30000, -250000, -11000], "heading_deg": 350, "altitude_m": 11000},
+        {"behavior": "gentle_turn", "speed_kmh": 800, "start_pos": [0, -300000, -9000], "altitude_m": 9000}
+      ]
+    },
+
+    "approach_pattern": {
+      "description": "Two aircraft on landing approach — tests PAR-type close tracking",
+      "sensor_config": "sensors",
+      "overrides": {
+        "scenario.duration_s": 90,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/approach.mat"
+      },
+      "targets": [
+        {
+          "behavior": "approach",
+          "speed_kmh": 300,
+          "start_pos": [0, -30000, -3000],
+          "end_pos": [0, -1000, -100],
+          "altitude_m": 3000,
+          "_note": "Straight-in approach, descending"
+        },
+        {
+          "behavior": "approach",
+          "speed_kmh": 280,
+          "start_pos": [5000, -25000, -2500],
+          "end_pos": [0, -1000, -150],
+          "altitude_m": 2500,
+          "_note": "Angled approach, converging to same runway"
+        }
+      ]
+    },
+
+    "par_approach": {
+      "description": "Precision Approach Radar — PSR+SSR+PAR, two aircraft on final, narrow beam tracking",
+      "sensor_config": "sensors_approach",
+      "overrides": {
+        "scenario.duration_s": 90,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/par_approach.mat",
+        "tracker_params.ideal.gate": 50
+      },
+      "targets": [
+        {
+          "behavior": "approach",
+          "speed_kmh": 280,
+          "start_pos": [0, -30000, -3000],
+          "end_pos": [0, -500, -50],
+          "altitude_m": 3000,
+          "_note": "Straight-in ILS approach, descending to runway"
+        },
+        {
+          "behavior": "approach",
+          "speed_kmh": 260,
+          "start_pos": [3000, -25000, -2500],
+          "end_pos": [0, -500, -80],
+          "altitude_m": 2500,
+          "_note": "Offset approach converging to same final"
+        }
+      ]
+    },
+
+    "phased_array_intercept": {
+      "description": "TWS ground array + AESA airborne fighter — phased array sensor fusion",
+      "sensor_config": "sensors_phased_array",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 3,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/phased_array.mat",
+        "tracker_params.ideal.gate": 50
+      },
+      "platforms": {
+        "aircraft": {
+          "start_pos": [0, -50000, -8000],
+          "heading_deg": 180,
+          "speed_kmh": 900,
+          "_note": "Fighter at 8km alt, flying south (-Y) toward targets"
+        }
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 1200,
+          "start_pos": [-80000, -150000, -8000],
+          "heading_deg": 60,
+          "altitude_m": 8000,
+          "_note": "Fast inbound — fighter-type speed"
+        },
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 1000,
+          "start_pos": [50000, -120000, -10000],
+          "turn_rate_dps": 4,
+          "altitude_m": 10000,
+          "_note": "Maneuvering target — tests phased array update rate advantage"
+        },
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [0, -180000, -12000],
+          "heading_deg": 0,
+          "altitude_m": 12000,
+          "_note": "High-altitude cruise"
+        }
+      ]
+    },
+
+    "ir_radar_fusion": {
+      "description": "PSR + IRST + Staring IR — radar/IR fusion, tests passive+active complementarity",
+      "sensor_config": "sensors_ir_fusion",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/ir_fusion.mat"
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [-20000, -50000, -5000],
+          "heading_deg": 45,
+          "altitude_m": 5000,
+          "_note": "Mid-range target — within IRST range"
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [15000, -40000, -4000],
+          "altitude_m": 4000,
+          "_note": "Turning target — IR provides bearing-only, radar provides range"
+        }
+      ]
+    },
+
+    "ir_degraded_weather": {
+      "description": "PSR + IRST in rain — radar degrades but IR unaffected, shows fusion benefit",
+      "sensor_config": "sensors_ir_fusion",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 2,
+        "degradation.enabled": true,
+        "degradation.type": "rain",
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/ir_degraded.mat"
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [-20000, -50000, -5000],
+          "heading_deg": 45,
+          "altitude_m": 5000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [15000, -40000, -4000],
+          "altitude_m": 4000
+        }
+      ]
+    },
+
+    "maritime_surface": {
+      "description": "Maritime radar + active/passive sonar + towed array — surface+subsurface tracking",
+      "sensor_config": "sensors_maritime",
+      "overrides": {
+        "scenario.duration_s": 120,
+        "scenario.num_targets": 3,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/maritime.mat",
+        "tracker_params.ideal.gate": 80,
+        "tracker_params.ideal.confirm_threshold": 10,
+        "filter_params.init_speed_kmh": 55
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 55,
+          "start_pos": [-10000, -30000, 0],
+          "heading_deg": 45,
+          "altitude_m": 0,
+          "_note": "Surface vessel — 30 knots"
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 35,
+          "start_pos": [8000, -25000, 0],
+          "altitude_m": 0,
+          "_note": "Slow surface vessel — 19 knots, maneuvering"
+        },
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 45,
+          "start_pos": [0, -40000, 50],
+          "heading_deg": 350,
+          "altitude_m": -50,
+          "_note": "Subsurface contact — 24 knots, 50m depth (positive Z = below surface in NED)"
+        }
+      ]
+    },
+
+    "fighter_intercept": {
+      "description": "AESA + FLIR airborne — fighter tracking bogey, sensor fusion at range",
+      "sensor_config": "sensors_fighter",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/fighter_intercept.mat",
+        "tracker_params.ideal.gate": 80,
+        "filter_params.init_speed_kmh": 1200
+      },
+      "platforms": {
+        "aircraft": {
+          "start_pos": [0, 0, -10000],
+          "heading_deg": 180,
+          "speed_kmh": 900,
+          "_note": "Fighter at 10km alt, flying south (-Y direction) toward bogeys"
+        }
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 1400,
+          "start_pos": [0, -200000, -10000],
+          "heading_deg": 0,
+          "altitude_m": 10000,
+          "_note": "Fast inbound bogey — Mach 1.1, heading north toward fighter"
+        },
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 1100,
+          "start_pos": [20000, -150000, -8000],
+          "turn_rate_dps": 5,
+          "altitude_m": 8000,
+          "_note": "Evasive target — high-G turns"
+        }
+      ]
+    },
+
+    "fire_control_engagement": {
+      "description": "Search radar + fire control radar — handoff from search to track",
+      "sensor_config": "sensors_fire_control",
+      "overrides": {
+        "scenario.duration_s": 50,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/fire_control.mat",
+        "tracker_params.ideal.gate": 50
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [-30000, -80000, -5000],
+          "heading_deg": 60,
+          "altitude_m": 5000,
+          "_note": "Primary target — inbound"
+        },
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 1000,
+          "start_pos": [20000, -60000, -6000],
+          "turn_rate_dps": 3,
+          "altitude_m": 6000,
+          "_note": "Maneuvering target — tests fire control track accuracy"
+        }
+      ]
+    },
+
+    "layered_defense": {
+      "description": "Full layered defense — PSR+SSR+IRST+Fire Control+TWS, 5 sensors, stress test",
+      "sensor_config": "sensors_layered_defense",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 4,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/layered_defense.mat",
+        "tracker_params.ideal.gate": 60
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 1200,
+          "start_pos": [-50000, -100000, -8000],
+          "heading_deg": 45,
+          "altitude_m": 8000,
+          "_note": "Fast inbound — detected by all sensors"
+        },
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 900,
+          "start_pos": [30000, -80000, -5000],
+          "turn_rate_dps": 3,
+          "altitude_m": 5000,
+          "_note": "Maneuvering — tests multi-sensor fusion under maneuver"
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [0, -60000, -4000],
+          "altitude_m": 4000,
+          "_note": "Mid-range turning target"
+        },
+        {
+          "behavior": "orbit",
+          "speed_kmh": 500,
+          "start_pos": [-20000, -40000, -3000],
+          "orbit_radius_m": 5000,
+          "altitude_m": 3000,
+          "_note": "Orbiting — persistent track test"
+        }
+      ]
+    },
+
+    "layered_defense_storm": {
+      "description": "Full layered defense in heavy rain — shows which sensors degrade and which don't",
+      "sensor_config": "sensors_layered_defense",
+      "overrides": {
+        "scenario.duration_s": 60,
+        "scenario.num_targets": 3,
+        "degradation.enabled": true,
+        "degradation.type": "heavy_rain",
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/layered_storm.mat",
+        "tracker_params.degraded.gate": 100,
+        "tracker_params.degraded.confirm_threshold": 12,
+        "tracker_global.detection_probability.degraded": 0.5
+      },
+      "targets": [
+        {
+          "behavior": "constant_velocity",
+          "speed_kmh": 900,
+          "start_pos": [-30000, -80000, -6000],
+          "heading_deg": 50,
+          "altitude_m": 6000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [20000, -60000, -4000],
+          "altitude_m": 4000
+        },
+        {
+          "behavior": "s_maneuver",
+          "speed_kmh": 800,
+          "start_pos": [0, -70000, -5000],
+          "turn_rate_dps": 2,
+          "altitude_m": 5000
+        }
+      ]
+    }
+  }
+}

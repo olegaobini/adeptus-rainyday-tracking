@@ -1,0 +1,49 @@
+{
+  "_description": "Precision approach: PSR + SSR + PAR covering final approach corridor",
+  "sensors": [
+    {
+      "name": "DASR Primary Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 30],
+        "tilt": 2,
+        "pd": 0.9,
+        "far": 1e-6,
+        "rangeLimits": [0, 111120],
+        "rangeRes": 93,
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "DASR Secondary Surveillance Radar",
+      "type": "SSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 10],
+        "tilt": 2,
+        "pd": 0.99,
+        "far": 1e-7,
+        "rangeLimits": [0, 222240],
+        "rangeRes": 100,
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "Precision Approach Radar",
+      "type": "PAR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "sector": [170, 190],
+        "tilt": -3,
+        "rangeLimits": [0, 37040],
+        "mountingLoc": [0, 0, -10]
+      }
+    }
+  ]
+}

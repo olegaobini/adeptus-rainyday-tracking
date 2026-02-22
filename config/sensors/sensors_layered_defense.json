@@ -1,0 +1,55 @@
+{
+  "_description": "Full layered defense: PSR + SSR + IRST + AESA + Fire Control — everything on one site",
+  "sensors": [
+    {
+      "name": "Primary Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "rangeLimits": [0, 111120],
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "Secondary Surveillance Radar",
+      "type": "SSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "rangeLimits": [0, 222240],
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "IR Search & Track",
+      "type": "IRST",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "mountingLoc": [0, 0, -12]
+      }
+    },
+    {
+      "name": "Fire Control Radar",
+      "type": "FIRE_CONTROL",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "mountingLoc": [0, 0, -12]
+      }
+    },
+    {
+      "name": "TWS Phased Array",
+      "type": "TWS",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rangeLimits": [0, 200000],
+        "mountingLoc": [0, 0, -20]
+      }
+    }
+  ]
+}

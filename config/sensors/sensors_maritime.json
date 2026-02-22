@@ -1,0 +1,41 @@
+{
+  "_description": "Maritime: Surface search radar + active sonar + passive sonar + towed array",
+  "sensors": [
+    {
+      "name": "Maritime Surface Search Radar",
+      "type": "MARITIME",
+      "enabled": true,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, -20]
+      }
+    },
+    {
+      "name": "Hull-Mounted Active Sonar",
+      "type": "ACTIVE_SONAR",
+      "enabled": true,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, 5]
+      }
+    },
+    {
+      "name": "Hull-Mounted Passive Sonar",
+      "type": "PASSIVE_SONAR",
+      "enabled": true,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, 0, 5]
+      }
+    },
+    {
+      "name": "Towed Array",
+      "type": "TOWED_ARRAY",
+      "enabled": true,
+      "platform": "ship",
+      "params": {
+        "mountingLoc": [0, -100, 10]
+      }
+    }
+  ]
+}

@@ -1,0 +1,37 @@
+{
+  "_description": "IR + radar fusion: PSR + IRST co-located on tower for passive+active fusion",
+  "sensors": [
+    {
+      "name": "Primary Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 30],
+        "pd": 0.9,
+        "far": 1e-6,
+        "rangeLimits": [0, 111120],
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "IR Search & Track",
+      "type": "IRST",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "mountingLoc": [0, 0, -12]
+      }
+    },
+    {
+      "name": "Staring IR (Wide Area)",
+      "type": "IR_STARING",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "mountingLoc": [0, 0, -12]
+      }
+    }
+  ]
+}

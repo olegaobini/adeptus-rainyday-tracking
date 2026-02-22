@@ -1,0 +1,33 @@
+{
+  "_description": "Long-range en-route surveillance: ARSR + SSR",
+  "sensors": [
+    {
+      "name": "Air Route Surveillance Radar (ARSR-4)",
+      "type": "ARSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 5,
+        "rangeLimits": [0, 463000],
+        "pd": 0.85,
+        "far": 1e-6,
+        "fov": [1.4, 30],
+        "mountingLoc": [0, 0, -30]
+      }
+    },
+    {
+      "name": "Secondary Surveillance Radar",
+      "type": "SSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 5,
+        "rangeLimits": [0, 463000],
+        "pd": 0.99,
+        "far": 1e-7,
+        "fov": [1.4, 10],
+        "mountingLoc": [0, 0, -30]
+      }
+    }
+  ]
+}

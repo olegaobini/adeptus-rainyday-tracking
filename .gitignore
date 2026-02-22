@@ -1,0 +1,17 @@
+# MATLAB generated
+*.asv
+*.mex*
+*.mlappinstall
+slprj/
+
+# Runtime outputs — don't commit
+cache/
+results/
+
+# OS junk
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Nested repo artifact from buggy sync (safe to delete)
+adeptus-rainyday-tracking/
