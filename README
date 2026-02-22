@@ -1,197 +1,185 @@
-# Rainy Day: Advanced Radar Tracking in Degraded Weather (V2)
+# Adeptus Rainy Day Tracking — Project Context & Change Log
 
-## Quick Start
+## Overview
+This is a Boeing-sponsored capstone project providing a sandbox for simulating radar tracking across scenarios with degradation from weather, ground clutter, targets, or equipment. The simulation is built on MATLAB's Sensor Fusion and Tracking Toolbox.
 
-```matlab
-% cd to the adeptus-rainyday-tracking folder, then:
-addpath(genpath(fullfile(pwd, 'src')));
-
-% 1. See available scenarios
-trackbench.scenario.loadScenarioCatalog
-
-% 2. Load a scenario (builds sensors + targets + config)
-[scenario, config, sensors, metas] = trackbench.scenario.loadScenario("crossing_targets");
-
-% 3. Generate detections and run a tracker
-dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled);
-tracker = trackbench.tracking.buildTracker('GNN', 'IMM', config.active_params, ...
-    config.tracker_global, config.filter_params, config.active_params.pd, numel(sensors.tower));
-[trkSum, trSum] = trackbench.tracking.runTracker(dataLog, tracker);
+## Repository Location
+```
+C:\Users\Admin\Documents\RAINY DAY GIT COPY\V2_fusion_fixed\V2\adeptus-rainyday-tracking\
 ```
 
-## What Changed from V1 → V2
-
-1. **DASR sensor architecture** — PSR + MSSR co-rotating (not single generic radar)
-2. **19 sensor types** — Radar, IR, Sonar, Lidar, ADS-B via universal `buildSensor` factory
-3. **18 pre-built scenarios** — Airport, military, maritime, airborne, layered defense
-4. **JSON-driven config** — Scenarios, sensors, tracker params all in JSON catalogs
-5. **Track swap analysis** — Detects and reports identity swaps between targets
-6. **Detectable track IDs** — GNN/JPDA don't penalize tracks outside sensor FOV
-7. **Assignment timeline plots** — Visual track-to-truth assignment with swap overlay
-8. **Dynamic ROI gating** — Bounding box computed from actual target positions
-9. **Batch runner** — `runAllScenarios` runs all enabled scenario × tracker combos
-10. **+trackbench namespace** — Clean MATLAB package structure
-
-## Project Structure
-
+The V2 source (flat structure) lives one level up:
 ```
-adeptus-rainyday-tracking/
-├── config/
-│   ├── default.json                 ← Base config (tracker params, toggles)
-│   ├── sensors.json                 ← Sensor catalog (19 types, enable/disable)
-│   ├── scenarios/
-│   │   └── scenario_catalog.json    ← All 18 scenario definitions
-│   └── trackers/
-│       └── jpda.json                ← Tracker-specific overrides
-│
-├── src/+trackbench/
-│   ├── +config/
-│   │   └── loadConfig.m             ← JSON config loader with overrides
-│   ├── +detections/
-│   │   └── runDetections.m          ← DASR detection generator (PSR+MSSR)
-│   ├── +scenario/
-│   │   ├── createScenario.m         ← DASR scenario builder
-│   │   ├── loadScenario.m           ← Load scenario from catalog
-│   │   └── loadScenarioCatalog.m    ← List available scenarios
-│   ├── +tracking/
-│   │   ├── buildTracker.m           ← Tracker factory (GNN/TOMHT/JPDA)
-│   │   ├── initCVFilter.m           ← Constant Velocity filter
-│   │   ├── initIMMFilter.m          ← IMM filter
-│   │   └── runTracker.m             ← Run tracker + metrics + visualization
-│   ├── +sensors/
-│   │   ├── buildSensor.m            ← Universal sensor factory (19 types)
-│   │   ├── buildCustomFusionRadarSensor.m
-│   │   ├── buildIFFSensor.m         ← MSSR/IFF sensor builder
-│   │   └── loadSensors.m            ← Load sensors from JSON catalog
-│   ├── +visualization/
-│   │   ├── plotInitialScenario.m    ← 3D animated truth + detections
-│   │   ├── plotScenarioAndDetections.m
-│   │   ├── plotPlatformToTrackAssignment.m ← Assignment timeline
-│   │   ├── plotTrackSwapAnalysis.m  ← Swap analysis figure
-│   │   └── tabbedAxes.m            ← Tabbed figure manager
-│   ├── +analysis/
-│   │   └── analyzeTrackSwaps.m      ← Track swap detection
-│   └── +batch/
-│       └── runAllScenarios.m        ← Batch runner for all scenarios
-│
-├── scripts/
-│   ├── runExperiment.m              ← Main driver (config → detect → track → metrics)
-│   └── runTrackingWithWeather.m     ← Same driver (alias)
-│
-├── syncAdeptusFromV2.m              ← Sync script: copies V2 sources into this structure
-├── cache/                           ← Saved detection logs
-└── results/                         ← Saved run results
+C:\Users\Admin\Documents\RAINY DAY GIT COPY\V2_fusion_fixed\V2\
 ```
-
-## Sync Script
-
-If V2 sources are updated, re-sync the adeptus repo:
-
-```matlab
-cd('path/to/V2')
-run('adeptus-rainyday-tracking/syncAdeptusFromV2.m')
-```
-
-This copies all V2 helper/visualization files into the +trackbench package structure.
-
-## How To: Run Everything
-
-### Option A: Single scenario, single tracker
-```matlab
-addpath(genpath(fullfile(pwd, 'src')));
-[scen, cfg, sens, m] = trackbench.scenario.loadScenario("dasr_ideal");
-dataLog = trackbench.detections.runDetections(scen, cfg.degradation.enabled);
-tracker = trackbench.tracking.buildTracker('GNN', 'IMM', cfg.active_params, ...
-    cfg.tracker_global, cfg.filter_params, cfg.active_params.pd, numel(sens.tower));
-[trkS, trS, trkM, trM, t, aLog, swap] = trackbench.tracking.runTracker(dataLog, tracker);
-```
-
-### Option B: Full comparison (all enabled trackers)
-```matlab
-addpath(genpath(fullfile(pwd, 'src')));
-% Uses scripts/runExperiment.m which reads default.json toggles
-runExperiment("default")
-```
-
-### Option C: Batch all scenarios × all trackers
-```matlab
-addpath(genpath(fullfile(pwd, 'src')));
-trackbench.batch.runAllScenarios("default")
-```
-
-## Available Scenarios (18)
-
-| Scenario | Sensors | What It Tests |
-|----------|---------|---------------|
-| dasr_ideal | PSR+SSR | Baseline clear weather |
-| dasr_degraded | PSR+SSR | Rain — tracker robustness |
-| crossing_targets | PSR+SSR | Track swap — two targets crossing |
-| head_on | PSR+SSR | Identity — targets approaching |
-| high_density | PSR+SSR | Stress test — 5 targets |
-| maneuvering_evasive | PSR+SSR | S-maneuver, IMM vs CV |
-| storm_window | PSR+SSR | Max degradation — heavy rain |
-| approach_pattern | PSR+SSR | Landing approach |
-| long_range_arsr | ARSR+SSR | 250nm en-route surveillance |
-| par_approach | PSR+SSR+PAR | Precision approach |
-| phased_array_intercept | TWS+AESA | Phased array fusion |
-| fire_control_engagement | PSR+Fire Control | Search-to-track handoff |
-| ir_radar_fusion | PSR+IRST+IR | Passive+active complementarity |
-| ir_degraded_weather | PSR+IRST+IR | Rain — radar degrades, IR doesn't |
-| maritime_surface | Maritime+Sonar | Surface+subsurface tracking |
-| fighter_intercept | AESA+FLIR | Fighter tracking bogey |
-| layered_defense | PSR+SSR+IRST+FC+TWS | 5-sensor fusion |
-| layered_defense_storm | PSR+SSR+IRST+FC+TWS | Same in heavy rain |
-
-## Available Sensor Types (19)
-
-| Type | What It Is | Range |
-|------|-----------|-------|
-| PSR | Primary Search Radar | 60 nm |
-| SSR | Secondary Surveillance (IFF) | 120 nm |
-| ASR | Airport Surveillance | 60 nm |
-| ARSR | Air Route Surveillance | 250 nm |
-| PAR | Precision Approach | 20 nm |
-| TWS | Track-While-Scan Phased Array | 200 km |
-| AESA | Active Electronic Scan Array | 300 km |
-| FIRE_CONTROL | Fire Control Radar | 150 km |
-| WEATHER | Weather Radar (NEXRAD) | 250 nm |
-| MARITIME | Maritime Surface Search | 40 nm |
-| IRST | IR Search & Track | 100 km |
-| IR_STARING | Staring IR Sensor | 50 km |
-| FLIR | Forward-Looking Infrared | 30 km |
-| ACTIVE_SONAR | Active Sonar | 20 km |
-| PASSIVE_SONAR | Passive Sonar | 50 km |
-| TOWED_ARRAY | Towed Array Sonar | 80 km |
-| LIDAR | Lidar Point Cloud | 200 m |
-| ADSB_TX | ADS-B Transponder | — |
-| ADSB_RX | ADS-B Receiver | — |
-
-## Key Algorithms
-
-| Tracker | Strength | Best For |
-|---------|----------|----------|
-| GNN | Fast, deterministic | Sparse, low-clutter |
-| JPDA | Probabilistic, soft assignment | Medium clutter, real-time |
-| TOMHT | Multiple hypotheses, optimal | Dense scenarios, highest accuracy |
-
-| Motion Model | Assumption | Use Case |
-|-------------|-----------|----------|
-| CV | Straight line | Fast targets, baseline |
-| IMM | Switches between straight & turn | Maneuvering aircraft |
-
-## Required Toolboxes
-
-- Sensor Fusion and Tracking Toolbox (R2025b+)
-
-## Team
-
-Boeing-sponsored senior capstone project.
-
-## License
-
-Boeing Proprietary.
 
 ---
 
-**Last Updated:** February 21, 2026
-**Version:** 2.0
+## What Was Done (Feb 21–22, 2026)
+
+### 1. Reorganized V2 Flat Structure → +trackbench Package Namespace
+
+The original V2 code used a flat `src/helpers/` layout. All 44 files were mapped into a clean MATLAB `+package` namespace structure under `src/+trackbench/`:
+
+| Package | Contents |
+|---------|----------|
+| `+config` | `loadConfig.m` |
+| `+detections` | `runDetections.m` |
+| `+scenario` | `createScenario.m`, `loadScenario.m`, `loadScenarioCatalog.m` |
+| `+tracking` | `buildTracker.m`, `initCVFilter.m`, `initIMMFilter.m`, `runTracker.m` |
+| `+sensors` | `buildSensor.m`, `buildCustomFusionRadarSensor.m`, `buildIFFSensor.m`, `loadSensors.m`, `customSensorTemplate.m` |
+| `+visualization` | `plotInitialScenario.m`, `plotScenarioAndDetections.m`, `plotPlatformToTrackAssignment.m`, `plotTrackSwapAnalysis.m`, `tabbedAxes.m` |
+| `+analysis` | `analyzeTrackSwaps.m` |
+| `+batch` | `runAllScenarios.m`, `ResultsRunner.m` |
+
+Functions are called as `trackbench.scenario.loadScenario("name")`, etc.
+
+### 2. Full Config Directory
+
+All config JSONs were synced into `config/`:
+
+- `default.json` — master config (scenarios_to_run, version 2.0, tracker/filter params)
+- `default_reRunDetections.json` — config variant for re-running detections only
+- `sensors.json` — 19-sensor master catalog (PSR, SSR, ASR, ARSR, PAR, TWS, AESA, FIRE_CONTROL, WEATHER, MARITIME, IRST, IR_STARING, FLIR, ACTIVE_SONAR, PASSIVE_SONAR, TOWED_ARRAY, LIDAR, ADSB_TX, ADSB_RX)
+- `sensors_approach.json` — PSR+SSR+PAR for approach scenarios
+- `sensors_fighter.json` — AESA+FLIR airborne
+- `sensors_fire_control.json` — search + fire control radar
+- `sensors_ir_fusion.json` — PSR+IRST+IR_STARING
+- `sensors_layered_defense.json` — PSR+SSR+IRST+FIRE_CONTROL+TWS (5 sensors)
+- `sensors_long_range.json` — ARSR long range
+- `sensors_maritime.json` — maritime radar + sonar suite
+- `sensors_phased_array.json` — TWS ground + AESA airborne
+- `config/scenarios/scenario_catalog.json` — 18 pre-built scenarios
+- `config/scenarios/clear_weather.json`, `storm_window.json` — weather profiles
+- `config/trackers/jpda.json` — JPDA tracker config
+
+### 3. 18 Pre-Built Scenarios
+
+| Scenario | Targets | Duration | Degraded | Purpose |
+|----------|---------|----------|----------|---------|
+| `dasr_ideal` | 2 | 50s | No | DASR baseline, PSR+SSR |
+| `dasr_degraded` | 2 | 50s | Yes | DASR in rain |
+| `crossing_targets` | 2 | 60s | No | Track swap handling |
+| `head_on` | 2 | 40s | No | Identity maintenance under merge |
+| `high_density` | 5 | 60s | No | Data association stress test |
+| `maneuvering_evasive` | 1 | 60s | No | IMM vs CV on S-maneuver |
+| `storm_window` | 2 | 60s | Yes | Maximum degradation |
+| `long_range_arsr` | 3 | 120s | No | ARSR at 250nm |
+| `approach_pattern` | 2 | 90s | No | Landing approach |
+| `par_approach` | 2 | 90s | No | Precision approach radar |
+| `phased_array_intercept` | 3 | 60s | No | TWS+AESA fusion |
+| `ir_radar_fusion` | 2 | 60s | No | Radar/IR complementarity |
+| `ir_degraded_weather` | 2 | 60s | Yes | IR unaffected by rain |
+| `maritime_surface` | 3 | 120s | No | Surface+subsurface |
+| `fighter_intercept` | 2 | 60s | No | AESA+FLIR airborne |
+| `fire_control_engagement` | 2 | 50s | No | Search-to-track handoff |
+| `layered_defense` | 4 | 60s | No | 5-sensor stress test |
+| `layered_defense_storm` | 3 | 60s | Yes | Layered defense in rain |
+
+### 4. Supporting Files Added
+
+- `scripts/runExperiment.m` and `scripts/runTrackingWithWeather.m` — top-level entry points (both from `trackingWithWeather.m`)
+- `tests/testBuildSensor.m`, `testLoadScenario.m`, `testLoadSensors.m` — unit tests
+- `docs/SENSOR_REFERENCE.md` — sensor type reference documentation
+- `docs/V2_WORKFLOW_GUIDE.md` — workflow guide with quick start instructions
+- `syncAdeptusFromV2.m` — sync script (re-runnable, copies V2 → adeptus)
+- `.gitignore` — excludes `cache/`, `results/`, `.asv`, nested duplicate folder
+
+### 5. Sync Script
+
+`syncAdeptusFromV2.m` automates copying all 44 files from V2 into the adeptus package structure. It uses `mfilename('fullpath')` to derive paths (not `pwd`) so it works regardless of MATLAB's current directory. Always run with full path:
+
+```matlab
+run('C:\Users\Admin\Documents\RAINY DAY GIT COPY\V2_fusion_fixed\V2\adeptus-rainyday-tracking\syncAdeptusFromV2.m')
+```
+
+---
+
+## Final Repo Structure
+
+```
+adeptus-rainyday-tracking/
+├── .gitignore
+├── README
+├── syncAdeptusFromV2.m
+├── config/
+│   ├── default.json
+│   ├── default_reRunDetections.json
+│   ├── sensors.json
+│   ├── sensors_approach.json
+│   ├── sensors_fighter.json
+│   ├── sensors_fire_control.json
+│   ├── sensors_ir_fusion.json
+│   ├── sensors_layered_defense.json
+│   ├── sensors_long_range.json
+│   ├── sensors_maritime.json
+│   ├── sensors_phased_array.json
+│   ├── scenarios/
+│   │   ├── scenario_catalog.json
+│   │   ├── clear_weather.json
+│   │   └── storm_window.json
+│   └── trackers/
+│       └── jpda.json
+├── scripts/
+│   ├── runExperiment.m
+│   └── runTrackingWithWeather.m
+├── src/
+│   └── +trackbench/
+│       ├── +analysis/     analyzeTrackSwaps.m
+│       ├── +batch/        runAllScenarios.m, ResultsRunner.m
+│       ├── +config/       loadConfig.m
+│       ├── +detections/   runDetections.m
+│       ├── +scenario/     createScenario.m, loadScenario.m, loadScenarioCatalog.m
+│       ├── +sensors/      buildSensor.m, buildCustomFusionRadarSensor.m, buildIFFSensor.m, loadSensors.m, customSensorTemplate.m
+│       ├── +tracking/     buildTracker.m, initCVFilter.m, initIMMFilter.m, runTracker.m
+│       └── +visualization/ plotInitialScenario.m, plotScenarioAndDetections.m, plotPlatformToTrackAssignment.m, plotTrackSwapAnalysis.m, tabbedAxes.m
+├── tests/
+│   ├── testBuildSensor.m
+│   ├── testLoadScenario.m
+│   └── testLoadSensors.m
+├── docs/
+│   ├── SENSOR_REFERENCE.md
+│   └── V2_WORKFLOW_GUIDE.md
+├── cache/                  (gitignored)
+└── results/                (gitignored)
+```
+
+---
+
+## Quick Start (for someone who clones the repo)
+
+```matlab
+cd('path/to/adeptus-rainyday-tracking')
+addpath(genpath(fullfile(pwd, 'src')));
+
+% List all scenarios
+trackbench.scenario.loadScenarioCatalog
+
+% Run a single scenario
+[scen, cfg, sens, metrics] = trackbench.scenario.loadScenario("crossing_targets");
+dataLog = trackbench.detections.runDetections(scen, cfg.degradation.enabled);
+tracker = trackbench.tracking.buildTracker('GNN', 'IMM', cfg.active_params, cfg.tracker_global, cfg.filter_params, cfg.active_params.pd, numel(sens.tower));
+[trkSnaps, trSnaps] = trackbench.tracking.runTracker(dataLog, tracker);
+
+% Batch run
+trackbench.batch.runAllScenarios("default")
+```
+
+---
+
+## Key Design Decisions
+
+- **+trackbench namespace**: All functions live under `src/+trackbench/+<package>/` so MATLAB resolves them as `trackbench.package.functionName`. No path collisions with toolbox functions.
+- **JSON-driven config**: Scenarios, sensors, trackers, and degradation are all defined in JSON. Users pick scenarios by name, not by editing code.
+- **Sensor factory pattern**: `buildSensor.m` is a factory that reads sensor type from JSON and constructs the appropriate MATLAB sensor object (fusionRadarSensor, irSensor, sonarSensor, etc.).
+- **19 sensor types** covering radar (PSR/SSR/ASR/ARSR/PAR/TWS/AESA/FIRE_CONTROL/WEATHER/MARITIME), IR (IRST/IR_STARING/FLIR), sonar (ACTIVE/PASSIVE/TOWED_ARRAY), LIDAR, and ADS-B (TX/RX).
+- **Detectable track IDs**: GNN/JPDA only penalize tracks for targets currently in sensor FOV, not out-of-range targets.
+- **syncAdeptusFromV2.m**: Repeatable script to re-sync if V2 source changes. Safe to re-run (overwrites destinations).
+
+---
+
+## Known Items / Future Work
+
+- The `.m` files inside `+trackbench` are direct copies from V2 — they still use flat function names internally (e.g., `loadConfig` not `trackbench.config.loadConfig`). MATLAB resolves them correctly via the package path, but internal cross-references between packages may need `import` statements or fully-qualified calls if issues arise.
+- `ResultRunner.mlx` (live script) was not synced — only the `.m` version (`Results_Runner.m` → `ResultsRunner.m`) was included.
+- The nested `adeptus-rainyday-tracking/adeptus-rainyday-tracking/` folder created by the buggy first sync run should be deleted before committing to git.
