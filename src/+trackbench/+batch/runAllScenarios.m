@@ -126,7 +126,14 @@ for s = 1:numel(enabledScenarios)
 
     %% Generate detections
     try
-        dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas);
+        % Pass environment config for horizon masking and ground clutter
+        envCfg = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
+                        'ground_clutter', true, 'terrain_type', 'rural', ...
+                        'clutter_density', 0.5);
+        if isfield(config, 'environment')
+            envCfg = config.environment;
+        end
+        dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas, envCfg);
     catch ME
         fprintf('[ERROR] Failed to generate detections for "%s": %s\n', scenName, ME.message);
         continue;

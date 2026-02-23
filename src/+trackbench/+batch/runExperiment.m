@@ -71,7 +71,14 @@ else
         "IFFAzSigma",    iffAzSigma, ...
         "IFFPd",         iffPd);
 
-    dataLog = trackbench.detections.runDetections(scenario, enableDegradation);
+    % Pass environment config for horizon masking and ground clutter
+    envCfg = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
+                    'ground_clutter', true, 'terrain_type', 'rural', ...
+                    'clutter_density', 0.5);
+    if isfield(config, 'environment')
+        envCfg = config.environment;
+    end
+    dataLog = trackbench.detections.runDetections(scenario, enableDegradation, [], envCfg);
 
     if config.data_logging.save_after_generation
         dDir = fileparts(dataLogFile);

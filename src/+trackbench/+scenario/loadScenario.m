@@ -175,6 +175,37 @@ for i = 1:numTargets
     addTargetFromDef(scenario, tDef, duration, i);
 end
 
+%% 7. Attach terrain for occlusion modelling
+%  Generates a procedural heightmap based on the environment terrain_type
+%  and attaches it to the scenario via groundSurface(). The SurfaceManager
+%  then provides occlusion() queries in runDetections, replacing the simpler
+%  4/3 Earth horizon model with true line-of-sight checks against terrain.
+terrainType = 'rural';
+if isfield(config, 'environment') && isfield(config.environment, 'terrain_type')
+    terrainType = config.environment.terrain_type;
+end
+elevScale = 1.0;
+if isfield(config, 'environment') && isfield(config.environment, 'terrain_scale')
+    elevScale = config.environment.terrain_scale;
+end
+
+try
+    % Compute scenario bounds from target trajectories + margin
+    scenBounds = computeScenarioBounds(scenario, config.scenario.duration_s);
+    [Zterrain, boundary, Xg, Yg] = trackbench.environment.generateTerrain( ...
+        terrainType, scenBounds, elevScale);
+    groundSurface(scenario, 'Terrain', Zterrain, 'Boundary', boundary);
+    tg = struct('Z', Zterrain, 'boundary', boundary, 'X', Xg, 'Y', Yg);
+    config.terrainGrid = tg;
+    config.environment.terrainGrid = tg;  % also in environment for runDetections pass-through
+    fprintf('[SCENARIO] Terrain attached: %s (UseOcclusion=%d)\n', ...
+        terrainType, scenario.SurfaceManager.UseOcclusion);
+catch ME
+    warning('loadScenario:terrainFailed', ...
+        'Terrain generation failed: %s. Falling back to horizon model.', ME.message);
+    config.terrainGrid = [];
+end
+
 %% Summary
 totalSensors = 0;
 for p = 1:numel(platformNames)
@@ -486,4 +517,46 @@ end
 
 function out = ternary(cond, a, b)
     if cond; out = a; else; out = b; end
+end
+
+function bounds = computeScenarioBounds(scenario, duration)
+%computeScenarioBounds  Estimate XY extents from all platform trajectories.
+%  Returns [xMin xMax; yMin yMax] with 20% margin. Used to size the terrain
+%  grid so it covers the full scenario footprint.
+
+    allPos = [0 0 0];  % always include origin (sensor platform default)
+    
+    % Sample each platform's trajectory at start and end
+    plats = scenario.Platforms;
+    for p = 1:numel(plats)
+        try
+            % Try start position
+            pos0 = plats{p}.InitialPosition(:)';
+            allPos = [allPos; pos0]; %#ok<AGROW>
+        catch
+        end
+        try
+            % Try to get position at end of scenario
+            traj = plats{p}.Trajectory;
+            if isprop(traj, 'Waypoints')
+                allPos = [allPos; traj.Waypoints]; %#ok<AGROW>
+            end
+        catch
+        end
+    end
+    
+    xMin = min(allPos(:,1));
+    xMax = max(allPos(:,1));
+    yMin = min(allPos(:,2));
+    yMax = max(allPos(:,2));
+    
+    % Ensure minimum span (at least 60km in each direction from center)
+    cx = (xMin + xMax) / 2;
+    cy = (yMin + yMax) / 2;
+    halfSpan = max([abs(xMax-xMin)/2, abs(yMax-yMin)/2, 60000]);
+    
+    % Add 20% margin
+    halfSpan = halfSpan * 1.2;
+    
+    bounds = [cx-halfSpan, cx+halfSpan; cy-halfSpan, cy+halfSpan];
 end

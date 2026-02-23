@@ -185,7 +185,8 @@
         "tracker_params.degraded.gate": 100,
         "tracker_params.degraded.confirm_threshold": 12,
         "tracker_params.degraded.delete_threshold": -5,
-        "tracker_global.detection_probability.degraded": 0.5
+        "tracker_global.detection_probability.degraded": 0.5,
+        "environment.clutter_density": 0.8
       },
       "targets": [
         {"behavior": "constant_velocity", "speed_kmh": 900, "start_pos": [-2000, -20000, -3000], "heading_deg": 90, "altitude_m": 3000},
@@ -389,7 +390,9 @@
         "data_logging.datalog_file": "cache/maritime.mat",
         "tracker_params.ideal.gate": 80,
         "tracker_params.ideal.confirm_threshold": 10,
-        "filter_params.init_speed_kmh": 55
+        "filter_params.init_speed_kmh": 55,
+        "environment.terrain_type": "water",
+        "environment.clutter_density": 0.3
       },
       "targets": [
         {
@@ -428,7 +431,8 @@
         "data_logging.use_saved_datalog": false,
         "data_logging.datalog_file": "cache/fighter_intercept.mat",
         "tracker_params.ideal.gate": 80,
-        "filter_params.init_speed_kmh": 1200
+        "filter_params.init_speed_kmh": 1200,
+        "environment.clutter_density": 0.2
       },
       "platforms": {
         "aircraft": {
@@ -547,7 +551,8 @@
         "data_logging.datalog_file": "cache/layered_storm.mat",
         "tracker_params.degraded.gate": 100,
         "tracker_params.degraded.confirm_threshold": 12,
-        "tracker_global.detection_probability.degraded": 0.5
+        "tracker_global.detection_probability.degraded": 0.5,
+        "environment.clutter_density": 0.8
       },
       "targets": [
         {

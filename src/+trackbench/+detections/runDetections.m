@@ -1,4 +1,4 @@
-function dataLog = runDetections(scenario, enableDegradation, sensorMetas)
+function dataLog = runDetections(scenario, enableDegradation, sensorMetas, envConfig)
 %runDetections  Run scenario and generate a detection log for tracking.
 %
 % GENERALISED MULTI-SENSOR DETECTION GENERATOR
@@ -9,12 +9,27 @@ function dataLog = runDetections(scenario, enableDegradation, sensorMetas)
 %   MSSR/IFF identification is based on sensor metadata type tag
 %   (SSR/MSSR) from loadSensors, not on FAR threshold.
 %
+%   ENVIRONMENT MODELLING (when envConfig is provided):
+%     - Terrain occlusion: if the scenario has a SurfaceManager (from
+%       groundSurface/generateTerrain), LOS checks against the terrain
+%       heightmap block targets hidden behind ridges, buildings, etc.
+%     - Horizon masking: targets below the radar horizon (4/3 Earth model)
+%       are removed. Supplements terrain occlusion with Earth curvature.
+%     - Ground clutter: terrain-dependent false returns concentrated at low
+%       elevation angles replace uniform false alarm scattering.
+%
 % INPUTS
 %   scenario          : trackingScenario from loadScenario
 %   enableDegradation : boolean. false=IDEAL, true=RAINY. Default false.
 %   sensorMetas       : (optional) metas struct from loadSensors — used to
 %                       identify MSSR sensors by type. If omitted, falls
 %                       back to FAR-based classification.
+%   envConfig         : (optional) struct from config.environment with:
+%                         horizon_masking    : logical (default true)
+%                         refraction_factor  : scalar (default 4/3)
+%                         ground_clutter     : logical (default true)
+%                         terrain_type       : 'water'|'rural'|'urban'|'mountain'
+%                         clutter_density    : 0-1 scale factor
 %
 % OUTPUT
 %   dataLog struct:
@@ -32,6 +47,53 @@ if nargin < 2
 end
 if nargin < 3
     sensorMetas = [];
+end
+if nargin < 4 || isempty(envConfig)
+    envConfig = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
+                       'ground_clutter', true, 'terrain_type', 'rural', ...
+                       'clutter_density', 0.5);
+end
+
+% Parse environment config with safe defaults
+enableHorizon  = getOrDefault(envConfig, 'horizon_masking', true);
+refractionK    = getOrDefault(envConfig, 'refraction_factor', 4/3);
+enableClutter  = getOrDefault(envConfig, 'ground_clutter', true);
+terrainType    = getOrDefault(envConfig, 'terrain_type', 'rural');
+clutterDensity = getOrDefault(envConfig, 'clutter_density', 0.5);
+enablePropModel = getOrDefault(envConfig, 'propagation_model', true);
+
+% Detect terrain occlusion capability (SurfaceManager from loadScenario)
+enableTerrainOcclusion = false;
+hasSurfaceManager = false;
+try
+    sm = scenario.SurfaceManager;
+    if ~isempty(sm) && ~isempty(sm.Surfaces)
+        hasSurfaceManager = true;
+        enableTerrainOcclusion = sm.UseOcclusion;
+    end
+catch
+end
+
+if enableTerrainOcclusion
+    fprintf('[runDetections] Terrain occlusion: ON (SurfaceManager LOS checks)\n');
+else
+    fprintf('[runDetections] Terrain occlusion: OFF (no terrain attached)\n');
+end
+
+if enableHorizon
+    fprintf('[runDetections] Horizon masking: ON (refraction=%.3f)\n', refractionK);
+else
+    fprintf('[runDetections] Horizon masking: OFF\n');
+end
+if enableClutter
+    fprintf('[runDetections] Ground clutter: ON (terrain=%s, density=%.2f)\n', terrainType, clutterDensity);
+else
+    fprintf('[runDetections] Ground clutter: OFF\n');
+end
+if enablePropModel
+    fprintf('[runDetections] Propagation model: ON (multipath lobing, terrain=%s)\n', terrainType);
+else
+    fprintf('[runDetections] Propagation model: OFF (free-space assumption)\n');
 end
 
 %% ====================================================================
@@ -118,6 +180,30 @@ for pIdx = 1:numPlats
         
         % Classify MSSR — first try metadata, then fall back to FAR
         info.isMSSR = classifyAsMSSR(s, sensorMetas);
+        
+        % Derive radar frequency from sensor type metadata (for propagation model)
+        % Default S-band (2.8 GHz) for PSR, X-band (9.0 GHz) for PAR/fire-control
+        info.radarFreq = 2.8e9;  % S-band default
+        if ~isempty(sensorMetas) && isstruct(sensorMetas)
+            pNames = fieldnames(sensorMetas);
+            for pp = 1:numel(pNames)
+                mList = sensorMetas.(pNames{pp});
+                for mm = 1:numel(mList)
+                    if isfield(mList{mm}, 'sensorIndex') && mList{mm}.sensorIndex == s.SensorIndex
+                        if isfield(mList{mm}, 'frequency')
+                            info.radarFreq = mList{mm}.frequency;
+                        elseif isfield(mList{mm}, 'type')
+                            typeStr = upper(string(mList{mm}.type));
+                            if contains(typeStr, 'PAR') || contains(typeStr, 'FIRE')
+                                info.radarFreq = 9.0e9;  % X-band
+                            elseif contains(typeStr, 'SSR') || contains(typeStr, 'MSSR')
+                                info.radarFreq = 1.03e9; % L-band
+                            end
+                        end
+                    end
+                end
+            end
+        end
         
         if sIdx == 1 || isempty(sensorInfos)
             sensorInfos = info;
@@ -218,12 +304,119 @@ dataLog.SensorPlatformIDs = [];
 dataLog.HasIFF            = hasMSSR;
 dataLog.IFFSensorIndex    = mssrSensorIdx;
 dataLog.HasRotator        = hasRotator;
+% Pass through terrain grid for 3D visualization (from loadScenario)
+terrainGrid = getOrDefault(envConfig, 'terrainGrid', []);
+if ~isempty(terrainGrid)
+    dataLog.TerrainGrid = terrainGrid;
+else
+    dataLog.TerrainGrid = [];
+end
+
+%% Build sensor coverage metadata for visualization
+coverage = [];
+for k = 1:numActive
+    si = activeInfos(k);
+    s  = si.sensor;
+    cov = struct();
+    cov.sensorIndex = si.sensorIndex;
+    cov.isRotator   = si.isRotator;
+    cov.isMSSR      = si.isMSSR;
+    cov.isRadar     = si.isRadar;
+    cov.isIR        = si.isIR;
+    
+    % Position (platform + mounting offset)
+    platPos = [0 0 0];
+    try platPos = si.platform.InitialPosition(:)'; catch; end
+    mountLoc = [0 0 0];
+    try mountLoc = s.MountingLocation(:)'; catch; end
+    cov.position = platPos + mountLoc;
+    
+    % Range
+    cov.maxRange = 111120;  % default 60nm
+    try cov.maxRange = s.RangeLimits(2); catch; end
+    
+    % Mounting angles (yaw offset for boresight direction)
+    cov.mountingYaw = 0;
+    try cov.mountingYaw = s.MountingAngles(1); catch; end
+    
+    % Field of view
+    cov.fov = [1.4 30];
+    try cov.fov = s.FieldOfView(:)'; catch; end
+    
+    % Azimuth limits — depends on scan mode
+    %   Mechanical rotator: use MechanicalAzimuthLimits
+    %   No scanning / Electronic: use ElectronicAzimuthLimits + mounting yaw
+    %   This gives the actual coverage footprint, not the 360° default
+    scanModeStr = '';
+    try scanModeStr = lower(string(s.ScanMode)); catch; end
+    
+    if contains(scanModeStr, 'no scanning') || contains(scanModeStr, 'electronic')
+        % Non-mechanical: coverage = electronic scan range from boresight
+        elecAz = [-45 45];
+        try elecAz = s.ElectronicAzimuthLimits(:)'; catch; end
+        cov.azLimits = cov.mountingYaw + elecAz;
+    else
+        % Mechanical: use scan limits directly
+        cov.azLimits = [0 360];
+        try cov.azLimits = s.MechanicalAzimuthLimits(:)'; catch; end
+    end
+    
+    % Label from metadata or class
+    cov.label = si.className;
+    if ~isempty(sensorMetas) && isstruct(sensorMetas)
+        pNames = fieldnames(sensorMetas);
+        for pp = 1:numel(pNames)
+            mList = sensorMetas.(pNames{pp});
+            for mm = 1:numel(mList)
+                if isfield(mList{mm}, 'sensorIndex') && mList{mm}.sensorIndex == si.sensorIndex
+                    if isfield(mList{mm}, 'type')
+                        cov.label = string(mList{mm}.type);
+                    end
+                    if isfield(mList{mm}, 'name')
+                        cov.label = string(mList{mm}.name);
+                    end
+                end
+            end
+        end
+    end
+    
+    if isempty(coverage)
+        coverage = cov;
+    else
+        coverage(end+1) = cov; %#ok<AGROW>
+    end
+end
+dataLog.SensorCoverage = coverage;
+
+%% Pre-compute Vertical Coverage Patterns (propagation model)
+% Uses radarvcd to compute max detection range vs elevation angle for each
+% radar sensor. Multipath ground-bounce creates lobing: constructive peaks
+% where range exceeds free-space, and destructive nulls where targets are
+% invisible. Surface roughness, permittivity, and vegetation are derived
+% from the terrain_type config.
+vcpData = [];
+if enablePropModel
+    try
+        vcpData = trackbench.environment.computeVerticalCoverage( ...
+            activeInfos, terrainType, refractionK);
+        dataLog.VCPData = vcpData;
+    catch ME
+        warning('runDetections:vcpFailed', ...
+            'VCP computation failed: %s. Propagation model disabled.', ME.message);
+        enablePropModel = false;
+    end
+else
+    dataLog.VCPData = [];
+end
 
 s_rng = rng;
 rng(2018);
 disp('Please wait. Generating detections for scenario .....')
 
 lastFlushTime = -Inf;
+terrainOcclusionCount = 0;  % total targets blocked by terrain LOS
+horizonMaskCount = 0;  % total targets blocked by Earth curvature
+vcpMaskCount    = 0;  % total detections masked by VCP propagation nulls
 
 %% Main loop
 while advance(scenario)
@@ -240,7 +433,61 @@ while advance(scenario)
         targets = targetPoses(plat);
         ins     = pose(plat, 'true');
         
-        % Step the sensor
+        % ---- Visibility masking (terrain + horizon) ----
+        % Two-stage filter applied before the sensor step:
+        %  1. Terrain occlusion: SurfaceManager LOS check against heightmap
+        %     (blocks targets behind ridges, buildings, terrain features)
+        %  2. Horizon masking: 4/3 Earth curvature model for long-range
+        %     (blocks targets below the geometric horizon)
+        % A target must pass BOTH checks to be presented to the sensor.
+        if ~isempty(targets)
+            sensorPos = ins.Position(:)';
+            try
+                mountLoc = si.sensor.MountingLocation(:)';
+                sensorPos = sensorPos + mountLoc;
+            catch
+            end
+            
+            visible = true(numel(targets), 1);
+            
+            % Stage 1: Terrain occlusion (SurfaceManager LOS)
+            if enableTerrainOcclusion
+                for tt = 1:numel(targets)
+                    tgtPos = targets(tt).Position(:)';
+                    try
+                        [occ, ~] = occlusion(scenario.SurfaceManager, sensorPos, tgtPos);
+                        if occ
+                            visible(tt) = false;
+                        end
+                    catch
+                    end
+                end
+                nTerrainMasked = sum(~visible);
+                if nTerrainMasked > 0
+                    terrainOcclusionCount = terrainOcclusionCount + nTerrainMasked;
+                end
+            end
+            
+            % Stage 2: Horizon masking (Earth curvature)
+            if enableHorizon
+                % Only check targets that survived terrain check
+                stillVisible = find(visible);
+                if ~isempty(stillVisible)
+                    tgtPositions = vertcat(targets(stillVisible).Position);
+                    aboveHorizon = trackbench.environment.isAboveHorizon(sensorPos, tgtPositions, refractionK);
+                    horizonBlocked = stillVisible(~aboveHorizon);
+                    visible(horizonBlocked) = false;
+                    horizonMaskCount = horizonMaskCount + numel(horizonBlocked);
+                end
+            end
+            
+            % Apply combined mask
+            if any(~visible)
+                targets = targets(visible);
+            end
+        end
+        
+        % Step the sensor (with only visible targets)
         try
             [dets, ~, cfg] = si.sensor(targets, ins, simTime);
         catch
@@ -274,6 +521,23 @@ while advance(scenario)
         if any(~keepDets)
             dets = dets(keepDets);
             if isempty(dets); continue; end
+        end
+        
+        % ---- Vertical Coverage Pattern masking ----
+        % Apply multipath propagation model: detections in VCP nulls are
+        % removed. MSSR (transponder) sensors are exempt — their link
+        % budget follows a different model than radar multipath.
+        if enablePropModel && ~si.isMSSR && ~isempty(vcpData)
+            sensorPos = ins.Position(:)';
+            try sensorPos = sensorPos + si.sensor.MountingLocation(:)'; catch; end
+            
+            vcpMask = trackbench.environment.applyVCPMask(dets, sensorPos, vcpData(k));
+            nMaskedVCP = sum(~vcpMask);
+            if nMaskedVCP > 0
+                vcpMaskCount = vcpMaskCount + nMaskedVCP;
+                dets = dets(vcpMask);
+                if isempty(dets); continue; end
+            end
         end
         
         % Classify and buffer
@@ -345,40 +609,70 @@ while advance(scenario)
                 max(times) - min(times));
         end
         
-        % False alarms (weather clutter on radar only)
+        % ---- Ground clutter and weather false alarms ----
+        % Ground clutter: terrain-dependent returns at low elevation angles.
+        % Weather clutter: additional false alarms during storm windows.
+        % Both are generated using physically-motivated models rather than
+        % uniform random scattering.
         nFalse = 0;
-        if enableDegradation
-            wScan  = weatherSeverity(simTime);
-            lambda = (1-wScan)*0.0 + wScan*3.0;
-            nFalse = poissrnd(lambda);
-            
-            haveMP = ~isempty(detBuffer) && isprop(detBuffer{1}, 'MeasurementParameters');
-            if haveMP; mp = detBuffer{1}.MeasurementParameters; end
-            
-            clutterSigma = 150*(wScan>0) + 100*(wScan==0);
-            Rclutter = eye(3) * clutterSigma^2;
-            
-            % Find a radar sensor index for clutter attribution
-            clutterSidx = 1;
-            for kk = 1:numActive
-                if activeInfos(kk).isRadar && ~activeInfos(kk).isMSSR
-                    clutterSidx = activeInfos(kk).sensorIndex;
-                    break;
-                end
+        
+        % Find the primary radar sensor for clutter generation
+        clutterSidx = 1;
+        clutterSensorInfo = [];
+        for kk = 1:numActive
+            if activeInfos(kk).isRadar && ~activeInfos(kk).isMSSR
+                clutterSidx = activeInfos(kk).sensorIndex;
+                clutterSensorInfo = activeInfos(kk);
+                break;
+            end
+        end
+        
+        % Ground clutter (always active when enabled, independent of weather)
+        if enableClutter && ~isempty(clutterSensorInfo)
+            sensorPlat = clutterSensorInfo.platform;
+            sensorIns  = pose(sensorPlat, 'true');
+            sPos = sensorIns.Position(:)';
+            try
+                sPos = sPos + clutterSensorInfo.sensor.MountingLocation(:)';
+            catch
             end
             
-            for ii = 1:nFalse
-                meas = falseMeasInSurveillanceVolume();
-                if haveMP
+            % Extract sensor parameters for clutter model
+            cSensor = clutterSensorInfo.sensor;
+            sParams = struct();
+            try sParams.rangeLimits = cSensor.RangeLimits;   catch; sParams.rangeLimits = [0 111120]; end
+            try sParams.rangeRes    = cSensor.RangeResolution; catch; sParams.rangeRes = 93; end
+            try sParams.fov         = cSensor.FieldOfView(:)'; catch; sParams.fov = [1.4 30]; end
+            try sParams.tilt        = cSensor.ElectronicScanAngle(2); catch; sParams.tilt = 2; end
+            try sParams.mountingLoc = cSensor.MountingLocation(:)'; catch; sParams.mountingLoc = [0 0 -15]; end
+            
+            clutterEnv = struct('terrain_type', terrainType, 'clutter_density', clutterDensity);
+            clutterDets = trackbench.environment.generateGroundClutter( ...
+                simTime, sPos, clutterSidx, sParams, clutterEnv);
+            
+            if ~isempty(clutterDets)
+                detBuffer = [detBuffer; clutterDets]; %#ok<AGROW>
+                nFalse = nFalse + numel(clutterDets);
+            end
+        end
+        
+        % Additional weather-driven clutter (storm window only)
+        if enableDegradation
+            wScan  = weatherSeverity(simTime);
+            if wScan > 0
+                % Weather increases clutter density during storm
+                weatherLambda = wScan * 3.0;
+                nWeather = poissrnd(weatherLambda);
+                clutterSigma = 150;
+                Rclutter = eye(3) * clutterSigma^2;
+                
+                for ii = 1:nWeather
+                    meas = falseMeasInSurveillanceVolume();
                     detBuffer{end+1,1} = objectDetection(simTime, meas, ...
                         'MeasurementNoise', Rclutter, ...
-                        'SensorIndex', clutterSidx, ...
-                        'MeasurementParameters', mp);
-                else
-                    detBuffer{end+1,1} = objectDetection(simTime, meas, ...
-                        'MeasurementNoise', Rclutter, ...
-                        'SensorIndex', clutterSidx);
+                        'SensorIndex', clutterSidx); %#ok<AGROW>
                 end
+                nFalse = nFalse + nWeather;
             end
         end
         
@@ -394,37 +688,13 @@ while advance(scenario)
         firstPlat = activeInfos(1).platform;
         targets = targetPoses(firstPlat);
         
-        % ROI gate on non-MSSR detections (dynamic bounding box)
-        % ONLY apply for rotating-sensor (DASR) scenarios where false alarms
-        % are scattered across the full scan volume. For non-rotating sensors
-        % (phased array, sector scan, FLIR, etc.), the sensors' own FOV and
-        % detection logic provide sufficient gating — an additional ROI gate
-        % causes coordinate-frame mismatches and filters valid detections.
-        if hasRotator && ~isempty(detBuffer)
-            
-            % Compute ROI padding from max sensor range
-            maxRange = 0;
-            for kk = 1:numActive
-                try
-                    rl = activeInfos(kk).sensor.RangeLimits;
-                    maxRange = max(maxRange, rl(2));
-                catch
-                end
-            end
-            roiPad = max(6000, maxRange * 0.1);
-            
-            nPreROI = numel(detBuffer);
-            detBuffer = gateDetectionsROI(detBuffer, targets, roiPad);
-            nPostROI = numel(detBuffer);
-            if nPreROI > 0 && nPostROI == 0
-                fprintf('[ROI] Filtered ALL %d detections — check coordinate frames.\n', nPreROI);
-            end
-        end
-        
         % Merge: MSSR first so identity tags are processed before anonymous returns
+        % No truth-based ROI gating — all detections (including clutter and
+        % outliers) pass through to the tracker. The tracker's own gating
+        % logic handles clutter rejection for honest performance evaluation.
         mergedDets = [mssrBuffer; detBuffer];
         
-        % Post-merge empty check — skip scans where ROI gate removed everything
+        % Post-merge empty check — skip scans with no detections
         if isempty(mergedDets)
             lastFlushTime = simTime;
             detBuffer  = {};
@@ -465,7 +735,17 @@ while advance(scenario)
 end
 
 rng(s_rng);
-disp('Detections generation complete.')
+fprintf('Detections generation complete.');
+if enableTerrainOcclusion
+    fprintf(' (Terrain occluded %d target-sensor pairs)', terrainOcclusionCount);
+end
+if enableHorizon
+    fprintf(' (Horizon masked %d target-sensor pairs)', horizonMaskCount);
+end
+if enablePropModel
+    fprintf(' (VCP propagation masked %d detections)', vcpMaskCount);
+end
+fprintf('\n');
 
 end  % end main function
 
@@ -554,49 +834,13 @@ function tgtIdx = getTargetIndex(det)
     end
 end
 
-function detsOut = gateDetectionsROI(detsIn, targets, pad)
-%gateDetectionsROI  Remove detections outside a region of interest.
-    if isempty(detsIn); detsOut = detsIn; return; end
-    if nargin < 3; pad = 6000; end
-    
-    if nargin >= 2 && ~isempty(targets)
-        nTgt = numel(targets);
-        allPos = zeros(nTgt, 3);
-        for ii = 1:nTgt
-            allPos(ii,:) = targets(ii).Position;
-        end
-        xMin = min(allPos(:,1)) - pad;
-        xMax = max(allPos(:,1)) + pad;
-        yMin = min(allPos(:,2)) - pad;
-        yMax = max(allPos(:,2)) + pad;
-        zMin = min(allPos(:,3)) - pad;
-        zMax = max(allPos(:,3)) + pad;
-        zMax = max(zMax, 500);
+function val = getOrDefault(s, field, default)
+%getOrDefault  Safely read a struct field with a fallback default.
+    if isstruct(s) && isfield(s, field)
+        val = s.(field);
     else
-        xMin = -8000;  xMax =  8000;
-        yMin = -26000; yMax = -16000;
-        zMin = -8000;  zMax =  500;
+        val = default;
     end
-    
-    keep = false(numel(detsIn), 1);
-    for ii = 1:numel(detsIn)
-        z = detsIn{ii}.Measurement(:);
-        if numel(z) < 3
-            % Angle-only (az/el) or 2D measurement — cannot ROI gate, keep it
-            keep(ii) = true;
-            continue;
-        end
-        % Check if measurement looks like Cartesian (large values) vs spherical (small angles)
-        % Spherical: [az_deg, el_deg, range_m] — az/el typically <360
-        % Cartesian: [x, y, z] — typically >1000m for any target
-        % If all values < 360, likely spherical — skip ROI gate
-        if all(abs(z) < 360)
-            keep(ii) = true;
-            continue;
-        end
-        keep(ii) = (z(1)>=xMin && z(1)<=xMax) && ...
-                   (z(2)>=yMin && z(2)<=yMax) && ...
-                   (z(3)>=zMin && z(3)<=zMax);
-    end
-    detsOut = detsIn(keep);
 end
+
+

@@ -1,35 +1,43 @@
 function plotInitialScenario(dataLog, animateFlag)
 % PLOTINITIALSCENARIO Visualize Truth and Detections (3D Animated)
+%
+% NED CONVENTION: In the scenario, Z-negative = altitude above ground.
+% For display, we NEGATE Z so altitude plots UPWARD (intuitive).
+% The Z-axis label reads "Altitude (km)" instead of "Z (km)".
+%
 % Colors: Truth tracks are distinct (Blue, Red, etc.). Detections are Green.
     
     if nargin < 2
-        animateFlag = true; % Default behavior
+        animateFlag = true;
     end
     
     % 1. SETUP FIGURE
     figure('Name', 'Scenario Truth and Detections (3D)', 'Color', 'k', ...
            'NumberTitle', 'off');
     
-    % Use 3D view
     ax = axes('Color', [0.1 0.1 0.1], 'XColor', 'w', 'YColor', 'w', ...
               'ZColor', 'w', 'GridColor', 'w', 'GridAlpha', 0.3);
     
     hold(ax, 'on');
     grid(ax, 'on');
-    view(3); % Switch camera to 3D default view
+    view(3);
     
-    xlabel('X (km)');
-    ylabel('Y (km)');
-    zlabel('Z (km)'); % New Z-axis label
+    xlabel(ax, 'X (km)');
+    ylabel(ax, 'Y (km)');
+    zlabel(ax, 'Altitude (km)');
     
     % Scale factor (meters to km)
     s = 1/1000; 
+
+    %% 1B. DRAW SENSOR COVERAGE (background layer)
+    if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
+        trackbench.reporting.drawSensorCoverage(ax, dataLog.SensorCoverage, true);
+    end
 
     %% 2. INITIALIZE ANIMATION OBJECTS
     T = dataLog.Truth;
     D = dataLog.Detections;
     
-    % Initialize handles
     hTrails = gobjects(0); 
     hMarkers = gobjects(0);
     
@@ -38,13 +46,10 @@ function plotInitialScenario(dataLog, animateFlag)
         colors = lines(nTgts); 
         
         for ti = 1:nTgts
-            % The Trail (3D Line)
             hTrails(ti) = animatedline('Color', colors(ti,:), ...
                 'LineWidth', 1.5, 'LineStyle', '--', ...
                 'DisplayName', sprintf('Truth %d', ti));
             
-            % The Marker (3D Triangle)
-            % Note: 'line' supports X, Y, Z inputs
             hMarkers(ti) = line(nan, nan, nan, 'Marker', '^', ...
                 'MarkerFaceColor', colors(ti,:), 'MarkerEdgeColor', 'k', ...
                 'MarkerSize', 6, 'LineStyle', 'none');
@@ -56,7 +61,6 @@ function plotInitialScenario(dataLog, animateFlag)
         nTgts = 0;
     end
 
-    % B. Create Detection Handle (Green Dots in 3D)
     hDetect = animatedline('Color', [0 0.8 0], 'Marker', '.', ...
         'LineStyle', 'none', 'MarkerSize', 5, ...
         'DisplayName', 'Detections');
@@ -68,11 +72,7 @@ function plotInitialScenario(dataLog, animateFlag)
         fprintf('Generating static 3D scenario plot...\n');
     end
     
-    % Setup Legend
-    validHandles = [hTrails(:); hDetect];
-    if ~isempty(validHandles)
-        legend(validHandles, 'Location', 'best', 'TextColor', 'w', 'Color', 'none');
-    end
+    legend(ax, 'show', 'Location', 'best', 'TextColor', 'w', 'Color', [0.15 0.15 0.15]);
 
     for k = 1:nTimes
         
@@ -83,7 +83,7 @@ function plotInitialScenario(dataLog, animateFlag)
                 if numel(p) >= 3
                     xVal = p(1) * s; 
                     yVal = p(2) * s;
-                    zVal = p(3) * s; 
+                    zVal = -p(3) * s;  % NEGATE: NED Z-down → display altitude up
                     
                     addpoints(hTrails(ti), xVal, yVal, zVal);
                     set(hMarkers(ti), 'XData', xVal, 'YData', yVal, 'ZData', zVal);
@@ -101,7 +101,7 @@ function plotInitialScenario(dataLog, animateFlag)
                         if isprop(det, 'Measurement') || isfield(det, 'Measurement')
                             meas = det.Measurement(:);
                             if numel(meas) >= 3
-                                addpoints(hDetect, meas(1)*s, meas(2)*s, meas(3)*s);
+                                addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
                             elseif numel(meas) == 2
                                 addpoints(hDetect, meas(1)*s, meas(2)*s, 0);
                             end
@@ -111,7 +111,7 @@ function plotInitialScenario(dataLog, animateFlag)
                      for j = 1:numel(scanDets)
                          meas = scanDets(j).Measurement(:);
                          if numel(meas) >= 3
-                             addpoints(hDetect, meas(1)*s, meas(2)*s, meas(3)*s);
+                             addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
                          else
                              addpoints(hDetect, meas(1)*s, meas(2)*s, 0);
                          end
@@ -119,37 +119,87 @@ function plotInitialScenario(dataLog, animateFlag)
                 end
             end
             
-            % Only limit frame rate if we are animating
             if animateFlag && mod(k, 2) == 0
                 drawnow limitrate;
             end
         end
         
-        % --- RENDER FRAME ---
         if animateFlag
             drawnow;
         end
     end
     
-    % Auto-fit axes to truth region with padding
+    %% 4. AUTO-FIT AXES + GROUND PLANE
     if nTgts > 0
         allPos = [];
         for ti = 1:nTgts
             for kk = 1:nTimes
                 if isfield(T(ti,kk),'Position') && ~isempty(T(ti,kk).Position)
-                    allPos(:,end+1) = T(ti,kk).Position(:) * s; %#ok<AGROW>
+                    p = T(ti,kk).Position(:);
+                    allPos(:,end+1) = [p(1)*s; p(2)*s; -p(3)*s]; %#ok<AGROW>
                 end
             end
         end
         if ~isempty(allPos)
             pad = 3;  % km padding
-            xlim(ax, [min(allPos(1,:))-pad, max(allPos(1,:))+pad]);
-            ylim(ax, [min(allPos(2,:))-pad, max(allPos(2,:))+pad]);
-            zlim(ax, [min(allPos(3,:))-pad, max(allPos(3,:))+pad]);
+            xLims = [min(allPos(1,:))-pad, max(allPos(1,:))+pad];
+            yLims = [min(allPos(2,:))-pad, max(allPos(2,:))+pad];
+            zLims = [min(allPos(3,:))-0.5, max(allPos(3,:))+pad];
+            zLims(1) = min(zLims(1), -0.2);  % always show a bit below ground
+            xlim(ax, xLims);
+            ylim(ax, yLims);
+            zlim(ax, zLims);
+            
+            %% Draw terrain surface or flat ground plane
+            if isfield(dataLog, 'TerrainGrid') && ~isempty(dataLog.TerrainGrid)
+                % Render 3D terrain heightmap
+                tg = dataLog.TerrainGrid;
+                Xterr = tg.X * s;  % convert m → km
+                Yterr = tg.Y * s;
+                Zterr = -tg.Z * s;  % NED: negate Z for altitude-up display
+                
+                % Clip terrain to plot extent + small margin
+                xMask = Xterr(1,:) >= xLims(1)-2 & Xterr(1,:) <= xLims(2)+2;
+                yMask = Yterr(:,1) >= yLims(1)-2 & Yterr(:,1) <= yLims(2)+2;
+                Xsub = Xterr(yMask, xMask);
+                Ysub = Yterr(yMask, xMask);
+                Zsub = Zterr(yMask, xMask);
+                
+                if numel(Xsub) > 4
+                    surf(ax, Xsub, Ysub, Zsub, ...
+                        'FaceColor', 'interp', 'EdgeColor', 'none', ...
+                        'FaceAlpha', 0.5, ...
+                        'HandleVisibility', 'off');
+                    colormap(ax, [0.15 0.12 0.08; 0.25 0.20 0.12; ...
+                                  0.35 0.30 0.15; 0.45 0.40 0.20; ...
+                                  0.55 0.50 0.30; 0.65 0.60 0.40]);
+                    
+                    % Update Z limits to include terrain peaks
+                    maxTerrElev = max(Zsub(:));
+                    if maxTerrElev > 0.05  % only label if terrain > 50m
+                        text(ax, xLims(2)-2, yLims(1)+1, maxTerrElev+0.1, ...
+                            sprintf('Terrain (peak %.0fm)', maxTerrElev*1000), ...
+                            'Color', [0.7 0.6 0.4], 'FontSize', 8, ...
+                            'FontWeight', 'bold', 'FontAngle', 'italic');
+                    end
+                end
+            else
+                % Flat ground plane (no terrain data)
+                gx = [xLims(1) xLims(2) xLims(2) xLims(1)];
+                gy = [yLims(1) yLims(1) yLims(2) yLims(2)];
+                gz = [0 0 0 0];
+                fill3(ax, gx, gy, gz, [0.25 0.20 0.15], ...
+                    'FaceAlpha', 0.3, 'EdgeColor', [0.4 0.35 0.3], ...
+                    'EdgeAlpha', 0.5, 'LineWidth', 0.5, ...
+                    'HandleVisibility', 'off');
+                
+                text(ax, xLims(2)-1, yLims(1)+0.5, 0.02, 'Ground', ...
+                    'Color', [0.6 0.5 0.4], 'FontSize', 9, 'FontWeight', 'bold', ...
+                    'FontAngle', 'italic');
+            end
         end
     end
 
-    % Force one final render at the very end to show the static plot
     drawnow;
     
     if animateFlag

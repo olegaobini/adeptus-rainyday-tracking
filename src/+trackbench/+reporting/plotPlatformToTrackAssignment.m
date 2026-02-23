@@ -1,6 +1,11 @@
 function plotPlatformToTrackAssignment(ax, assignLog, plotTitle, swapReport)
 %plotPlatformToTrackAssignment  Timeline view of track-to-truth assignments.
 %
+% Shows each confirmed track as a colored line over time. Each line is
+% labeled with both the Track ID and the Truth ID it's assigned to, so
+% you can immediately see which track is following which truth and when
+% assignments change (swaps).
+%
 % assignLog must contain columns:
 %   Time (seconds), PlatformID, TrackID, TruthID
 %
@@ -30,12 +35,14 @@ for k = 1:numel(req)
     end
 end
 
-t = assignLog.Time(:);
+t    = assignLog.Time(:);
 plat = assignLog.PlatformID(:);
 trk  = assignLog.TrackID(:);
+tru  = assignLog.TruthID(:);
 
 uPlat = unique(plat(~isnan(plat)));
 uTrk  = unique(trk(~isnan(trk)));
+uTru  = unique(tru(~isnan(tru)));
 
 % If only 1 platform exists, plot y=TrackID instead
 usePlatformYAxis = numel(uPlat) > 1;
@@ -48,24 +55,55 @@ else
     yVal = trk;
 end
 
-% color palette
-cmap = lines(max(10, numel(uTrk)));
+% Color palette — one color per TRUTH so all tracks on the same truth
+% share a color. This makes it visually obvious which truth is being tracked.
+truthColors = lines(max(10, numel(uTru)));
+truthColorMap = containers.Map('KeyType','double','ValueType','any');
+for i = 1:numel(uTru)
+    truthColorMap(uTru(i)) = truthColors(i, :);
+end
 
 for i = 1:numel(uTrk)
     tid = uTrk(i);
     idx = (trk == tid);
-
     if ~any(idx); continue; end
 
-    ci = cmap(mod(i-1, size(cmap,1))+1, :);
+    % Find the dominant truth for this track (mode of TruthID assignments)
+    truthsForTrack = tru(idx);
+    truthsForTrack = truthsForTrack(~isnan(truthsForTrack));
+    if isempty(truthsForTrack)
+        ci = [0.5 0.5 0.5];  % grey for unassigned
+        dominantTruth = NaN;
+    else
+        dominantTruth = mode(truthsForTrack);
+        if isKey(truthColorMap, dominantTruth)
+            ci = truthColorMap(dominantTruth);
+        else
+            ci = [0.5 0.5 0.5];
+        end
+    end
 
-    % draw as a thick line of points
-    plot(ax, t(idx), yVal(idx), '-', 'LineWidth', 3, 'Color', ci);
+    % Draw as a thick line
+    plot(ax, t(idx), yVal(idx), '-', 'LineWidth', 3, 'Color', ci, ...
+        'HandleVisibility', 'off');
 
-    % label near first sample
-    i0 = find(idx,1,'first');
-    text(ax, t(i0), yVal(i0), sprintf(" T%02d", tid), ...
-        'FontWeight','bold', 'Color', ci, 'VerticalAlignment','bottom');
+    % Label near first sample: "T01 → Truth 2"
+    i0 = find(idx, 1, 'first');
+    if isnan(dominantTruth)
+        labelStr = sprintf(' T%02d (unassigned)', tid);
+    else
+        labelStr = sprintf(' T%02d \\rightarrow Truth %d', tid, dominantTruth);
+    end
+    text(ax, t(i0), yVal(i0), labelStr, ...
+        'FontWeight', 'bold', 'Color', ci, 'FontSize', 9, ...
+        'VerticalAlignment', 'bottom', 'Interpreter', 'tex');
+end
+
+%% Add truth color legend
+for i = 1:numel(uTru)
+    ci = truthColorMap(uTru(i));
+    plot(ax, NaN, NaN, '-', 'LineWidth', 3, 'Color', ci, ...
+        'DisplayName', sprintf('Truth %d', uTru(i)));
 end
 
 %% Overlay swap events
@@ -94,13 +132,14 @@ if ~isempty(swapReport) && isstruct(swapReport) && isfield(swapReport,'totalSwap
             'HandleVisibility', 'off');
         
         % Annotation: "T1→T2" label
-        label = sprintf('T%d→T%d', fromTruth, toTruth);
+        label = sprintf('Truth %d\\rightarrow%d', fromTruth, toTruth);
         text(ax, swapTime, ySwap + 0.15, label, ...
             'Color', 'r', 'FontWeight', 'bold', 'FontSize', 9, ...
-            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom');
+            'HorizontalAlignment', 'center', 'VerticalAlignment', 'bottom', ...
+            'Interpreter', 'tex');
     end
     
-    % Add a single invisible marker for the legend entry
+    % Legend entry for swaps
     plot(ax, NaN, NaN, 'rx', 'MarkerSize', 10, 'LineWidth', 2, ...
         'DisplayName', sprintf('Swap Events (%d)', swapReport.totalSwaps));
     
@@ -114,12 +153,9 @@ if ~isempty(swapReport) && isstruct(swapReport) && isfield(swapReport,'totalSwap
     subtitle(ax, summaryStr, 'Color', [1 0.3 0.3], 'FontSize', 9);
 end
 
-% Add legend if swaps were plotted
-if ~isempty(swapReport) && isstruct(swapReport) && swapReport.totalSwaps > 0
-    legend(ax, 'show', 'Location', 'best');
-end
+legend(ax, 'show', 'Location', 'best', 'TextColor', 'w', 'Color', [0.15 0.15 0.15]);
 
-% nicer limits
+% Nicer limits
 xlim(ax, [min(t)-0.5, max(t)+0.5]);
 if usePlatformYAxis
     ylim(ax, [min(uPlat)-0.5, max(uPlat)+0.5]);

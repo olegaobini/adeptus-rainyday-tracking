@@ -39,7 +39,7 @@
       "enabled": true,
       "platform": "tower",
       "params": {
-        "sector": [170, 190],
+        "sector": [260, 280],
         "tilt": -3,
         "rangeLimits": [0, 37040],
         "mountingLoc": [0, 0, -10]

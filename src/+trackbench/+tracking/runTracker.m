@@ -32,9 +32,10 @@ function [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLo
 %   - Trackers operate on *batches* of detections at a scan time. Our detection
 %     generator snaps all detections in a scan to the same simTime; this runner
 %     assumes that is true (especially important for JPDA TimeTolerance).
-%   - Under degraded conditions, clutter may explode. This helper includes:
-%       (a) Adaptive ROI gating (optional) to suppress out-of-region clutter
-%       (b) Optional hard cap on detections per scan to prevent runtime blow-up
+%   - All detections (including clutter and outliers) are passed directly
+%     to the tracker with no pre-filtering. The tracker's own gating logic
+%     (AssignmentGate / ClutterDensity) handles clutter rejection. This
+%     gives an honest picture of tracker performance under degradation.
 %   - Metrics are stepped every scan regardless of whether detections exist.
 %     This prevents "continuity crashes" when MaxUnreportedPeriod logic is used.
 %   - HasDetectableTrackIDsInput: GNN and JPDA trackers are built with this flag.
@@ -55,27 +56,10 @@ if nargin < 5
     animateVisuals = true;
 end
 
-% -------- Adaptive clutter gating settings --------
-% enableAdaptiveROIGate:
-%   If true, apply a simple measurement-space ROI gate when scans are "busy".
-% gateThreshNumDets:
-%   Only gate if more than this many detections exist in the scan.
-enableAdaptiveROIGate = true;
-gateThreshNumDets     = 3;
-
-% ROI bounds (meters) computed dynamically from truth positions.
-% This ensures the gate covers the actual target envelope regardless of scenario.
+% ROI bounds (meters) computed from truth positions — used ONLY for plot
+% axis limits (theaterPlot), never for filtering detections. The tracker's
+% own gating logic (AssignmentGate) handles clutter rejection.
 roi = computeDynamicROI(dataLog);
-% ------------------------------------------------
-
-% -------- Optional: cap detections per scan --------
-% enableDetectionCap:
-%   If true, limit the number of detections per scan to avoid worst-case runtime.
-% maxDetsWhenBusy:
-%   Only used if numel(dets) exceeds this value.
-enableDetectionCap = true;
-maxDetsWhenBusy    = 20;
-% ---------------------------------------------------
 
 % -------- Detectable track ID support --------
 % Determine whether this tracker was built with HasDetectableTrackIDsInput.
@@ -138,10 +122,43 @@ if showVisuals
     % Force the default camera view to 3D
     view(tpaxes, 3); 
     
+    % Use dynamic ROI so the view always fits the full scenario
     tp = theaterPlot('Parent', tpaxes, ...
         'AxesUnits', ["km" "km" "km"], ...
-        'XLimits', [-2000 2000], ...        
-        'YLimits', [-20500 -17000]);        
+        'XLimits', [roi.xMin roi.xMax], ...
+        'YLimits', [roi.yMin roi.yMax], ...
+        'ZLimits', [roi.zMin roi.zMax]);
+    
+    % NED Z-axis fix: theaterPlot overrides ZDir='reverse', so we
+    % negate all Z values manually when plotting. Altitude displays upward.
+    zlabel(tpaxes, 'Altitude (km)');
+    
+    % Draw terrain surface or flat ground plane
+    % All Z values are NEGATED for display (NED z-down → altitude up)
+    if isfield(dataLog, 'TerrainGrid') && ~isempty(dataLog.TerrainGrid)
+        tg = dataLog.TerrainGrid;
+        Xterr = tg.X;  Yterr = tg.Y;
+        Zterr = -tg.Z;  % NEGATE: NED z-down → altitude up for display
+        % Clip to ROI
+        xMask = Xterr(1,:) >= roi.xMin & Xterr(1,:) <= roi.xMax;
+        yMask = Yterr(:,1) >= roi.yMin & Yterr(:,1) <= roi.yMax;
+        if any(xMask) && any(yMask)
+            surf(tpaxes, Xterr(yMask,xMask), Yterr(yMask,xMask), Zterr(yMask,xMask), ...
+                'FaceColor', 'interp', 'EdgeColor', 'none', ...
+                'FaceAlpha', 0.45, 'HandleVisibility', 'off');
+            colormap(tpaxes, [0.15 0.12 0.08; 0.25 0.20 0.12; ...
+                              0.35 0.30 0.15; 0.45 0.40 0.20; ...
+                              0.55 0.50 0.30; 0.65 0.60 0.40]);
+        end
+    else
+        gx = [roi.xMin roi.xMax roi.xMax roi.xMin];
+        gy = [roi.yMin roi.yMin roi.yMax roi.yMax];
+        gz = [0 0 0 0];
+        fill3(tpaxes, gx, gy, gz, [0.25 0.20 0.15], ...
+            'FaceAlpha', 0.25, 'EdgeColor', [0.4 0.35 0.3], ...
+            'EdgeAlpha', 0.4, 'LineWidth', 0.5, ...
+            'HandleVisibility', 'off');
+    end
     
     % Dictionaries to hold unique plotters and custom history lines
     trackPlotters = containers.Map('KeyType', 'double', 'ValueType', 'any');
@@ -152,6 +169,17 @@ if showVisuals
     detLine = animatedline(tpaxes, 'DisplayName', 'Detections', ...
         'LineStyle', 'none', 'Marker', '.', 'MarkerSize', 8, ...
         'Color', [0 0.8 0], 'MaximumNumPoints', 1e6);
+
+    % Draw sensor coverage (background layer — range rings and sectors)
+    % theaterPlot axes use meters internally, so scaleKm=false
+    if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
+        trackbench.reporting.drawSensorCoverage(tpaxes, dataLog.SensorCoverage, false);
+    end
+    
+    % Re-apply axis labels AFTER theaterPlot setup (theaterPlot overwrites them)
+    xlabel(tpaxes, 'X (km)');
+    ylabel(tpaxes, 'Y (km)');
+    zlabel(tpaxes, 'Altitude (km)');
 end
 
 %% Track Metrics (assignment + error)
@@ -222,16 +250,9 @@ while i < numSteps
         scanCells = num2cell(scanBuffer(:));
     end
 
-    % Adaptive ROI gate:
-    % Only apply when scan is cluttered/busy.
-    if enableAdaptiveROIGate && numel(scanCells) > gateThreshNumDets
-        scanCells = gateDetectionsROI(scanCells, roi);
-    end
-
-    % Optional detection cap
-    if enableDetectionCap && numel(scanCells) > maxDetsWhenBusy
-        scanCells = scanCells(1:maxDetsWhenBusy);
-    end
+    % No pre-filtering of detections. The tracker's own gating logic
+    % (AssignmentGate / ClutterDensity) handles clutter rejection.
+    % All detections pass through to give an honest performance picture.
 
     % -------- Compute detectable track IDs --------
     % For GNN and JPDA built with HasDetectableTrackIDsInput=true:
@@ -342,15 +363,14 @@ while i < numSteps
 
     %% Plotting: Detections + Tracks
     if showVisuals
-        % --- Extract Detections ---
+        % --- Extract Detections (position only, first 3 elements) ---
         if isempty(scanCells)
             meas = zeros(3,0);
         else
-            allDets = vertcat(scanCells{:});
-            if isempty(allDets)
-                meas = zeros(3,0);
-            else
-                meas = cat(2, allDets.Measurement);
+            meas = zeros(3, numel(scanCells));
+            for jj = 1:numel(scanCells)
+                m = scanCells{jj}.Measurement(:);
+                meas(:,jj) = m(1:3);  % position only (handles 3 or 6-element)
             end
         end
 
@@ -359,9 +379,9 @@ while i < numSteps
             [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 0 1 0]);
 
         if animateVisuals
-            % Plot green detections cumulatively
+            % Plot green detections cumulatively (negate Z: NED → altitude up)
             if ~isempty(meas)
-                addpoints(detLine, meas(1,:), meas(2,:), meas(3,:));
+                addpoints(detLine, meas(1,:), meas(2,:), -meas(3,:));
             end
             
             % Iterate through current tracks
@@ -390,15 +410,21 @@ while i < numSteps
                 end
                 
                 thisP = trackPlotters(tID);
-                thisP.plotTrack(pos(tIdx, :), zeros(1, 3), cov(:, :, tIdx), {num2str(tID)});
-                addpoints(trackHistLines(tID), pos(tIdx, 1), pos(tIdx, 2), pos(tIdx, 3));
+                % Negate Z for display (NED z-down → altitude up)
+                displayPos = pos(tIdx, :);
+                displayPos(3) = -displayPos(3);
+                displayCov = cov(:, :, tIdx);
+                thisP.plotTrack(displayPos, zeros(1, 3), displayCov, {num2str(tID)});
+                addpoints(trackHistLines(tID), displayPos(1), displayPos(2), displayPos(3));
             end
             
             drawnow limitrate;
         else
-            % Buffer data for static plot
+            % Buffer data for static plot (negate Z: NED → altitude up)
             if ~isempty(meas)
-                allStaticDets{i} = meas; 
+                measDisp = meas;
+                measDisp(3,:) = -measDisp(3,:);  % negate Z for display
+                allStaticDets{i} = measDisp; 
             end
             for tIdx = 1:numel(tracks)
                 tID = tracks(tIdx).TrackID;
@@ -406,7 +432,8 @@ while i < numSteps
                 if ~isfield(staticTrackHist, fName)
                     staticTrackHist.(fName) = [];
                 end
-                thisPos = pos(tIdx, :)'; 
+                thisPos = pos(tIdx, :)';
+                thisPos(3) = -thisPos(3);  % negate Z for display
                 staticTrackHist.(fName) = [staticTrackHist.(fName), thisPos];
             end
         end
@@ -531,15 +558,17 @@ function roi = computeDynamicROI(dataLog)
         % Fallback if no truths
         roi.xMin = -50000; roi.xMax = 50000;
         roi.yMin = -50000; roi.yMax = 50000;
-        roi.zMin = -20000; roi.zMax = 1000;
+        roi.zMin = -500;   roi.zMax = 20000;
     else
         roi.xMin = min(allPos(:,1)) - pad;
         roi.xMax = max(allPos(:,1)) + pad;
         roi.yMin = min(allPos(:,2)) - pad;
         roi.yMax = max(allPos(:,2)) + pad;
-        roi.zMin = min(allPos(:,3)) - pad;
-        roi.zMax = max(allPos(:,3)) + pad;
-        roi.zMax = max(roi.zMax, 500);  % ensure surface included
+        % Convert NED Z to display altitude (negate): z=-3000 → alt=3000
+        altitudes = -allPos(:,3);
+        roi.zMin = min(altitudes) - pad;
+        roi.zMax = max(altitudes) + pad;
+        roi.zMin = min(roi.zMin, -500);  % show a bit below ground level
     end
 end
 
@@ -664,39 +693,4 @@ function posSensor = transformToSensorFrame(posWorld, cfg)
     end
 end
 
-function detsOut = gateDetectionsROI(detsIn, roi)
-%gateDetectionsROI  Simple ROI gate in measurement space.
-%
-% PURPOSE
-%   Keep only detections whose (x,y,z) measurements fall inside the ROI bounds.
-%   This is a pragmatic clutter limiter when scans get busy (many detections).
-%
-% INPUTS
-%   detsIn : cell array of objectDetection
-%   roi    : struct with fields xMin/xMax/yMin/yMax/zMin/zMax
 
-    if isempty(detsIn)
-        detsOut = detsIn;
-        return;
-    end
-
-    keep = false(numel(detsIn),1);
-    for ii = 1:numel(detsIn)
-        meas = detsIn{ii}.Measurement(:);
-        
-        xPos = meas(1);
-        yPos = meas(2);
-        
-        if numel(meas) >= 3
-            zPos = meas(3);
-        else
-            zPos = 0;
-        end
-
-        keep(ii) = (xPos >= roi.xMin && xPos <= roi.xMax) && ...
-                   (yPos >= roi.yMin && yPos <= roi.yMax) && ...
-                   (zPos >= roi.zMin && zPos <= roi.zMax);
-    end
-    
-    detsOut = detsIn(keep);
-end

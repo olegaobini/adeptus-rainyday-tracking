@@ -16,8 +16,19 @@
     "description": "Weather/environmental degradation mode"
   },
 
+  "environment": {
+    "horizon_masking": true,
+    "refraction_factor": 1.333,
+    "ground_clutter": true,
+    "propagation_model": true,
+    "terrain_type": "mountain",
+    "clutter_density": 0.5,
+    "_terrain_options": "water | rural | urban | mountain",
+    "_description": "Horizon masking uses 4/3 Earth radius model. Ground clutter generates terrain-dependent false returns at low elevation. Propagation model uses radarvcd to compute vertical coverage patterns accounting for multipath ground-bounce lobing."
+  },
+
   "data_logging": {
-    "use_saved_datalog": true,
+    "use_saved_datalog": false,
     "datalog_file": "cache/myRun1.mat",
     "save_after_generation": true
   },
@@ -72,40 +83,40 @@
   },
   
   "trackers_to_run": {
-    "gnn_cv": true,
-    "gnn_imm": false,
-    "tomht_cv": false,
+    "gnn_cv":    true,
+    "gnn_imm":   false,
+    "tomht_cv":  false,
     "tomht_imm": false,
-    "jpda_cv": false,
-    "jpda_imm": false
+    "jpda_cv":   false,
+    "jpda_imm":  false
   },
 
   "scenarios_to_run": {
     "_comment": "Toggle true/false. Run all enabled scenarios with: runAllScenarios()",
-    "dasr_ideal":              true,
-    "dasr_degraded":           true,
-    "crossing_targets":        true,
-    "head_on":                 true,
-    "high_density":            true,
-    "maneuvering_evasive":     true,
-    "storm_window":            true,
-    "long_range_arsr":         true,
-    "approach_pattern":        true,
-    "par_approach":            true,
-    "phased_array_intercept":  true,
-    "ir_radar_fusion":         true,
-    "ir_degraded_weather":     true,
+    "dasr_ideal":              false,
+    "dasr_degraded":           false,
+    "crossing_targets":        false,
+    "head_on":                 false,
+    "high_density":            false,
+    "maneuvering_evasive":     false,
+    "storm_window":            false,
+    "long_range_arsr":         false,
+    "approach_pattern":        false,
+    "par_approach":            false,
+    "phased_array_intercept":  false,
+    "ir_radar_fusion":         false,
+    "ir_degraded_weather":     false,
     "maritime_surface":        true,
     "fighter_intercept":       true,
-    "fire_control_engagement": true,
-    "layered_defense":         true,
-    "layered_defense_storm":   true
+    "fire_control_engagement": false,
+    "layered_defense":         false,
+    "layered_defense_storm":   false
   },
   
   "output": {
     "print_diagnostics": true,
-    "show_visuals": false,
-    "animate_visuals": false,
+    "show_visuals": true,
+    "animate_visuals": true,
     "save_results": true,
     "results_directory": "results"
   }
