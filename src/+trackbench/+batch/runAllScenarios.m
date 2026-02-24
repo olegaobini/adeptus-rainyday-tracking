@@ -1,4 +1,4 @@
-function allResults = runAllScenarios(configName)
+function allResults = runAllScenarios(configName, useMySensors)
 %runAllScenarios  Run all enabled scenarios and tracker combinations.
 %
 % Reads scenarios_to_run and trackers_to_run from default.json (or specified
@@ -6,14 +6,25 @@ function allResults = runAllScenarios(configName)
 % runs every enabled tracker, and collects results.
 %
 % USAGE
-%   trackbench.batch.runAllScenarios              % uses default.json
-%   trackbench.batch.runAllScenarios("default")   % same thing
-%   results = trackbench.batch.runAllScenarios;    % capture all results
+%   % SHOWCASE MODE — each scenario uses its dedicated sensor config:
+%   trackbench.batch.runAllScenarios
+%   trackbench.batch.runAllScenarios("default")
+%
+%   % MY SENSORS MODE — force all scenarios to use YOUR sensors.json:
+%   trackbench.batch.runAllScenarios("default", true)
+%
+% INPUTS
+%   configName   : base config name (default: "default")
+%   useMySensors : logical. When true, overrides every scenario's sensor
+%                  config with "sensors" (your sensors.json toggles).
+%                  When false (default), each scenario uses its own
+%                  dedicated sensor config (the "showcase" setup).
 %
 % See also: trackbench.scenario.loadScenario, trackbench.scenario.loadScenarioCatalog
 
 arguments
-    configName (1,1) string = "default"
+    configName   (1,1) string  = "default"
+    useMySensors (1,1) logical = false
 end
 
 clc; close all;
@@ -70,10 +81,16 @@ if isempty(trackerCombos)
 end
 
 %% Print run plan
+sensorModeStr = 'SHOWCASE (dedicated sensors per scenario)';
+if useMySensors
+    sensorModeStr = 'MY SENSORS (sensors.json for all scenarios)';
+end
+
 fprintf('\n');
 fprintf('╔══════════════════════════════════════════════════════════╗\n');
 fprintf('║              runAllScenarios — RUN PLAN                 ║\n');
 fprintf('╠══════════════════════════════════════════════════════════╣\n');
+fprintf('║  Sensors   : %-42s║\n', sensorModeStr);
 fprintf('║  Scenarios : %-3d enabled                                ║\n', numel(enabledScenarios));
 fprintf('║  Trackers  : %-3d enabled                                ║\n', numel(trackerCombos));
 fprintf('║  Total runs: %-3d                                        ║\n', numel(enabledScenarios) * numel(trackerCombos));
@@ -91,9 +108,19 @@ fprintf('║  Trackers: %-45s║\n', trkStr);
 fprintf('╚══════════════════════════════════════════════════════════╝\n\n');
 
 %% Output settings
-showVis  = getOr(baseConfig.output, 'show_visuals', true);
-animVis  = getOr(baseConfig.output, 'animate_visuals', true);
+showVis   = getOr(baseConfig.output, 'show_visuals', true);
+animVis   = getOr(baseConfig.output, 'animate_visuals', true);
 printDiag = getOr(baseConfig.output, 'print_diagnostics', true);
+saveFigs  = getOr(baseConfig.output, 'save_figures', false);
+
+%% Prepare figure output directory
+if saveFigs
+    timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
+    figDir = fullfile(pwd, getOr(baseConfig.output, 'results_directory', 'results'), ...
+                      ['figures_' timestamp]);
+    if ~exist(figDir, 'dir'); mkdir(figDir); end
+    fprintf('[FIGURES] Saving .fig files to: %s\n\n', figDir);
+end
 
 %% Run each scenario
 allResults = struct();
@@ -111,7 +138,11 @@ for s = 1:numel(enabledScenarios)
 
     %% Load scenario
     try
-        [scenario, config, sensors, metas] = trackbench.scenario.loadScenario(scenName);
+        if useMySensors
+            [scenario, config, sensors, metas] = trackbench.scenario.loadScenario(scenName, "scenario_catalog", "sensors");
+        else
+            [scenario, config, sensors, metas] = trackbench.scenario.loadScenario(scenName);
+        end
     catch ME
         fprintf('[ERROR] Failed to load scenario "%s": %s\n', scenName, ME.message);
         continue;
@@ -152,6 +183,11 @@ for s = 1:numel(enabledScenarios)
     if showVis
         try
             trackbench.reporting.plotInitialScenario(dataLog, animVis);
+            if saveFigs
+                figFile = fullfile(figDir, sprintf('%s_scenario.fig', scenName));
+                savefig(gcf, figFile);
+                fprintf('[FIG] Saved → %s\n', figFile);
+            end
         catch
         end
     end
@@ -182,9 +218,29 @@ for s = 1:numel(enabledScenarios)
             tracker = trackbench.tracking.buildTracker(trkType, fModel, params, ...
                 config.tracker_global, config.filter_params, params.pd, numSensors);
 
+            % Track which figures exist before tracker runs
+            if saveFigs
+                figsBefore = findall(0, 'Type', 'figure');
+            end
+
             [trackSummary, truthSummary, trackMetrics, truthMetrics, ...
                 tTime, assignLog, swapReport] = ...
                 trackbench.tracking.runTracker(dataLog, tracker, false, showVis, animVis);
+
+            % Save any new figures created by the tracker
+            if saveFigs
+                figsAfter = findall(0, 'Type', 'figure');
+                newFigs = setdiff(figsAfter, figsBefore);
+                for fi = 1:numel(newFigs)
+                    figName = sprintf('%s_%s_%s_fig%d.fig', scenName, trkType, fModel, fi);
+                    figFile = fullfile(figDir, figName);
+                    try
+                        savefig(newFigs(fi), figFile);
+                        fprintf('[FIG] Saved → %s\n', figFile);
+                    catch
+                    end
+                end
+            end
 
             % Store results
             scenResult.trackers.(trkKey).trackSummary = trackSummary;
@@ -222,7 +278,9 @@ end
 if baseConfig.output.save_results
     resultsDir = fullfile(pwd, baseConfig.output.results_directory);
     if ~exist(resultsDir, 'dir'); mkdir(resultsDir); end
-    timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
+    if ~exist('timestamp', 'var')
+        timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
+    end
     resultsFile = fullfile(resultsDir, sprintf('results_batch_%s.mat', timestamp));
     save(resultsFile, 'allResults', '-v7.3');
     fprintf('\n[SAVED] All results → %s\n', resultsFile);
@@ -244,6 +302,10 @@ fprintf('╠══════════════════════�
 fprintf('║  Total: %d scenario(s) × %d tracker(s) = %d runs in %.1fs        ║\n', ...
     numel(enabledScenarios), numel(trackerCombos), numel(summaryRows), totalElapsed);
 fprintf('╚════════════════════════════════════════════════════════════════════╝\n');
+
+if saveFigs
+    fprintf('[FIGURES] All .fig files saved in: %s\n', figDir);
+end
 end
 
 %% ---- Local helpers ----

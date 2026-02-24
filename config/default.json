@@ -17,11 +17,12 @@
   },
 
   "environment": {
-    "horizon_masking": true,
+    "terrain_occlusion": false,
+    "horizon_masking": false,
     "refraction_factor": 1.333,
-    "ground_clutter": true,
-    "propagation_model": true,
-    "terrain_type": "mountain",
+    "ground_clutter": false,
+    "propagation_model": false,
+    "terrain_type": "water",
     "clutter_density": 0.5,
     "_terrain_options": "water | rural | urban | mountain",
     "_description": "Horizon masking uses 4/3 Earth radius model. Ground clutter generates terrain-dependent false returns at low elevation. Propagation model uses radarvcd to compute vertical coverage patterns accounting for multipath ground-bounce lobing."
@@ -97,7 +98,7 @@
     "dasr_degraded":           false,
     "crossing_targets":        false,
     "head_on":                 false,
-    "high_density":            false,
+    "high_density":            true,
     "maneuvering_evasive":     false,
     "storm_window":            false,
     "long_range_arsr":         false,
@@ -106,8 +107,8 @@
     "phased_array_intercept":  false,
     "ir_radar_fusion":         false,
     "ir_degraded_weather":     false,
-    "maritime_surface":        true,
-    "fighter_intercept":       true,
+    "maritime_surface":        false,
+    "fighter_intercept":       false,
     "fire_control_engagement": false,
     "layered_defense":         false,
     "layered_defense_storm":   false
@@ -118,6 +119,7 @@
     "show_visuals": true,
     "animate_visuals": true,
     "save_results": true,
+    "save_figures": true,
     "results_directory": "results"
   }
 

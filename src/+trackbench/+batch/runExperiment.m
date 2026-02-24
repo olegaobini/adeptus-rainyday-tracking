@@ -71,6 +71,13 @@ else
         "IFFAzSigma",    iffAzSigma, ...
         "IFFPd",         iffPd);
 
+    % Pre-flight: validate that duration is long enough for the sensor config
+    [scanOk, scanInfo] = trackbench.scenario.validateScanCoverage(scenario, sceneDuration);
+    if ~scanOk
+        warning('runExperiment:insufficientScans', ...
+            '%s\nIncrease scenario.duration_s in your config.', scanInfo.message);
+    end
+
     % Pass environment config for horizon masking and ground clutter
     envCfg = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
                     'ground_clutter', true, 'terrain_type', 'rural', ...

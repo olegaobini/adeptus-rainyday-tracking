@@ -17,9 +17,29 @@
 
   "scenarios": {
 
+    "default": {
+      "description": "Default scenario — reads sensors from sensors.json. Enable/disable sensors there, configure everything else in default.json.",
+      "sensor_config": "sensors",
+      "overrides": {},
+      "targets": [
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 900,
+          "start_pos": [-2000, -20000, -3000],
+          "altitude_m": 3000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [2000, -19000, -3500],
+          "altitude_m": 3500
+        }
+      ]
+    },
+
     "dasr_ideal": {
       "description": "DASR baseline — clear weather, 2 gentle-turn targets, PSR+SSR",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 50,
         "scenario.num_targets": 2,
@@ -45,7 +65,7 @@
 
     "dasr_degraded": {
       "description": "DASR in rain — degraded Pd, tuned tracker params, PSR+SSR",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 50,
         "scenario.num_targets": 2,
@@ -72,7 +92,7 @@
 
     "crossing_targets": {
       "description": "Two targets crossing paths at close range — tests track swap handling",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 60,
         "scenario.num_targets": 2,
@@ -102,7 +122,7 @@
 
     "head_on": {
       "description": "Two targets approaching head-on — tests identity maintenance under merge",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 40,
         "scenario.num_targets": 2,
@@ -132,7 +152,7 @@
 
     "high_density": {
       "description": "5 targets in busy airspace — stress test for data association",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 60,
         "scenario.num_targets": 5,
@@ -152,7 +172,7 @@
 
     "maneuvering_evasive": {
       "description": "Single target with aggressive S-maneuver — tests IMM advantage over CV",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 60,
         "scenario.num_targets": 1,
@@ -174,7 +194,7 @@
 
     "storm_window": {
       "description": "Heavy rain — maximum degradation, tests tracker robustness",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 60,
         "scenario.num_targets": 2,
@@ -216,7 +236,7 @@
 
     "approach_pattern": {
       "description": "Two aircraft on landing approach — tests PAR-type close tracking",
-      "sensor_config": "sensors",
+      "sensor_config": "sensors_dasr",
       "overrides": {
         "scenario.duration_s": 90,
         "scenario.num_targets": 2,
@@ -574,6 +594,59 @@
           "start_pos": [0, -70000, -5000],
           "turn_rate_dps": 2,
           "altitude_m": 5000
+        }
+      ]
+    },
+
+    "default_wedge_ideal": {
+      "description": "Original main-branch default radar — 40° sector wedge, 25 RPM, clear weather. Fast scans, works with short durations.",
+      "sensor_config": "sensors_default_wedge",
+      "overrides": {
+        "scenario.duration_s": 50,
+        "scenario.num_targets": 2,
+        "degradation.enabled": false,
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/wedge_ideal.mat"
+      },
+      "targets": [
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 900,
+          "start_pos": [-2000, -20000, -3000],
+          "altitude_m": 3000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [2000, -19000, -3500],
+          "altitude_m": 3500
+        }
+      ]
+    },
+
+    "default_wedge_degraded": {
+      "description": "Original main-branch default radar — 40° sector wedge, 25 RPM, storm degradation ON.",
+      "sensor_config": "sensors_default_wedge",
+      "overrides": {
+        "scenario.duration_s": 50,
+        "scenario.num_targets": 2,
+        "degradation.enabled": true,
+        "degradation.type": "rain",
+        "data_logging.use_saved_datalog": false,
+        "data_logging.datalog_file": "cache/wedge_degraded.mat"
+      },
+      "targets": [
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 900,
+          "start_pos": [-2000, -20000, -3000],
+          "altitude_m": 3000
+        },
+        {
+          "behavior": "gentle_turn",
+          "speed_kmh": 700,
+          "start_pos": [2000, -19000, -3500],
+          "altitude_m": 3500
         }
       ]
     }

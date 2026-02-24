@@ -1,0 +1,39 @@
+{
+  "_description": "DASR sensor pair — PSR + MSSR co-rotating at 12.5 RPM. Used by dasr_ideal, dasr_degraded, crossing_targets, head_on, high_density, maneuvering_evasive, storm_window, approach_pattern.",
+
+  "sensors": [
+    {
+      "name": "DASR Primary Search Radar",
+      "type": "PSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 30],
+        "tilt": 2,
+        "pd": 0.9,
+        "far": 1e-6,
+        "rangeLimits": [0, 111120],
+        "rangeRes": 93,
+        "mountingLoc": [0, 0, -15]
+      }
+    },
+    {
+      "name": "DASR Secondary Surveillance Radar (MSSR/IFF)",
+      "type": "SSR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 12.5,
+        "fov": [1.4, 10],
+        "tilt": 2,
+        "pd": 0.99,
+        "far": 1e-7,
+        "rangeLimits": [0, 222240],
+        "rangeRes": 100,
+        "refRCS": 20,
+        "mountingLoc": [0, 0, -15]
+      }
+    }
+  ]
+}

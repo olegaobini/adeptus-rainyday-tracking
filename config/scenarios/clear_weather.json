@@ -1,0 +1,12 @@
+{
+  "_description": "Clear weather baseline — uses all default.json values with degradation OFF",
+  "degradation": {
+    "enabled": false
+  },
+  "scenario": {
+    "duration_s": 50
+  },
+  "data_logging": {
+    "use_saved_datalog": false
+  }
+}

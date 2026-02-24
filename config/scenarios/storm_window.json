@@ -1,0 +1,13 @@
+{
+  "_description": "Storm window — degradation ON, tuned tracker params for clutter",
+  "degradation": {
+    "enabled": true,
+    "type": "rain"
+  },
+  "scenario": {
+    "duration_s": 50
+  },
+  "data_logging": {
+    "use_saved_datalog": false
+  }
+}

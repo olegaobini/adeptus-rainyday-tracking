@@ -1,0 +1,28 @@
+{
+  "_description": "Original default radar — 40-degree sector scan wedge from main branch baseline. Fast scan, short duration OK.",
+  "_note": "This is the radar from the original trackbench main branch createScenario. 25 RPM, 40° sector [250-290], scan period ~0.27s.",
+
+  "sensors": [
+    {
+      "name": "Default Wedge Radar (Main Branch Baseline)",
+      "type": "CUSTOM_RADAR",
+      "enabled": true,
+      "platform": "tower",
+      "params": {
+        "rpm": 25,
+        "fov": [1.5, 10],
+        "sector": [250, 290],
+        "tilt": 2,
+        "pd": 0.8,
+        "far": 1e-6,
+        "rangeLimits": [0, 111000],
+        "rangeRes": 135,
+        "refRange": 111000,
+        "refRCS": 0,
+        "hasElevation": true,
+        "hasRangeRate": false,
+        "mountingLoc": [0, 0, -15]
+      }
+    }
+  ]
+}

@@ -65,13 +65,15 @@ enablePropModel = getOrDefault(envConfig, 'propagation_model', true);
 % Detect terrain occlusion capability (SurfaceManager from loadScenario)
 enableTerrainOcclusion = false;
 hasSurfaceManager = false;
-try
-    sm = scenario.SurfaceManager;
-    if ~isempty(sm) && ~isempty(sm.Surfaces)
-        hasSurfaceManager = true;
-        enableTerrainOcclusion = sm.UseOcclusion;
+if getOrDefault(envConfig, 'terrain_occlusion', true)
+    try
+        sm = scenario.SurfaceManager;
+        if ~isempty(sm) && ~isempty(sm.Surfaces)
+            hasSurfaceManager = true;
+            enableTerrainOcclusion = sm.UseOcclusion;
+        end
+    catch
     end
-catch
 end
 
 if enableTerrainOcclusion
@@ -127,6 +129,7 @@ for pIdx = 1:numPlats
         info.isRadar      = contains(info.className, 'radar', 'IgnoreCase', true) || ...
                             contains(info.className, 'fusionRadar', 'IgnoreCase', true);
         info.isRotator    = false;
+        info.isMechanical = false;  % true for ANY mechanical scanner (rotator OR sector)
         info.scanMode     = '';
         
         % Determine scan mode — distinguish true 360° rotators from sector/no-scan
@@ -168,15 +171,22 @@ for pIdx = 1:numPlats
             
             % True rotator = 360° (or close to it)
             info.isRotator = (azSpan >= 350);
+            % ANY mechanical scanner (rotator or sector) produces IsScanDone
+            info.isMechanical = true;
+        elseif contains(lower(info.scanMode), 'sector')
+            info.isRotator    = false;
+            info.isMechanical = true;   % sector scanners also produce IsScanDone
         elseif contains(lower(info.scanMode), 'no scanning') || ...
                contains(lower(info.scanMode), 'electronic')
-            info.isRotator = false;
+            info.isRotator    = false;
+            info.isMechanical = false;
         else
-            info.isRotator = false;
+            info.isRotator    = false;
+            info.isMechanical = false;
         end
         
-        fprintf('[runDetections]   Sensor %d: %s | ScanMode=%s | isRotator=%d\n', ...
-            info.sensorIndex, info.className, info.scanMode, info.isRotator);
+        fprintf('[runDetections]   Sensor %d: %s | ScanMode=%s | isRotator=%d | isMechanical=%d\n', ...
+            info.sensorIndex, info.className, info.scanMode, info.isRotator, info.isMechanical);
         
         % Classify MSSR — first try metadata, then fall back to FAR
         info.isMSSR = classifyAsMSSR(s, sensorMetas);
@@ -248,19 +258,23 @@ mssr_mask    = [activeInfos.isMSSR];
 fprintf('[runDetections] PSR count: %d | MSSR: %d\n', sum(nonMSSR_mask), sum(mssr_mask));
 
 %% Determine scan cadence
-%  For rotating sensors: use IsScanDone from the first rotator (master clock)
-%  For non-rotating only: use time-based flush at fixed intervals
-hasRotator  = any([activeInfos.isRotator]);
-masterIdx   = [];  % index into activeInfos for the scan master
+%  For mechanical scanners (rotators AND sector): use IsScanDone as master clock.
+%  fusionRadarSensor fires IsScanDone when a full rotation or sector sweep completes.
+%  For non-mechanical only (staring/electronic): use time-based flush.
+hasMechanical = any([activeInfos.isMechanical]);
+hasRotator    = any([activeInfos.isRotator]);  % kept for dataLog flag
+masterIdx     = [];  % index into activeInfos for the scan master
 
-if hasRotator
-    % Use SLOWEST rotator as scan master — fast rotators (IRST) trigger
-    % IsScanDone too frequently if used as master, causing empty flushes
-    rotatorIdxs = find([activeInfos.isRotator]);
+if hasMechanical
+    % Use SLOWEST mechanical scanner as scan master — fast scanners trigger
+    % IsScanDone too frequently if used as master, causing empty flushes.
+    % For mixed configs (rotator + sector), prefer the slowest so all
+    % sensors get at least one sweep per flush.
+    mechIdxs = find([activeInfos.isMechanical]);
     slowestRate = Inf;
-    masterIdx = rotatorIdxs(1);
-    for ri = 1:numel(rotatorIdxs)
-        rIdx = rotatorIdxs(ri);
+    masterIdx = mechIdxs(1);
+    for ri = 1:numel(mechIdxs)
+        rIdx = mechIdxs(ri);
         try
             ur = activeInfos(rIdx).sensor.UpdateRate;
         catch
@@ -271,21 +285,23 @@ if hasRotator
             masterIdx = rIdx;
         end
     end
-    fprintf('[runDetections] Scan master: sensor %d (%.1f Hz) — slowest rotator\n', ...
-        activeInfos(masterIdx).sensorIndex, slowestRate);
+    masterInfo = activeInfos(masterIdx);
+    scanType = ternary(masterInfo.isRotator, 'rotator', 'sector');
+    fprintf('[runDetections] Scan master: sensor %d (%.1f Hz) — slowest mechanical (%s)\n', ...
+        masterInfo.sensorIndex, slowestRate, scanType);
 else
-    % No rotating sensor — use time-based scan flush
+    % No mechanical scanner — use time-based scan flush
     % Use the SLOWEST sensor's period as the scan interval,
-    % but clamp to [1s, 15s] to avoid overly frequent or slow flushes.
+    % but clamp to [0.5s, 15s] to avoid overly frequent or slow flushes.
     rates = zeros(numActive, 1);
     for k = 1:numActive
         try rates(k) = activeInfos(k).sensor.UpdateRate; catch; rates(k) = 1; end
     end
     minRate = max(min(rates(rates > 0)), 0.1);
     scanInterval = 1/minRate;
-    scanInterval = max(scanInterval, 1.0);   % minimum 1s between flushes
+    scanInterval = max(scanInterval, 0.5);   % minimum 0.5s between flushes
     scanInterval = min(scanInterval, 15.0);  % maximum 15s
-    fprintf('[runDetections] No rotating sensor — time-based flush every %.2fs\n', scanInterval);
+    fprintf('[runDetections] No mechanical scanner — time-based flush every %.2fs\n', scanInterval);
 end
 
 %% Initialise
@@ -496,8 +512,8 @@ while advance(scenario)
         end
         dets = dets(:);
         
-        % Check scan done — ONLY from the master rotator
-        if hasRotator && k == masterIdx
+        % Check scan done — from the master mechanical scanner (rotator or sector)
+        if hasMechanical && k == masterIdx
             try
                 if cfg.IsScanDone
                     scanDone = true;
@@ -583,11 +599,11 @@ while advance(scenario)
     % ----------------------------------------------------------------
     %  Scan complete check
     % ----------------------------------------------------------------
-    if hasRotator
-        % Rotating sensor master clock
-        % (scanDone already set above)
+    if hasMechanical
+        % Mechanical scanner master clock (rotator or sector)
+        % (scanDone already set above from IsScanDone)
     else
-        % Time-based flush
+        % Time-based flush (staring / electronic sensors only)
         if (simTime - lastFlushTime) >= scanInterval
             scanDone = true;
         end

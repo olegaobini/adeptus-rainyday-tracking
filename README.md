@@ -4,15 +4,33 @@
 
 ```matlab
 % cd to the adeptus-rainyday-tracking folder, then:
+addpath("scripts");
+
+% ── SINGLE SCENARIO ──────────────────────────────────────────────
+% Uses YOUR sensors from config/sensors/sensors.json + default.json:
+runSingleScenario("default")
+
+% Run a specific catalog scenario (uses that scenario's dedicated sensors):
+runSingleScenario("crossing_targets")
+runSingleScenario("fighter_intercept")
+
+% ── BATCH ────────────────────────────────────────────────────────
+% SHOWCASE MODE — each scenario uses its dedicated sensor config:
+runAllScenarios
+
+% MY SENSORS MODE — force YOUR sensors.json on every scenario:
+runAllScenarios(true)
+```
+
+Configure in two files:
+- **`config/sensors/sensors.json`** — toggle sensors `"enabled": true/false`
+- **`config/default.json`** — scenarios_to_run, trackers_to_run, duration, degradation, environment, visuals
+
+
+Advanced usage (manual pipeline):
+```matlab
 addpath(genpath(fullfile(pwd, 'src')));
-
-% 1. See available scenarios
-trackbench.scenario.loadScenarioCatalog
-
-% 2. Load a scenario (builds sensors + targets + config)
 [scenario, config, sensors, metas] = trackbench.scenario.loadScenario("crossing_targets");
-
-% 3. Generate detections and run a tracker
 dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas, config.environment);
 tracker = trackbench.tracking.buildTracker('GNN', 'IMM', config.active_params, ...
     config.tracker_global, config.filter_params, config.active_params.pd, numel(sensors.tower));
@@ -23,12 +41,12 @@ tracker = trackbench.tracking.buildTracker('GNN', 'IMM', config.active_params, .
 
 1. **DASR sensor architecture** — PSR + MSSR co-rotating (not single generic radar)
 2. **19 sensor types** — Radar, IR, Sonar, Lidar, ADS-B via universal `buildSensor` factory
-3. **18 pre-built scenarios** — Airport, military, maritime, airborne, layered defense
+3. **21 pre-built scenarios** — Airport, military, maritime, airborne, layered defense
 4. **JSON-driven config** — Scenarios, sensors, tracker params all in JSON catalogs
 5. **Track swap analysis** — Detects and reports identity swaps between targets
 6. **Detectable track IDs** — GNN/JPDA don't penalize tracks outside sensor FOV
 7. **Assignment timeline plots** — Visual track-to-truth assignment with swap overlay
-8. **Batch runner** — `runAllScenarios` runs all enabled scenario × tracker combos
+8. **Batch runner** — `runAllScenarios` with showcase mode (dedicated sensors) or my-sensors mode (your picks)
 9. **+trackbench namespace** — Clean MATLAB package structure
 10. **No truth-based pre-filtering** — All detections (incl. clutter/outliers) pass directly to trackers for honest performance evaluation
 11. **Horizon masking** — 4/3 Earth radius model prevents detections for targets below the radar horizon
@@ -47,9 +65,12 @@ adeptus-rainyday-tracking/
 │   ├── default.json                 ← Base config (tracker params, toggles, environment)
 │   ├── sensors.json                 ← Sensor catalog (19 types, enable/disable)
 │   ├── scenarios/
-│   │   └── scenario_catalog.json    ← All 18 scenario definitions
+│   │   └── scenario_catalog.json    ← All 21 scenario definitions
 │   ├── sensors/
+│   │   ├── sensors.json             ← User-configurable (runSingleScenario "default")
+│   │   ├── sensors_dasr.json        ← PSR+SSR (DASR scenarios)
 │   │   ├── sensors_approach.json    ← PSR+SSR+PAR (par_approach)
+│   │   ├── sensors_default_wedge.json ← 40° sector wedge (main-branch baseline)
 │   │   ├── sensors_fighter.json     ← AESA+FLIR (fighter_intercept)
 │   │   ├── sensors_maritime.json    ← Maritime+Sonar (maritime_surface)
 │   │   ├── sensors_fire_control.json
@@ -100,10 +121,10 @@ adeptus-rainyday-tracking/
 │       └── runAllScenarios.m        ← Batch runner for all scenarios
 │
 ├── scripts/
+│   ├── runSingleScenario.m          ← Single scenario (smart router)
+│   ├── runAllScenarios.m            ← Batch runner (showcase or my-sensors)
 │   ├── runSingleExperiment.m        ← Single scenario driver (legacy)
-│   ├── runExperiment.m              ← Main driver (config → detect → track → metrics)
 │   ├── quickBatch.m                 ← Quick batch wrapper
-│   ├── ResultsRunner.m              ← Results analysis
 │   └── runTrackingWithWeather.m     ← Weather degradation driver
 │
 ├── tests/
@@ -117,38 +138,50 @@ adeptus-rainyday-tracking/
 
 ## How To: Run Everything
 
-### Option A: Single scenario with plots
+All commands start with:
 ```matlab
-cd('C:\Users\Admin\Documents\RAINY DAY GIT COPY\adeptus-rainyday-tracking')
-addpath('src')
-[sc, cfg, ~, m] = trackbench.scenario.loadScenario("par_approach");
-dl = trackbench.detections.runDetections(sc, cfg.degradation.enabled, m, cfg.environment);
-trackbench.reporting.plotInitialScenario(dl, false);  % false = static plot (no animation)
+addpath("scripts");
 ```
 
-### Option B: Batch all enabled scenarios × all enabled trackers
+### Option A: Single scenario — your sensors
 ```matlab
-cd('C:\Users\Admin\Documents\RAINY DAY GIT COPY\adeptus-rainyday-tracking')
-addpath('src')
-trackbench.batch.runAllScenarios("default")
+runSingleScenario("default")          % uses sensors.json + default.json
 ```
-Edit `config/default.json` → `scenarios_to_run` to enable/disable scenarios, and `trackers` to toggle GNN/TOMHT/JPDA × CV/IMM.
+Edit `config/sensors/sensors.json` to toggle which sensors run. Edit `config/default.json` for duration, trackers, environment, visuals.
 
-### Option C: Quick single-tracker test
-Enable only 1 tracker and 1-2 scenarios in `default.json`, then run Option B. This is the fastest way to iterate.
+### Option B: Batch showcase — dedicated sensors per scenario
+```matlab
+runAllScenarios                       % each scenario uses its own sensor config
+```
+Each scenario loads its dedicated sensors (PSR+SSR for DASR, AESA+FLIR for fighter, etc.). Toggle which scenarios run in `default.json` → `scenarios_to_run`. Trackers, environment, and visuals all come from `default.json`.
 
-## Available Scenarios (18)
+### Option C: Batch — your sensors on every scenario
+```matlab
+runAllScenarios(true)                 % forces sensors.json on all scenarios
+```
+Same targets/durations/degradation as showcase, but uses whatever sensors you have enabled in `sensors.json`. Good for testing one sensor setup across many target geometries.
+
+### Option D: Single catalog scenario
+```matlab
+runSingleScenario("fighter_intercept") % uses that scenario's dedicated sensors
+runSingleScenario("crossing_targets") % DASR PSR+SSR, two crossing targets
+```
+
+## Available Scenarios (21)
 
 | Scenario | Sensors | Terrain | What It Tests |
 |----------|---------|---------|---------------|
-| dasr_ideal | PSR+SSR | rural | Baseline clear weather |
-| dasr_degraded | PSR+SSR | rural | Rain — tracker robustness |
-| crossing_targets | PSR+SSR | rural | Track swap — two targets crossing |
-| head_on | PSR+SSR | rural | Identity — targets approaching |
-| high_density | PSR+SSR | rural | Stress test — 5 targets |
-| maneuvering_evasive | PSR+SSR | rural | S-maneuver, IMM vs CV |
-| storm_window | PSR+SSR | rural | Max degradation — heavy rain |
-| approach_pattern | PSR+SSR | rural | Landing approach |
+| **default** | **sensors.json** | **default.json** | **User-configured — reads sensor toggles from sensors.json** |
+| default_wedge_ideal | Wedge Radar | default.json | Original main-branch 40° sector radar, clear |
+| default_wedge_degraded | Wedge Radar | default.json | Original 40° sector radar, rain degradation |
+| dasr_ideal | PSR+SSR (sensors_dasr) | rural | Baseline clear weather |
+| dasr_degraded | PSR+SSR (sensors_dasr) | rural | Rain — tracker robustness |
+| crossing_targets | PSR+SSR (sensors_dasr) | rural | Track swap — two targets crossing |
+| head_on | PSR+SSR (sensors_dasr) | rural | Identity — targets approaching |
+| high_density | PSR+SSR (sensors_dasr) | rural | Stress test — 5 targets |
+| maneuvering_evasive | PSR+SSR (sensors_dasr) | rural | S-maneuver, IMM vs CV |
+| storm_window | PSR+SSR (sensors_dasr) | rural | Max degradation — heavy rain |
+| approach_pattern | PSR+SSR (sensors_dasr) | rural | Landing approach |
 | long_range_arsr | ARSR+SSR | rural | 250nm en-route surveillance |
 | par_approach | PSR+SSR+PAR | rural | Precision approach |
 | phased_array_intercept | TWS+AESA | rural | Phased array fusion |
@@ -267,14 +300,15 @@ File: `+reporting/drawSensorCoverage.m`
 In `default.json` (overridable per-scenario in `scenario_catalog.json`):
 ```json
 "environment": {
-    "horizon_masking": true,
-    "refraction_factor": 1.333,
-    "ground_clutter": true,
-    "propagation_model": true,
-    "terrain_type": "rural",
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "propagation_model": false,
+    "terrain_type": "water",
     "clutter_density": 0.5
 }
 ```
+All five effects are independently toggleable. Set any to `true` to enable.
 
 ## Key Algorithms
 
@@ -313,7 +347,104 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v2.3 — February 23, 2026 (current)
+### v2.4.1 — February 24, 2026 (current)
+
+**Dedicated Sensor Configs Per Scenario**
+- Created `sensors_dasr.json` — PSR + SSR always-on. All DASR-based scenarios
+  (`dasr_ideal`, `crossing_targets`, `head_on`, `high_density`, etc.) now point
+  to this instead of the shared `sensors.json`. Ensures showcase mode always
+  uses the right sensors regardless of what the user has toggled.
+- Only `"default"` still reads from `sensors.json` (user-configurable).
+
+**Batch Runner: Showcase vs My-Sensors Mode**
+- `runAllScenarios` (no args) = SHOWCASE: each scenario uses its dedicated sensor config.
+- `runAllScenarios(true)` = MY SENSORS: forces `sensors.json` on every scenario.
+- `loadScenario` now accepts optional `sensorOverride` argument.
+- Run plan header shows which mode is active.
+
+**scripts/runAllScenarios.m Wrapper**
+- Added `scripts/runAllScenarios.m` so users just need `addpath("scripts")` —
+  no package paths required. Matches the `runSingleScenario` pattern.
+
+**default.json: terrain_occlusion field added**
+- Was implemented in `runDetections.m` but missing from the actual JSON.
+  Now present and set to `false` by default.
+
+### v2.4 — February 24, 2026
+
+**One-Command Entrypoint**
+- Rewrote `scripts/runSingleScenario.m` as a smart router. It checks the scenario
+  catalog first — if the name exists there, it uses the full V2 pipeline
+  (`loadScenario` → custom sensors/targets/environment). Otherwise it falls back
+  to the simple `loadConfig` → `createScenario` (DASR) path.
+- Added `"default"` entry to `scenario_catalog.json` that reads `sensors.json`.
+  This means `runSingleScenario("default")` now honors sensor toggles in
+  `config/sensors/sensors.json` instead of using the hardcoded DASR.
+- All scenarios are now accessible via one command:
+  ```matlab
+  addpath("scripts");
+  runSingleScenario("default")              % sensors.json + default.json
+  runSingleScenario("crossing_targets")     % catalog scenario
+  runSingleScenario("default_wedge_ideal")  % original wedge radar
+  runSingleScenario("fighter_intercept")    % AESA on aircraft
+  ```
+
+**Default Wedge Radar Restored**
+- Added "Default Wedge Radar (Main Branch Baseline)" to `sensors.json`
+  (`enabled: false` by default). This is the original main-branch 40° sector
+  radar: 25 RPM, FOV [1.5, 10], sector [250, 290], Pd 0.8.
+- Created `config/sensors/sensors_default_wedge.json` (standalone sensor config).
+- Added `default_wedge_ideal` and `default_wedge_degraded` to scenario catalog.
+
+**Sector Scanner Fix (`runDetections.m`)**
+- Added `isMechanical` flag to sensor classification. Previously only 360°
+  rotators (`isRotator`) were recognized as having `IsScanDone`. Sector
+  scanners (like the wedge radar, PAR) also produce `IsScanDone` on each
+  sweep completion but were falling to the 1-second time-based flush.
+  This caused ~4 detections per target per scan (multiple sweeps merged),
+  leading to duplicate tracks.
+- Scan master selection now uses `isMechanical` (true for both rotators
+  AND sector scanners) instead of `isRotator`.
+- Result: wedge radar now correctly produces ~2 detections/scan (one per
+  target) and tracker forms exactly 2 tracks for 2 targets.
+
+**Terrain Occlusion Toggle**
+- Added `terrain_occlusion` field to environment config in `runDetections.m`.
+  Set `"terrain_occlusion": false` in `default.json` to disable LOS checks
+  against the terrain heightmap.
+- All five environment effects are now independently toggleable from JSON:
+  ```json
+  "environment": {
+      "terrain_occlusion": false,
+      "horizon_masking": false,
+      "ground_clutter": false,
+      "propagation_model": false,
+      "terrain_type": "water",
+      "clutter_density": 0.2
+  }
+  ```
+
+**Scan Coverage Safeguard**
+- NEW `+scenario/validateScanCoverage.m` — pre-flight check that verifies
+  scenario duration produces enough scans for the configured sensor(s).
+  Prints a per-sensor diagnostic table and warns with recommended minimum
+  duration if insufficient.
+- Integrated into all three entry paths: `runScenario`, `runExperiment`,
+  `loadScenario`.
+- Post-detection scan count check in `runSingleScenario` catalog path.
+
+**Main-Branch Compatibility Shims**
+- `+loader/loadConfig.m` — forwards to `+config/loadConfig.m`
+- `+detections/createDetections.m` — forwards to `runDetections.m` with defaults
+- `runScenario.m` (package root) — matches main's `[results, detections]` signature
+- `+results/ResultsSchema.m` — standard results struct factory
+- Environment effects disabled in compat path for clean baseline behavior
+
+**Misc Fixes**
+- Populated `clear_weather.json` and `storm_window.json` (were empty/broken).
+- Fixed `default.json` duration: 10s → 50s (DASR at 12.5 RPM needs 4.8s/scan).
+
+### v2.3 — February 23, 2026
 
 **Terrain Occlusion**
 - NEW `generateTerrain.m` — Procedural heightmap generator for 5 terrain types (water/rural/urban/mountain/desert). 200×200 grid, seeded RNG, NED z-negative convention.
@@ -368,5 +499,5 @@ Boeing Proprietary.
 
 ---
 
-**Last Updated:** February 23, 2026
-**Version:** 2.3
+**Last Updated:** February 24, 2026
+**Version:** 2.4.1

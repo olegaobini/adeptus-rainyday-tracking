@@ -1,4 +1,4 @@
-function [scenario, config, sensors, metas] = loadScenario(scenarioName, catalogName)
+function [scenario, config, sensors, metas] = loadScenario(scenarioName, catalogName, sensorOverride)
 %loadScenario  Load a named scenario from the catalog and build everything.
 %
 % Reads the scenario definition from the catalog, loads the base config,
@@ -10,9 +10,15 @@ function [scenario, config, sensors, metas] = loadScenario(scenarioName, catalog
 %   [scenario, config, sensors, metas] = loadScenario("crossing_targets");
 %   [scenario, config, sensors, metas] = loadScenario("storm_window");
 %
+%   % Force a specific sensor config (overrides what the catalog says):
+%   [scenario, config, sensors, metas] = loadScenario("dasr_ideal", "scenario_catalog", "sensors");
+%
 % INPUTS
-%   scenarioName : string — key from scenario_catalog.json
-%   catalogName  : (optional) catalog filename. Default "scenario_catalog"
+%   scenarioName   : string — key from scenario_catalog.json
+%   catalogName    : (optional) catalog filename. Default "scenario_catalog"
+%   sensorOverride : (optional) sensor config name to force instead of the
+%                    catalog's sensor_config. e.g. "sensors" to use sensors.json.
+%                    Default "" (empty = use catalog's sensor_config).
 %
 % OUTPUTS
 %   scenario : trackingScenario object ready for runDetections()
@@ -31,8 +37,9 @@ function [scenario, config, sensors, metas] = loadScenario(scenarioName, catalog
 % See also: loadScenarioCatalog, loadSensors, load_config, createScenario3D
 
 arguments
-    scenarioName (1,1) string
-    catalogName  (1,1) string = "scenario_catalog"
+    scenarioName   (1,1) string
+    catalogName    (1,1) string = "scenario_catalog"
+    sensorOverride (1,1) string = ""
 end
 
 %% 1. Load base config
@@ -77,12 +84,17 @@ end
 config = selectActiveParams(config);
 
 %% 4. Load sensors
-sensorConfigName = "sensors";
-if isfield(scenDef, 'sensor_config') && ~isempty(scenDef.sensor_config)
-    sensorConfigName = string(scenDef.sensor_config);
+%  Priority: sensorOverride arg > catalog sensor_config > default "sensors"
+if sensorOverride ~= ""
+    sensorConfigName = sensorOverride;
+    fprintf('[SCENARIO] Sensor config: %s (OVERRIDE — using your sensors.json)\n', sensorConfigName);
+else
+    sensorConfigName = "sensors";
+    if isfield(scenDef, 'sensor_config') && ~isempty(scenDef.sensor_config)
+        sensorConfigName = string(scenDef.sensor_config);
+    end
+    fprintf('[SCENARIO] Sensor config: %s\n', sensorConfigName);
 end
-
-fprintf('[SCENARIO] Sensor config: %s\n', sensorConfigName);
 [sensors, metas] = trackbench.sensors.loadSensors(sensorConfigName);
 
 %% 5. Build trackingScenario
@@ -204,6 +216,13 @@ catch ME
     warning('loadScenario:terrainFailed', ...
         'Terrain generation failed: %s. Falling back to horizon model.', ME.message);
     config.terrainGrid = [];
+end
+
+%% Pre-flight: validate scan coverage
+[scanOk, scanInfo] = trackbench.scenario.validateScanCoverage(scenario, duration);
+if ~scanOk
+    warning('loadScenario:insufficientScans', ...
+        '%s\nIncrease scenario.duration_s in the scenario overrides.', scanInfo.message);
 end
 
 %% Summary
