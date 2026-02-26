@@ -1,4 +1,4 @@
-function scenario = createScenario3D(config)
+function scenario = createScenario(varargin)
 %helperCreateScenario3D  Create a trackingScenario with a tower-mounted rotating radar
 %                        and a configurable number of 3D aircraft targets.
 %
@@ -24,10 +24,11 @@ function scenario = createScenario3D(config)
 %     - "Climb" => z becomes more negative (e.g., -3000 -> -4000)
 %
 % USAGE
-%   scenario = helperCreateScenario3D();                       % default (2 targets, 50s)
-%   scenario = helperCreateScenario3D("NumTargets",3);         % 3 targets
-%   scenario = helperCreateScenario3D("SceneDuration",60);     % 60 seconds
-%   scenario = helperCreateScenario3D("NumTargets",4,"SceneDuration",45);
+%   scenario = createScenario();                       % default (2 targets, 50s)
+%   scenario = createScenario("NumTargets",3);         % 3 targets
+%   scenario = createScenario("SceneDuration",60);     % 60 seconds
+%   scenario = createScenario("NumTargets",4,"SceneDuration",45);
+%   scenario = createScenario(config);                 % config struct (preferred)
 %
 % NAME-VALUE PARAMETERS
 %   "NumTargets"     : number of target platforms (>= 1). Default 2.
@@ -37,10 +38,21 @@ function scenario = createScenario3D(config)
 %   scenario : trackingScenario object containing platforms + radar sensor
 % -------------------------------------------------------------------------
 
-%% Extract parameters from config
-numTargets = config.scenario.num_targets;
-sceneDuration = config.scenario.duration_s;
-radarCfg = config.radar;  % Shorthand for easier access
+%% Extract parameters from config or name-value pairs
+if nargin == 1 && isstruct(varargin{1}) && isfield(varargin{1}, "scenario")
+    config = varargin{1};
+    numTargets = config.scenario.num_targets;
+    sceneDuration = config.scenario.duration_s;
+    radarCfg = config.radar;  % Shorthand for easier access
+else
+    p = inputParser;
+    addParameter(p, "NumTargets", 2, @(x)isnumeric(x)&&isscalar(x)&&x>=1);
+    addParameter(p, "SceneDuration", 50, @(x)isnumeric(x)&&isscalar(x)&&x>0);
+    parse(p, varargin{:});
+    numTargets = p.Results.NumTargets;
+    sceneDuration = p.Results.SceneDuration;
+    radarCfg = defaultRadarConfig();
+end
 %% Create scenario container
 % trackingScenario holds platforms and advances time via advance(scenario)
 scenario = trackingScenario;
@@ -97,6 +109,23 @@ switch numTargets
         for i = 1:numTargets
             addAircraft(scenario, sceneDuration, i);
         end
+end
+
+function radarCfg = defaultRadarConfig()
+    % Default radar settings to match baseline configuration
+    radarCfg = struct();
+    radarCfg.type = "fusionRadarSensor";
+    radarCfg.rpm = 25;
+    radarCfg.fov_azimuth = 1.5;
+    radarCfg.fov_elevation = 10;
+    radarCfg.azimuth_limits = [250, 290];
+    radarCfg.elevation_tilt = 2;
+    radarCfg.reference_range = 111e3;
+    radarCfg.reference_rcs = 0;
+    radarCfg.range_resolution = 135;
+    radarCfg.detection_probability = 0.8;
+    radarCfg.false_alarm_rate = 1e-6;
+    radarCfg.mounting_location = [0, 0, -15];
 end
 end
 

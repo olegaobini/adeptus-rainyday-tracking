@@ -1,8 +1,4 @@
-<<<<<<<< HEAD:src/+trackbench/+tracking/runTracker.m
 function [trackSummary, truthSummary, trackMetrics, truthMetrics, time] = runTracker(dataLog,tracker,showTruth, showVisuals, animateVisuals)
-========
-function [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLog] = helperRunTracker(dataLog,tracker,showTruth, showVisuals, animateVisuals)
->>>>>>>> 1200544 (Updated from main branch, added plot):src/helpers/helperRunTracker.m
 %helperRunTracker  Run a tracker on a logged detection sequence and compute metrics.
 %
 % PURPOSE
@@ -153,19 +149,6 @@ time = 0;
 numSteps = numel(dataLog.Time);
 i = 0;
 
-<<<<<<<< HEAD:src/+trackbench/+tracking/runTracker.m
-========
-% NEW: assignment log buffers (one row per assigned track at each scan)
-logTime  = [];
-logPlat  = [];
-logTrack = [];
-logTruth = [];
-
-% NEW: default so variable always exists (even if no assignments happen)
-assignLog = table([],[],[],[], 'VariableNames', {'Time','PlatformID','TrackID','TruthID'});
-
-
->>>>>>>> 1200544 (Updated from main branch, added plot):src/helpers/helperRunTracker.m
 %% Initialize static buffers if not animating
 if showVisuals && ~animateVisuals
     allStaticDets = cell(1, numSteps); % Buffer for detections
@@ -216,9 +199,14 @@ while i < numSteps
     time = time + toc;
 
     % Truths for this scan.
-    % dataLog.Truth is stored as platformPose array(s); we convert to the
-    % struct format expected by trackAssignmentMetrics/trackErrorMetrics.
-    targets = dataLog.Truth(:,i);
+    % dataLog.Truth can be either:
+    %   - struct/array indexed by (:,i)
+    %   - cell array where each cell is a scan's targets
+    if iscell(dataLog.Truth)
+        targets = dataLog.Truth{i};
+    else
+        targets = dataLog.Truth(:,i);
+    end
 
     % Wrap truths into struct array with fields:
     %   Time, PlatformID, Position (row), Velocity (row)
@@ -233,16 +221,47 @@ while i < numSteps
             truths(k).Time = simTime;
 
             % Prefer PlatformID if available; fallback to index
-            if isprop(targets(k),'PlatformID')
+            if isobject(targets) && isprop(targets(k),'PlatformID')
+                truths(k).PlatformID = targets(k).PlatformID;
+            elseif isstruct(targets) && isfield(targets, 'PlatformID')
                 truths(k).PlatformID = targets(k).PlatformID;
             else
                 truths(k).PlatformID = k;
             end
 
             % Ensure row vectors for metrics tools
-            truths(k).Position = reshape(targets(k).Position, 1, []);
-            if isprop(targets(k),'Velocity') && ~isempty(targets(k).Velocity)
-                truths(k).Velocity = reshape(targets(k).Velocity, 1, []);
+            pos = [];
+            vel = [];
+            if isobject(targets)
+                if isprop(targets(k),'Position')
+                    pos = targets(k).Position;
+                end
+                if isprop(targets(k),'Velocity')
+                    vel = targets(k).Velocity;
+                end
+            elseif isstruct(targets)
+                if isfield(targets, 'Position')
+                    pos = targets(k).Position;
+                end
+                if isfield(targets, 'Velocity')
+                    vel = targets(k).Velocity;
+                end
+            elseif isnumeric(targets)
+                if size(targets,2) >= 3
+                    pos = targets(k,1:3);
+                elseif size(targets,1) >= 3
+                    pos = targets(1:3,k)';
+                end
+            end
+
+            if ~isempty(pos)
+                truths(k).Position = reshape(pos, 1, []);
+            else
+                truths(k).Position = [0 0 0];
+            end
+
+            if ~isempty(vel)
+                truths(k).Velocity = reshape(vel, 1, []);
             else
                 truths(k).Velocity = [0 0 0];
             end
@@ -260,24 +279,6 @@ while i < numSteps
 
     % Use currentAssignment to map track IDs to truth IDs (for error metrics).
     [trackIDs, truthIDs] = currentAssignment(tam);
-
-    % NEW: log assignments (for timeline plot)
-    if ~isempty(trackIDs)
-        nA = numel(trackIDs);
-
-        % PlatformID for this scan: use sensor platform if available
-        if isfield(dataLog,'SensorPlatformIDs') && numel(dataLog.SensorPlatformIDs) >= i
-            thisPlat = dataLog.SensorPlatformIDs(i);
-        else
-            thisPlat = 1;
-        end
-
-        logTime  = [logTime;  repmat(simTime, nA, 1)]; %#ok<AGROW>
-        logPlat  = [logPlat;  repmat(thisPlat, nA, 1)]; %#ok<AGROW>
-        logTrack = [logTrack; double(trackIDs(:))]; %#ok<AGROW>
-        logTruth = [logTruth; double(truthIDs(:))]; %#ok<AGROW>
-    end
-
 
     % Step error metrics using the current assignment.
     tem(tracks, trackIDs, truths, truthIDs);
@@ -403,22 +404,6 @@ if showVisuals && ~animateVisuals
     end
     drawnow;
 end
-
-
-% ---------------- NEW: finalize assignment log table ----------------
-if ~isempty(logTime)
-    assignLog = table(logTime, logPlat, logTrack, logTruth, ...
-        'VariableNames', {'Time','PlatformID','TrackID','TruthID'});
-else
-    assignLog = table([],[],[],[], 'VariableNames', {'Time','PlatformID','TrackID','TruthID'});
-end
-
-% NEW: Assignment timeline plot in its own tab
-if showVisuals
-    axAssign = tabbedAxes(string(plotTitle) + " | Assignment");
-    plotPlatformToTrackAssignment(axAssign, assignLog, "Platform to Track Assignment");
-end
-% -------------------------------------------------------------------
 
 %% Optional: plot truth trajectories (after run)
 % Useful for visual sanity checks, but disabled during metric-only runs.
