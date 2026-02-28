@@ -1,0 +1,6 @@
+{
+  "name": "clear",
+  "degradation_enabled": false,
+  "clutter_density": 0.2,
+  "description": "Clear baseline weather"
+}

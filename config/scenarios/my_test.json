@@ -1,9 +1,9 @@
 {
-  "description": "User scenario override layer for local testing",
+  "template": "standard_crossing",
   "overrides": {
-    "scenario.duration_s": 45,
-    "scenario.num_targets": 2,
+    "scenario.duration_s": 30,
     "degradation.enabled": false,
+    "weather.ref": "clear",
     "data_logging.use_saved_datalog": false,
     "data_logging.datalog_file": "cache/my_test.mat"
   }

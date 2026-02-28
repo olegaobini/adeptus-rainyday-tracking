@@ -1,72 +1,56 @@
 function runSingleScenario(configName)
-% runSingleScenario: Top-level entrypoint for tracking + degradation experiments.
+%runSingleScenario Run exactly one prepared config.
 %
-% 1.) Call the loader architecture -> get valid config
-% 2.) call runScenario and pass config -> get results
-% 3.) (optional) call visualization/reporting tools -> get visuals
-%
+% Usage:
+%   runSingleScenario("scenarios/my_test")
 
 arguments
-
-    configName (1,1) string {mustBeMember(configName, ["default","storm"])} = "default"
+    configName (1,1) string = "scenarios/my_test"
 end
 
 clc; close all;
-
-%% Setup
 ctx = setupTrackbench();
 
-%% Load Configuration
-config = trackbench.loader.loadConfig(configName);
+runPlan = trackbench.loader.loadAndPrepare(configName);
+if numel(runPlan) ~= 1
+    error('runSingleScenario:expectedSingle', ...
+        '"%s" expands to %d runs. Use runParameterSweep for sweeps.', ...
+        configName, numel(runPlan));
+end
 
-%% Resolve IO paths now that config is available
+config = runPlan(1);
 paths = buildPaths(ctx.root, config);
 
 fprintf("\n==============================\n");
-fprintf(" RUN START\n");
+fprintf(" RUN START | %s\n", config.run_id);
 fprintf("==============================\n\n");
 
-%% Load or generate detections
 detections = [];
-if config.data_logging.use_saved_datalog
+if isfield(config, 'data_logging') && isfield(config.data_logging, 'use_saved_datalog') && config.data_logging.use_saved_datalog
     detections = loadDetections(paths.data_log_file);
 end
 
 if isempty(detections)
-    [results, detections] = trackbench.runScenario(config, configName);
-    if config.data_logging.save_after_generation
+    [results, detections] = trackbench.runScenario(config, string(config.run_id));
+    if isfield(config, 'data_logging') && isfield(config.data_logging, 'save_after_generation') && config.data_logging.save_after_generation
         saveDetections(paths.data_log_file, detections);
     end
 else
-    results = trackbench.runScenario(config, configName, detections);
+    [results, ~] = trackbench.runScenario(config, string(config.run_id), detections);
 end
 
-%% Optional reporting/visualization
-showVis = true;
-animVis = true;
-
-if isfield(config.output, 'show_visuals')
-    showVis = config.output.show_visuals;
-end
-
-if isfield(config.output, 'animate_visuals')
-    animVis = config.output.animate_visuals;
-end
-
+showVis = getOr(config, 'output.show_visuals', true);
+animVis = getOr(config, 'output.animate_visuals', true);
 if showVis
     trackbench.reporting.plotInitialScenario(detections, animVis);
 end
 
-%% Save results if configured
-if config.output.save_results
+if getOr(config, 'output.save_results', true)
     if ~exist(paths.results_dir, "dir")
         mkdir(paths.results_dir);
     end
-
     timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-    scenarioName = strrep(configName, "/", "_");
-    resultsFile = fullfile(paths.results_dir, sprintf("results_%s_%s.mat", scenarioName, timestamp));
-
+    resultsFile = fullfile(paths.results_dir, sprintf("results_%s_%s.mat", config.run_id, timestamp));
     save(resultsFile, "results", "config", "-v7.3");
     fprintf("[INFO] Saved results to %s\n", resultsFile);
 end
@@ -77,33 +61,44 @@ fprintf("==============================\n\n");
 end
 
 function paths = buildPaths(root, config)
-    paths.root = root;
-    paths.data_log_file = fullfile(root, config.data_logging.datalog_file);
-    paths.results_dir = fullfile(root, config.output.results_directory);
+paths.root = root;
+paths.results_dir = fullfile(root, getOr(config, 'output.results_directory', 'outputs'));
+paths.data_log_file = fullfile(root, getOr(config, 'data_logging.datalog_file', 'cache/myRun1.mat'));
 end
 
 function detections = loadDetections(detectionsFile)
-    if ~isfile(detectionsFile)
-        detections = [];
-        return;
-    end
-
-    loaded = load(detectionsFile);
-    if isfield(loaded, "detections")
-        detections = loaded.detections;
-    elseif isfield(loaded, "dataLog")
-        detections = loaded.dataLog;
-    else
-        detections = [];
-    end
+if ~isfile(detectionsFile)
+    detections = [];
+    return;
+end
+loaded = load(detectionsFile);
+if isfield(loaded, "detections")
+    detections = loaded.detections;
+elseif isfield(loaded, "dataLog")
+    detections = loaded.dataLog;
+else
+    detections = [];
+end
 end
 
 function saveDetections(detectionsFile, detections)
-    detectionsDir = fileparts(detectionsFile);
-    if ~exist(detectionsDir, "dir")
-        mkdir(detectionsDir);
-    end
+d = fileparts(detectionsFile);
+if ~exist(d, "dir")
+    mkdir(d);
+end
+save(detectionsFile, "detections", "-v7.3");
+fprintf("[INFO] Saved detections to %s\n", detectionsFile);
+end
 
-    save(detectionsFile, "detections", "-v7.3");
-    fprintf("[INFO] Saved detections to %s\n", detectionsFile);
+function v = getOr(s, dotPath, fallback)
+parts = strsplit(dotPath, '.');
+cur = s;
+for i = 1:numel(parts)
+    if ~isstruct(cur) || ~isfield(cur, parts{i})
+        v = fallback;
+        return;
+    end
+    cur = cur.(parts{i});
+end
+v = cur;
 end

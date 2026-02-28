@@ -1,0 +1,7 @@
+{
+  "name": "heavy_rain",
+  "degradation_enabled": true,
+  "degradation_type": "heavy_rain",
+  "clutter_density": 0.7,
+  "description": "Heavy rain degradation profile"
+}

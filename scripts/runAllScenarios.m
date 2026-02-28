@@ -1,90 +1,58 @@
-% runAllScenarios  Batch entrypoint that routes all runs through runScenario.
-%
-% USAGE
-%   runAllScenarios
-%   runAllScenarios(true)
-%
-% CONFIGURE
-%   config/default.json -> scenarios_to_run
-%   config/default.json -> trackers_to_run
-%
-% MODE
-%   useMySensors=false: each scenario uses its catalog sensor config.
-%   useMySensors=true : every scenario forces sensors.json.
-%
-% See also: runSingleScenario, trackbench.runScenario
-
-function allResults = runAllScenarios(useMySensors)
-arguments
-    useMySensors (1,1) logical = false
-end
+function allResults = runAllScenarios()
+%runAllScenarios Run every scenario JSON in config/scenarios.
 
 clc; close all;
 ctx = setupTrackbench();
-baseConfig = trackbench.loader.loadConfig("default");
-[~, catalog] = trackbench.scenario.loadScenarioCatalog("scenario_catalog");
 
-scenToggle = baseConfig.scenarios_to_run;
-scenNames = fieldnames(scenToggle);
-enabledScenarios = {};
-for i = 1:numel(scenNames)
-    name = scenNames{i};
-    if startsWith(name, "_")
-        continue;
-    end
-    if islogical(scenToggle.(name)) && scenToggle.(name)
-        enabledScenarios{end+1} = name; %#ok<AGROW>
-    elseif isnumeric(scenToggle.(name)) && scenToggle.(name) == 1
-        enabledScenarios{end+1} = name; %#ok<AGROW>
-    end
+scenDir = trackbench.util.pathFromRoot("config", "scenarios");
+files = dir(fullfile(scenDir, '*.json'));
+
+names = {};
+for i = 1:numel(files)
+    nm = files(i).name;
+    [~, b] = fileparts(nm);
+    names{end+1} = b; %#ok<AGROW>
 end
 
-if isempty(enabledScenarios)
-    fprintf("[runAll] No scenarios enabled in default.json -> scenarios_to_run\n");
+if isempty(names)
+    fprintf('[runAll] No scenario files found in %s\n', scenDir);
     allResults = struct();
     return;
 end
 
 allResults = struct();
+for i = 1:numel(names)
+    cfgName = "scenarios/" + string(names{i});
+    fprintf('\n[%d/%d] %s\n', i, numel(names), cfgName);
 
-for s = 1:numel(enabledScenarios)
-    scenName = enabledScenarios{s};
-    fprintf("\n[%d/%d] Scenario: %s\n", s, numel(enabledScenarios), scenName);
+    plan = trackbench.loader.loadAndPrepare(cfgName);
+    for j = 1:numel(plan)
+        cfg = plan(j);
+        [results, detections] = trackbench.runScenario(cfg, string(cfg.run_id));
 
-    if useMySensors
-        [scenario, config, ~, metas] = trackbench.scenario.loadScenario(scenName, "scenario_catalog", "sensors");
-    else
-        [scenario, config, ~, metas] = trackbench.scenario.loadScenario(scenName);
+        outDir = fullfile(ctx.root, getOr(cfg, 'output.results_directory', 'outputs'));
+        if ~exist(outDir, 'dir'); mkdir(outDir); end
+        ts = char(datetime('now', 'Format', 'yyyyMMdd_HHmmss'));
+        outFile = fullfile(outDir, sprintf('results_%s_%s.mat', cfg.run_id, ts));
+        config = cfg; %#ok<NASGU>
+        save(outFile, 'results', 'config', 'detections', '-v7.3');
+        fprintf('[INFO] Saved %s\n', outFile);
+
+        key = matlab.lang.makeValidName(char(cfg.run_id));
+        allResults.(key) = results;
     end
-
-    envCfg = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
-                    'ground_clutter', true, 'terrain_type', 'rural', ...
-                    'clutter_density', 0.5);
-    if isfield(config, "environment")
-        envCfg = config.environment;
-    end
-
-    detections = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas, envCfg);
-    [results, ~] = trackbench.runScenario(config, scenName, detections);
-
-    if config.output.save_results
-        resultsDir = fullfile(ctx.root, config.output.results_directory);
-        if ~exist(resultsDir, "dir")
-            mkdir(resultsDir);
-        end
-        timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-        resultsFile = fullfile(resultsDir, sprintf("results_%s_%s.mat", scenName, timestamp));
-        save(resultsFile, "results", "config", "-v7.3");
-        fprintf("[INFO] Saved results to %s\n", resultsFile);
-    end
-
-    allResults.(scenName).results = results;
-    allResults.(scenName).config = config;
+end
 end
 
-catalogNames = fieldnames(catalog.scenarios);
-skipped = setdiff(catalogNames, enabledScenarios);
-if ~isempty(skipped)
-    fprintf("\n[runAll] Skipped %d disabled scenario(s).\n", numel(skipped));
+function v = getOr(s, dotPath, fallback)
+parts = strsplit(dotPath, '.');
+cur = s;
+for i = 1:numel(parts)
+    if ~isstruct(cur) || ~isfield(cur, parts{i})
+        v = fallback;
+        return;
+    end
+    cur = cur.(parts{i});
 end
+v = cur;
 end
