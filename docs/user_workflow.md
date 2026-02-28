@@ -41,7 +41,7 @@ config/
   "template": "standard_crossing",
   "overrides": {
     "weather": "heavy_rain",
-    "trackers": ["gnn_cv", "tomht_cv"]
+    "trackers.run.tomht_cv": true
   }
 }
 ```
@@ -67,7 +67,13 @@ This says:
       { "path": "data/truths/crossing_pair.csv" }
     ]
   },
-  "trackers": ["gnn_cv", "tomht_cv", "jpda_cv"]
+  "trackers": {
+    "run": {
+      "gnn_cv": true,
+      "tomht_cv": true,
+      "jpda_cv": true
+    }
+  }
 }
 ```
 
@@ -94,7 +100,7 @@ Once your scenario works, vary parameters:
   "sweep": {
     "mode": "single",
     "parameter": "weather",
-    "values": ["clear", "light_rain", "heavy_rain", "fog", "storm"]
+    "values": ["clear", "heavy_rain", "storm"]
   }
 }
 ```
@@ -105,7 +111,7 @@ Once your scenario works, vary parameters:
 ```
 
 **Output:**
-- Runs 5 simulations automatically
+- Runs 3 simulations automatically
 - Generates comparison plots
 - Creates summary report in `outputs/`
 
@@ -178,7 +184,7 @@ Define directly without referencing a file.
   "overrides": {
     "weather": "storm",
     "truth": {
-      "targets": [{ "path": "data/truths/my_paths.csv" }]
+      "targets": [{ "path": "data/truths/boeing_scenario.csv" }]
     }
   }
 }
@@ -202,7 +208,7 @@ Define directly without referencing a file.
 {
   "template": "standard_crossing",
   "overrides": {
-    "trackers": ["gnn_cv", "tomht_cv", "jpda_cv"]
+    "trackers.run.gnn_imm": true
   }
 }
 ```
@@ -216,7 +222,7 @@ Define directly without referencing a file.
   "sweep": {
     "mode": "single",
     "parameter": "weather",
-    "values": ["clear", "light_rain", "heavy_rain"]
+    "values": ["clear", "heavy_rain", "storm"]
   }
 }
 ```
@@ -242,7 +248,7 @@ Define directly without referencing a file.
     "mode": "grid",
     "parameters": {
       "weather": ["clear", "heavy_rain"],
-      "trackers.params.gate": [30, 35, 40, 45]
+      "trackers.params.ideal.gate": [30, 35, 40, 45]
     }
   }
 }
@@ -266,7 +272,7 @@ Test one parameter with multiple values:
 "sweep": {
   "mode": "single",
   "parameter": "weather",
-  "values": ["clear", "rain", "storm"]
+  "values": ["clear", "heavy_rain", "storm"]
 }
 ```
 
@@ -282,8 +288,8 @@ Test all combinations:
 "sweep": {
   "mode": "grid",
   "parameters": {
-    "weather": ["clear", "rain"],
-    "trackers.params.gate": [35, 40, 45]
+    "weather": ["clear", "storm"],
+    "trackers.params.ideal.gate": [35, 40, 45]
   }
 }
 ```
@@ -300,9 +306,9 @@ Hand-pick combinations:
 "sweep": {
   "mode": "list",
   "configs": [
-    { "weather": "clear", "trackers.params.gate": 35 },
-    { "weather": "rain", "trackers.params.gate": 45 },
-    { "weather": "storm", "trackers.params.gate": 50 }
+    { "weather": "clear", "trackers.params.ideal.gate": 35 },
+    { "weather": "heavy_rain", "trackers.params.degraded.gate": 45 },
+    { "weather": "storm", "trackers.params.degraded.gate": 50 }
   ]
 }
 ```
@@ -409,11 +415,11 @@ Or define inline:
 
 ---
 
-### "Sweep parameter does not exist: trackers.params.gate"
+### "Sweep parameter does not exist: trackers.params.ideal.gate"
 
 **Problem:** Trying to sweep a parameter that doesn't exist in the config
 
-**Fix:** Check the parameter path is correct. Run single scenario first to see what's available.
+**Fix:** Check the parameter path is correct (for example: `trackers.params.ideal.gate` or `trackers.params.degraded.gate`). Run single scenario first to see what's available.
 
 ---
 
@@ -454,7 +460,7 @@ Or define inline:
   "sweep": {
     "mode": "single",
     "parameter": "weather",
-    "values": ["clear", "rain"]
+    "values": ["clear", "storm"]
   }
 }
 ```
@@ -473,10 +479,16 @@ Or define inline:
   "weather": "clear",
   "truth": {
     "targets": [
-      { "path": "data/truths/aircraft_1.csv" }
+      { "path": "data/truths/crossing_pair.csv" }
     ]
   },
-  "trackers": ["gnn_cv", "tomht_cv"]
+  "trackers": {
+    "run": {
+      "gnn_cv": true,
+      "tomht_cv": true,
+      "jpda_cv": false
+    }
+  }
 }
 ```
 
