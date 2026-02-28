@@ -10,6 +10,7 @@ try
     assert(isfield(cfg, 'scenario'));
     assert(isfield(cfg, 'sensors'));
     assert(isfield(cfg, 'trackers'));
+    assert(cfg.scenario.duration_s == 30);
     fprintf('  [PASS] scenario ingest merged defaults/template\n'); pass = pass + 1;
 catch ME
     fprintf('  [FAIL] scenario ingest: %s\n', ME.message); fail = fail + 1;

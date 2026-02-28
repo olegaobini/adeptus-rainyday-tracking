@@ -45,23 +45,20 @@ if isfield(raw, 'template') && strlength(string(raw.template)) > 0
     end
     templateCfg = jsondecode(fileread(templatePath));
 
-    overrides = struct();
-    if isfield(raw, 'overrides') && isstruct(raw.overrides)
-        overrides = applyDotOverrides(struct(), raw.overrides);
-    end
-
     rawCopy = raw;
     if isfield(rawCopy, 'template'); rawCopy = rmfield(rawCopy, 'template'); end
     if isfield(rawCopy, 'overrides'); rawCopy = rmfield(rawCopy, 'overrides'); end
 
     config = trackbench.loader.mergeStructs(templateCfg, rawCopy);
-    config = trackbench.loader.mergeStructs(config, overrides);
+    if isfield(raw, 'overrides') && isstruct(raw.overrides)
+        config = applyDotOverrides(config, raw.overrides);
+    end
 else
     config = raw;
     if isfield(config, 'overrides') && isstruct(config.overrides)
-        o = applyDotOverrides(struct(), config.overrides);
+        overrideSrc = config.overrides;
         config = rmfield(config, 'overrides');
-        config = trackbench.loader.mergeStructs(config, o);
+        config = applyDotOverrides(config, overrideSrc);
     end
 end
 
@@ -79,7 +76,118 @@ function out = applyDotOverrides(base, overrides)
 out = base;
 keys = fieldnames(overrides);
 for i = 1:numel(keys)
-    out = trackbench.loader.setNestedField(out, string(keys{i}), overrides.(keys{i}));
+    rawKey = string(keys{i});
+    resolvedKey = resolveOverridePath(out, rawKey);
+    out = trackbench.loader.setNestedField(out, resolvedKey, overrides.(keys{i}));
+end
+end
+
+function key = resolveOverridePath(targetConfig, rawKey)
+key = rawKey;
+if contains(key, ".")
+    return;
+end
+
+if localParameterExists(targetConfig, key)
+    return;
+end
+
+resolved = resolveMangledPath(targetConfig, key);
+if resolved ~= ""
+    key = resolved;
+    return;
+end
+
+if contains(key, "_")
+    dottedFallback = replace(key, "_", ".");
+    if localParameterExists(targetConfig, dottedFallback)
+        key = dottedFallback;
+    else
+        key = dottedFallback;
+    end
+end
+end
+
+function exists = localParameterExists(config, dotPath)
+parts = strsplit(char(dotPath), '.');
+current = config;
+
+for i = 1:numel(parts)
+    [field, idx, hasIdx] = parsePart(parts{i});
+    if ~isstruct(current) || ~isfield(current, field)
+        exists = false;
+        return;
+    end
+    current = current.(field);
+    if hasIdx
+        if ~iscell(current) || idx < 1 || idx > numel(current)
+            exists = false;
+            return;
+        end
+        current = current{idx};
+    end
+end
+exists = true;
+end
+
+function [field, idx, hasIdx] = parsePart(part)
+expr = regexp(part, '^(\w+)\[(\d+)\]$', 'tokens', 'once');
+if isempty(expr)
+    field = part;
+    idx = 0;
+    hasIdx = false;
+else
+    field = expr{1};
+    idx = str2double(expr{2}) + 1;
+    hasIdx = true;
+end
+end
+
+function resolved = resolveMangledPath(config, rawKey)
+resolved = "";
+paths = collectDotPaths(config, "");
+for i = 1:numel(paths)
+    p = string(paths{i});
+    if replace(p, ".", "_") == rawKey
+        resolved = p;
+        return;
+    end
+end
+end
+
+function out = collectDotPaths(node, prefix)
+out = {};
+if ~isstruct(node)
+    return;
+end
+
+if numel(node) > 1
+    for k = 1:numel(node)
+        out = [out, collectDotPaths(node(k), prefix)]; %#ok<AGROW>
+    end
+    return;
+end
+
+fields = fieldnames(node);
+for i = 1:numel(fields)
+    f = fields{i};
+    if prefix == ""
+        cur = string(f);
+    else
+        cur = prefix + "." + string(f);
+    end
+    out{end+1} = char(cur); %#ok<AGROW>
+    v = node.(f);
+    if isstruct(v)
+        out = [out, collectDotPaths(v, cur)]; %#ok<AGROW>
+    elseif iscell(v)
+        for j = 1:numel(v)
+            if isstruct(v{j})
+                idxPrefix = sprintf('%s[%d]', cur, j-1);
+                out = [out, collectDotPaths(v{j}, string(idxPrefix))]; %#ok<AGROW>
+            end
+        end
+    end
 end
 end
 

@@ -50,7 +50,7 @@ switch mode
     case 'grid'
         params = fieldnames(sweep.parameters);
         for i = 1:numel(params)
-            p = string(params{i});
+            p = resolveSweepParamPath(config, string(params{i}));
             if ~parameterExists(config, p)
                 error('validateSweepParameters:notFound', 'Sweep parameter not found: %s', p);
             end
@@ -60,7 +60,7 @@ switch mode
     case 'monte_carlo'
         params = fieldnames(sweep.parameters);
         for i = 1:numel(params)
-            p = string(params{i});
+            p = resolveSweepParamPath(config, string(params{i}));
             if ~parameterExists(config, p)
                 error('validateSweepParameters:notFound', 'Sweep parameter not found: %s', p);
             end
@@ -115,10 +115,12 @@ end
 end
 
 function runPlan = expandGrid(baseConfig, sweep, sweepName)
-params = fieldnames(sweep.parameters);
+rawParams = fieldnames(sweep.parameters);
+params = cell(size(rawParams));
 valueSets = cell(1, numel(params));
 for i = 1:numel(params)
-    valueSets{i} = asCell(sweep.parameters.(params{i}));
+    params{i} = char(resolveSweepParamPath(baseConfig, string(rawParams{i})));
+    valueSets{i} = asCell(sweep.parameters.(rawParams{i}));
 end
 
 indices = makeIndexCombos(cellfun(@numel, valueSets));
@@ -179,7 +181,11 @@ if isfield(sweep, 'seed')
 end
 rng(seed);
 
-params = fieldnames(sweep.parameters);
+rawParams = fieldnames(sweep.parameters);
+params = cell(size(rawParams));
+for i = 1:numel(rawParams)
+    params{i} = char(resolveSweepParamPath(baseConfig, string(rawParams{i})));
+end
 runPlan = struct([]);
 
 for i = 1:numSamples
@@ -187,10 +193,10 @@ for i = 1:numSamples
     sampled = struct();
     for j = 1:numel(params)
         p = params{j};
-        spec = sweep.parameters.(p);
+        spec = sweep.parameters.(rawParams{j});
         val = sampleValue(spec);
         cfg = trackbench.loader.setNestedField(cfg, string(p), val);
-        sampled.(p) = val;
+        sampled = trackbench.loader.setNestedField(sampled, string(p), val);
     end
     cfg = trackbench.loader.resolveComponentRefs(cfg);
     cfg = trackbench.loader.normalizeConfig(cfg);
@@ -267,4 +273,78 @@ if isstruct(spec)
     end
 end
 error('expandMonteCarlo:badParam', 'Unsupported monte_carlo parameter specification.');
+end
+
+function key = resolveSweepParamPath(config, rawKey)
+key = rawKey;
+if contains(key, ".") || contains(key, "[")
+    return;
+end
+
+if parameterExists(config, key)
+    return;
+end
+
+resolved = resolveMangledPath(config, key);
+if resolved ~= ""
+    key = resolved;
+    return;
+end
+
+if contains(key, "_")
+    dotted = replace(key, "_", ".");
+    if parameterExists(config, dotted)
+        key = dotted;
+        return;
+    end
+    key = dotted;
+end
+end
+
+function resolved = resolveMangledPath(config, rawKey)
+resolved = "";
+paths = collectDotPaths(config, "");
+for i = 1:numel(paths)
+    p = string(paths{i});
+    if replace(p, ".", "_") == rawKey
+        resolved = p;
+        return;
+    end
+end
+end
+
+function out = collectDotPaths(node, prefix)
+out = {};
+if ~isstruct(node)
+    return;
+end
+
+if numel(node) > 1
+    for k = 1:numel(node)
+        out = [out, collectDotPaths(node(k), prefix)]; %#ok<AGROW>
+    end
+    return;
+end
+
+fields = fieldnames(node);
+for i = 1:numel(fields)
+    f = fields{i};
+    if prefix == ""
+        cur = string(f);
+    else
+        cur = prefix + "." + string(f);
+    end
+    out{end+1} = char(cur); %#ok<AGROW>
+    v = node.(f);
+    if isstruct(v)
+        out = [out, collectDotPaths(v, cur)]; %#ok<AGROW>
+    elseif iscell(v)
+        for j = 1:numel(v)
+            if isstruct(v{j})
+                idxPrefix = sprintf('%s[%d]', cur, j-1);
+                out = [out, collectDotPaths(v{j}, string(idxPrefix))]; %#ok<AGROW>
+            end
+        end
+    end
+end
 end

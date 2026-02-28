@@ -27,5 +27,31 @@ catch ME
     fprintf('  [FAIL] sweep expansion: %s\n', ME.message); fail = fail + 1;
 end
 
+try
+    tmpSweepPath = fullfile(repoRoot, 'config', 'sweeps', 'tmp_grid_key_test.json');
+    fid = fopen(tmpSweepPath, 'w');
+    fprintf(fid, ['{', ...
+        '"sweep_name":"tmp_grid",', ...
+        '"base_scenario":"scenarios/my_test",', ...
+        '"sweep":{"mode":"grid","parameters":{"trackers.params.ideal.gate":[35,45]}}', ...
+        '}']);
+    fclose(fid);
+
+    cfg = trackbench.loader.ingestConfig("sweeps/tmp_grid_key_test");
+    trackbench.loader.validateConfig(cfg);
+    cfg = trackbench.loader.normalizeConfig(cfg);
+    plan = trackbench.loader.expandRunPlan(cfg);
+    assert(numel(plan) == 2);
+    assert(plan(1).trackers.params.ideal.gate == 35);
+    assert(plan(2).trackers.params.ideal.gate == 45);
+    fprintf('  [PASS] dotted grid keys survive jsondecode mangling\n'); pass = pass + 1;
+catch ME
+    fprintf('  [FAIL] dotted grid keys: %s\n', ME.message); fail = fail + 1;
+end
+
+if exist('tmpSweepPath', 'var') && isfile(tmpSweepPath)
+    delete(tmpSweepPath);
+end
+
 fprintf('RESULT: %d passed, %d failed\n', pass, fail);
 if fail > 0, error('testLoaderExpand failed'); end
