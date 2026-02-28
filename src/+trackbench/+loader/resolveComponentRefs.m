@@ -16,7 +16,7 @@ if isstruct(config)
 
         if isstruct(val)
             if isfield(val, 'ref')
-                compPath = trackbench.loader.findComponent(key, string(val.ref));
+                compPath = findComponent(key, string(val.ref));
                 if compPath == ""
                     error('resolveComponentRefs:notFound', ...
                         'Component not found for field "%s", ref "%s".', key, string(val.ref));
@@ -36,7 +36,7 @@ if isstruct(config)
                 if isstruct(v)
                     val{j} = trackbench.loader.resolveComponentRefs(v);
                 elseif ischar(v) || isstring(v)
-                    compPath = trackbench.loader.findComponent(key, string(v));
+                    compPath = findComponent(key, string(v));
                     if compPath ~= ""
                         val{j} = jsondecode(fileread(compPath));
                     end
@@ -44,12 +44,44 @@ if isstruct(config)
             end
             config.(key) = val;
         elseif ischar(val) || isstring(val)
-            compPath = trackbench.loader.findComponent(key, string(val));
+            compPath = findComponent(key, string(val));
             if compPath ~= ""
                 config.(key) = jsondecode(fileread(compPath));
             end
         end
     end
+end
+end
+
+function pathOut = findComponent(fieldName, componentName)
+pathOut = "";
+if ~(ischar(componentName) || isstring(componentName))
+    return;
+end
+
+name = string(componentName);
+if name == ""
+    return;
+end
+if endsWith(name, ".json")
+    name = erase(name, ".json");
+end
+
+folderMap = struct( ...
+    'sensors', 'sensors', ...
+    'weather', 'weather', ...
+    'paths', 'paths', ...
+    'trackers', 'trackers');
+
+f = matlab.lang.makeValidName(char(fieldName));
+if ~isfield(folderMap, f)
+    return;
+end
+
+folder = string(folderMap.(f));
+candidate = trackbench.util.pathFromRoot("config", "components", folder, name + ".json");
+if isfile(candidate)
+    pathOut = string(candidate);
 end
 end
 

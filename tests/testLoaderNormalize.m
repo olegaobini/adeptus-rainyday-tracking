@@ -18,8 +18,10 @@ catch ME
 end
 
 try
-    c2 = struct('truth', struct('targets', {{struct('path', 'data/truths/crossing_pair.csv')}}));
-    c2 = trackbench.loader.resolveRelativePaths(c2);
+    c2 = struct();
+    c2.scenario = struct('frame', 'NED', 'duration_s', 1);
+    c2.truth = struct('targets', {{struct('path', 'data/truths/crossing_pair.csv')}});
+    c2 = trackbench.loader.normalizeConfig(c2);
     p = string(c2.truth.targets{1}.path);
     assert(startsWith(p, '/'));
     fprintf('  [PASS] relative paths converted to absolute\n'); pass = pass + 1;
