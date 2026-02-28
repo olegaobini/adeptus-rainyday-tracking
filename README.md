@@ -84,7 +84,7 @@ adeptus-rainyday-tracking/
 │       └── weather_study.json         ← Batch sweep definition
 │
 ├── src/+trackbench/
-│   ├── +config/
+│   ├── +loader/
 │   │   └── loadConfig.m             ← JSON config loader with overrides
 │   ├── +detections/
 │   │   └── runDetections.m          ← Detection generator (PSR+MSSR+terrain+VCP)
@@ -433,7 +433,7 @@ Boeing Proprietary.
 - Post-detection scan count check in `runSingleScenario` catalog path.
 
 **Main-Branch Compatibility Shims**
-- `+loader/loadConfig.m` — forwards to `+config/loadConfig.m`
+- `+loader/loadConfig.m` — canonical JSON config loader
 - `+detections/createDetections.m` — forwards to `runDetections.m` with defaults
 - `runScenario.m` (package root) — matches main's `[results, detections]` signature
 - `+results/ResultsSchema.m` — standard results struct factory

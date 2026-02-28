@@ -21,7 +21,7 @@ end
 
 clc; close all;
 ctx = setupTrackbench();
-baseConfig = trackbench.config.loadConfig("default");
+baseConfig = trackbench.loader.loadConfig("default");
 [~, catalog] = trackbench.scenario.loadScenarioCatalog("scenario_catalog");
 
 scenToggle = baseConfig.scenarios_to_run;

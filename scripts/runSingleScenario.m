@@ -17,7 +17,7 @@ clc; close all;
 ctx = setupTrackbench();
 
 %% Load Configuration
-config = trackbench.config.loadConfig(configName);
+config = trackbench.loader.loadConfig(configName);
 
 %% Resolve IO paths now that config is available
 paths = buildPaths(ctx.root, config);

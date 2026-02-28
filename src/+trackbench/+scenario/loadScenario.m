@@ -43,7 +43,7 @@ arguments
 end
 
 %% 1. Load base config
-config = trackbench.config.loadConfig("default");
+config = trackbench.loader.loadConfig("default");
 
 %% 2. Load scenario catalog
 if ~endsWith(catalogName, ".json")
