@@ -1,13 +1,15 @@
 {
-  "_description": "Storm window — degradation ON, tuned tracker params for clutter",
-  "degradation": {
-    "enabled": true,
-    "type": "rain"
-  },
-  "scenario": {
-    "duration_s": 50
-  },
-  "data_logging": {
-    "use_saved_datalog": false
+  "template": "standard_crossing",
+  "overrides": {
+    "scenario.duration_s": 35,
+    "degradation.enabled": true,
+    "degradation.type": "heavy_rain",
+    "weather.ref": "storm",
+    "environment.clutter_density": 0.8,
+    "trackers.params.degraded.gate": 100,
+    "trackers.params.degraded.confirm_threshold": 12,
+    "trackers.params.degraded.delete_threshold": -5,
+    "trackers.global.detection_probability.degraded": 0.5,
+    "data_logging.datalog_file": "cache/storm_window.mat"
   }
 }

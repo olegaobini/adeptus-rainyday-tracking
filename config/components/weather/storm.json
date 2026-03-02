@@ -1,0 +1,7 @@
+{
+  "name": "storm",
+  "degradation_enabled": true,
+  "degradation_type": "storm",
+  "clutter_density": 0.85,
+  "description": "Storm degradation profile"
+}

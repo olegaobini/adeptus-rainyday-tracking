@@ -1,26 +1,37 @@
 {
-  "name": "standard_crossing",
-  "description": "Reusable crossing-target template",
-  "sensor_component": "sensors_dasr",
-  "defaults": {
-    "scenario.duration_s": 60,
-    "scenario.num_targets": 2,
-    "degradation.enabled": false
+  "description": "Reusable crossing target template",
+  "scenario": {
+    "mode": "3D",
+    "frame": "NED",
+    "num_targets": 2,
+    "duration_s": 45
   },
-  "targets": [
-    {
-      "behavior": "crossing",
-      "speed_kmh": 800,
-      "start_pos": [-5000, -20000, -3000],
-      "end_pos": [5000, -20000, -3000],
-      "altitude_m": 3000
-    },
-    {
-      "behavior": "crossing",
-      "speed_kmh": 800,
-      "start_pos": [0, -25000, -3200],
-      "end_pos": [0, -15000, -3200],
-      "altitude_m": 3200
+  "sensors": {
+    "ref": "sensors_dasr"
+  },
+  "truth": {
+    "targets": [
+      {
+        "name": "crossing_pair",
+        "path": "data/truths/crossing_pair.csv"
+      }
+    ]
+  },
+  "weather": {
+    "ref": "clear"
+  },
+  "degradation": {
+    "enabled": false,
+    "type": "rain"
+  },
+  "trackers": {
+    "run": {
+      "gnn_cv": true,
+      "gnn_imm": true,
+      "tomht_cv": false,
+      "tomht_imm": false,
+      "jpda_cv": false,
+      "jpda_imm": false
     }
-  ]
+  }
 }
