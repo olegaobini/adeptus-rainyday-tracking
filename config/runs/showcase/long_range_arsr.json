@@ -1,0 +1,28 @@
+{
+  "description": "Long range surveillance — ARSR at 250nm with slow scan",
+  "sensors": [
+    "ARSR/default_ARSR"
+  ],
+  "targets": "long_range_arsr/default_long_range_arsr",
+  "terrain": "rural/default_rural",
+  "trackers": [
+      "GNN/default_GNN",
+      "JPDA/default_JPDA"
+    ],
+  "degradation": {
+    "enabled": false,
+    "type": "rain"
+  },
+  "platforms": {},
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
+}

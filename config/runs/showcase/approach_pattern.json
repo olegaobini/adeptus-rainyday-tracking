@@ -1,0 +1,29 @@
+{
+  "description": "Two aircraft on landing approach — tests PAR-type close tracking",
+  "sensors": [
+    "PSR/default_PSR",
+    "SSR/default_SSR"
+  ],
+  "targets": "approach_pattern/default_approach_pattern",
+  "terrain": "rural/default_rural",
+  "trackers": [
+      "GNN/default_GNN",
+      "JPDA/default_JPDA"
+    ],
+  "degradation": {
+    "enabled": false,
+    "type": "rain"
+  },
+  "platforms": {},
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
+}

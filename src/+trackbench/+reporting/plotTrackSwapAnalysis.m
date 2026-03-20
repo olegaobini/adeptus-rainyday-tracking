@@ -85,15 +85,24 @@ if ~swapReport.swapFree && nPanels > 1
     hasSep = ~isnan(swaps.SeparationAtSwap_m);
 
     if any(hasSep)
-        bar(ax2, swaps.Time(hasSep), swaps.SeparationAtSwap_m(hasSep), ...
-            'FaceColor', [0.8 0.2 0.2], 'EdgeColor', 'w', 'BarWidth', 0.6);
+        % Use stem instead of bar — bar crashes on duplicate X values
+        % when multiple swaps occur at the same scan time.
+        stem(ax2, swaps.Time(hasSep), swaps.SeparationAtSwap_m(hasSep), ...
+            'Color', [0.8 0.2 0.2], 'LineWidth', 2, ...
+            'MarkerSize', 8, 'MarkerFaceColor', [0.8 0.2 0.2]);
 
-        % Add text labels
+        % Add text labels — offset by percentage of axis range so they
+        % don't crowd the title at small separation values
+        maxSep = max(swaps.SeparationAtSwap_m(hasSep));
+        labelOffset = max(maxSep * 0.08, 80);  % at least 80m, scales with data
         for k = find(hasSep)'
-            text(ax2, swaps.Time(k), swaps.SeparationAtSwap_m(k) + 50, ...
+            text(ax2, swaps.Time(k), swaps.SeparationAtSwap_m(k) + labelOffset, ...
                 sprintf('%.0f m', swaps.SeparationAtSwap_m(k)), ...
                 'Color', 'w', 'FontSize', 9, 'HorizontalAlignment', 'center');
         end
+
+        % Expand Y-axis to give headroom above the tallest label
+        ylim(ax2, [0, maxSep + labelOffset * 3]);
     else
         text(ax2, 0.5, 0.5, 'Separation data not available', ...
             'Units', 'normalized', 'Color', [0.5 0.5 0.5], ...
@@ -102,8 +111,21 @@ if ~swapReport.swapFree && nPanels > 1
 end
 
 %% Add scorecard annotation
+% Shrink subplots to make room for the status bar at the bottom.
+% This prevents the annotation from covering the x-axis label.
+allAxes = findobj(fig, 'Type', 'axes');
+for a = 1:numel(allAxes)
+    pos = allAxes(a).Position;
+    % Shift up by 0.06 and shrink height by 0.04 to create footer space
+    if pos(2) < 0.15  % only adjust the bottom subplot
+        allAxes(a).Position = [pos(1), pos(2)+0.08, pos(3), pos(4)-0.04];
+    else
+        allAxes(a).Position = [pos(1), pos(2)+0.04, pos(3), pos(4)-0.02];
+    end
+end
+
 scorecardStr = buildScorecard(swapReport);
-annotation(fig, 'textbox', [0.01, 0.01, 0.98, 0.06], ...
+annotation(fig, 'textbox', [0.01, 0.005, 0.98, 0.055], ...
     'String', scorecardStr, ...
     'Color', 'w', 'BackgroundColor', [0.15 0.15 0.15], ...
     'EdgeColor', [0.3 0.3 0.3], ...

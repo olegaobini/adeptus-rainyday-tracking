@@ -1,0 +1,22 @@
+{
+  "name": "Track-While-Scan Phased Array",
+  "type": "TWS",
+  "platform": "tower",
+  "params": {
+    "sector": [
+      -60,
+      60
+    ],
+    "rangeLimits": [
+      0,
+      200000
+    ],
+    "pd": 0.9,
+    "far": 1E-6,
+    "mountingLoc": [
+      0,
+      0,
+      -20
+    ]
+  }
+}

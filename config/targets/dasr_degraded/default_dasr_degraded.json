@@ -1,0 +1,26 @@
+{
+  "description": "DASR in rain — degraded Pd, tuned tracker params, PSR+SSR",
+  "duration_s": 50,
+  "targets": [
+    {
+      "behavior": "gentle_turn",
+      "speed_kmh": 900,
+      "start_pos": [
+        -2000,
+        -20000,
+        -3000
+      ],
+      "altitude_m": 3000
+    },
+    {
+      "behavior": "gentle_turn",
+      "speed_kmh": 700,
+      "start_pos": [
+        2000,
+        -19000,
+        -3500
+      ],
+      "altitude_m": 3500
+    }
+  ]
+}

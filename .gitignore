@@ -4,11 +4,9 @@
 *.mlappinstall
 slprj/
 
-# Runtime outputs — don't commit large binary files
+# Runtime outputs — don't commit
 cache/
 results/
-*.mat
-*.fig
 
 # OS junk
 .DS_Store

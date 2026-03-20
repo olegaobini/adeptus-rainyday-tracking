@@ -1,5 +1,5 @@
 {
-  "_description": "Full layered defense: PSR + SSR + IRST + AESA + Fire Control — everything on one site",
+  "_description": "Full layered defense: PSR + IRST + Fire Control + TWS — SSR disabled to allow genuine tracker challenge",
   "sensors": [
     {
       "name": "Primary Search Radar",
@@ -13,9 +13,9 @@
       }
     },
     {
-      "name": "Secondary Surveillance Radar",
+      "name": "Secondary Surveillance Radar (DISABLED — perfect IFF masks tracker differences)",
       "type": "SSR",
-      "enabled": true,
+      "enabled": false,
       "platform": "tower",
       "params": {
         "rpm": 12.5,

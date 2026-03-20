@@ -1,0 +1,40 @@
+{
+  "description": "AESA + FLIR airborne — fighter tracking bogey, sensor fusion at range",
+  "sensors": [
+    "AESA/default_AESA",
+    "FLIR/default_FLIR"
+  ],
+  "targets": "fighter_intercept/default_fighter_intercept",
+  "terrain": "rural/default_rural",
+  "trackers": [
+      "GNN/default_GNN",
+      "JPDA/default_JPDA"
+    ],
+  "degradation": {
+    "enabled": false,
+    "type": "rain"
+  },
+  "platforms": {
+    "aircraft": {
+      "start_pos": [
+        0,
+        0,
+        -10000
+      ],
+      "heading_deg": 180,
+      "speed_kmh": 900,
+      "x_note": "Fighter at 10km alt, flying south"
+    }
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
+}

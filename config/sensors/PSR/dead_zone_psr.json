@@ -1,0 +1,15 @@
+{
+  "name": "PSR 1 - Start (Dead Zone Video)",
+  "type": "PSR",
+  "platform": "tower",
+  "params": {
+    "rpm": 12,
+    "fov": [1.4, 30],
+    "tilt": 2,
+    "pd": 0.9,
+    "far": 1e-6,
+    "rangeLimits": [0, 18520],
+    "rangeRes": 93,
+    "mountingLoc": [0, -25000, -15]
+  }
+}

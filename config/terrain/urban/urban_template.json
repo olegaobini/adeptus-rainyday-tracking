@@ -1,0 +1,25 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename, edit.",
+    "Reference in a run file as: terrain/urban/my_urban"
+  ],
+  "PARAM_DOCS": {
+    "terrain_type": "water|rural|urban|mountain|desert — drives heightmap generation.",
+    "terrain_scale": "Elevation multiplier. 2.0=double height, 0.5=half.",
+    "terrain_occlusion": "true/false — LOS blocked by terrain surface.",
+    "horizon_masking": "true/false — Earth curvature hides low targets.",
+    "ground_clutter": "true/false — terrain-dependent false radar returns.",
+    "propagation_model": "true/false — multipath lobing via radarvcd. Slow but realistic.",
+    "clutter_density": "0-1. 0=none, 1=heavy.",
+    "refraction_factor": "4/3 Earth model. 1.0=optical, >1.33=ducting."
+  },
+  "description": "City terrain, building clusters 150m, moderate clutter.",
+  "terrain_type": "urban",
+  "terrain_scale": 1.0,
+  "terrain_occlusion": true,
+  "horizon_masking": true,
+  "ground_clutter": true,
+  "propagation_model": false,
+  "clutter_density": 0.6,
+  "refraction_factor": 1.333
+}

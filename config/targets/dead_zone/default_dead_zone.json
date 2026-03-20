@@ -1,0 +1,54 @@
+{
+  "description": "Dead zone demo v2: 6 targets crossing between two PSR zones through a dead zone. 3 fly west-to-east, 3 fly east-to-west. SSR at west site bridges the gap.",
+  "duration_s": 300,
+  "targets": [
+    {
+      "behavior": "crossing",
+      "speed_kmh": 850,
+      "start_pos": [-85000, -28000, -5000],
+      "end_pos": [85000, -28000, -5000],
+      "altitude_m": 5000,
+      "_note": "T1: west→east, 5000m — swap pair with T4"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 900,
+      "start_pos": [-82000, -33000, -6000],
+      "end_pos": [82000, -33000, -6000],
+      "altitude_m": 6000,
+      "_note": "T2: west→east, 6000m — swap pair with T5"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 830,
+      "start_pos": [-88000, -30000, -5500],
+      "end_pos": [88000, -30000, -5500],
+      "altitude_m": 5500,
+      "_note": "T3: west→east, 5500m — swap pair with T6"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 850,
+      "start_pos": [85000, -28000, -5000],
+      "end_pos": [-85000, -28000, -5000],
+      "altitude_m": 5000,
+      "_note": "T4: east→west, 5000m — swap pair with T1 (SAME altitude, head-on)"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 900,
+      "start_pos": [82000, -33000, -6000],
+      "end_pos": [-82000, -33000, -6000],
+      "altitude_m": 6000,
+      "_note": "T5: east→west, 6000m — swap pair with T2 (SAME altitude, head-on)"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 830,
+      "start_pos": [88000, -30000, -5500],
+      "end_pos": [-88000, -30000, -5500],
+      "altitude_m": 5500,
+      "_note": "T6: east→west, 5500m — swap pair with T3 (SAME altitude, head-on)"
+    }
+  ]
+}

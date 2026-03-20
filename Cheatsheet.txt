@@ -1,152 +1,120 @@
 %% ============================================================
 %%  RAINY DAY TRACKING — CHEATSHEET
-%%  v2.4.1 | February 24, 2026
+%%  v3.0 | March 19, 2026
 %% ============================================================
 
 %% ---- SETUP (run once per MATLAB session) --------------------
-cd('%%yourPath%%')
+cd('C:\Users\Admin\Documents\RAINY DAY GIT COPY\AfterDemoCopyCleanedForGit\adeptus-rainyday-tracking')
 addpath("scripts");
+
+%% ---- FIRST TIME ONLY (creates config folder structure) ------
+buildModularConfig
 
 %% ============================================================
 %%  RUNNING SCENARIOS
 %% ============================================================
 
-% --- Single scenario, YOUR sensors (sensors.json + default.json) ---
-runSingleScenario("default")
+% --- Your custom run file ---
+runSingleScenario("my_run")
 
-% --- Single catalog scenario (uses that scenario's dedicated sensors) ---
-runSingleScenario("crossing_targets")
-runSingleScenario("fighter_intercept")
-runSingleScenario("dasr_ideal")
-
-% --- Batch SHOWCASE — each scenario uses its own dedicated sensors ---
-runAllScenarios
-
-% --- Batch MY SENSORS — forces YOUR sensors.json on every scenario ---
-runAllScenarios(true)
-
-%% ============================================================
-%%  ALL 21 SCENARIOS
-%% ============================================================
-
-% Airport / ATC (PSR + SSR)
-runSingleScenario("dasr_ideal")              % Baseline clear weather
-runSingleScenario("dasr_degraded")           % Rain degradation
-runSingleScenario("crossing_targets")        % Two targets crossing paths
-runSingleScenario("head_on")                 % Two targets converging
-runSingleScenario("high_density")            % 5 targets, mixed behaviors
-runSingleScenario("maneuvering_evasive")     % S-maneuver, IMM vs CV
-runSingleScenario("storm_window")            % Max degradation, heavy rain
-runSingleScenario("approach_pattern")        % Two aircraft on approach
-
-% Specialized radar
-runSingleScenario("long_range_arsr")         % ARSR 250nm en-route
-runSingleScenario("par_approach")            % Precision approach (PSR+SSR+PAR)
-runSingleScenario("phased_array_intercept")  % TWS + AESA fusion
-runSingleScenario("fire_control_engagement") % Search-to-track handoff
-
-% Infrared fusion
-runSingleScenario("ir_radar_fusion")         % PSR + IRST + staring IR
-runSingleScenario("ir_degraded_weather")     % Same in rain
-
-% Maritime / sonar
-runSingleScenario("maritime_surface")        % Ship radar + sonar
-
-% Airborne fighter
-runSingleScenario("fighter_intercept")       % AESA + FLIR on aircraft
-
-% Multi-sensor layered defense
-runSingleScenario("layered_defense")         % 5-sensor fusion, 4 targets
-runSingleScenario("layered_defense_storm")   % Same in heavy rain
-
-% Original wedge radar (main branch baseline)
-runSingleScenario("default_wedge_ideal")     % 40° sector radar, clear
-runSingleScenario("default_wedge_degraded")  % 40° sector radar, rain
-
-% User-configured (reads sensors.json)
-runSingleScenario("default")
+% --- Showcase (catalog scenarios converted to modular) ---
+runSingleScenario("showcase/dasr_ideal")
+runSingleScenario("showcase/crossing_targets")
+runSingleScenario("showcase/fighter_intercept")
 
 %% ============================================================
 %%  CONFIG FILES — WHAT TO EDIT
 %% ============================================================
 
-% Toggle sensors on/off:
-%   config/sensors/sensors.json  →  "enabled": true/false
+% Each run file in config/runs/ references 4 components:
+%
+%   "sensors"  → config/sensors/<TYPE>/<file>.json
+%   "targets"  → config/targets/<PATTERN>/<file>.json
+%   "terrain"  → config/terrain/<TYPE>/<file>.json
+%   "trackers" → config/trackers/<TYPE>/<file>.json
+%
+% Each folder has 3 files:
+%   default_<n>.json  — premade, works out of box
+%   <n>_template.json — documented, explains each param
+%   my_<n>.json       — your copy to customize
 
-% Toggle scenarios for batch:
-%   config/default.json  →  "scenarios_to_run": { "crossing_targets": true, ... }
+%% ---- SENSORS ------------------------------------------------
+% Edit individual sensor params:
+%   config/sensors/PSR/my_PSR.json      → rpm, range, Pd, tilt, mounting
+%   config/sensors/SSR/my_SSR.json      → Pd, range, refRCS
+%   config/sensors/AESA/my_AESA.json    → sector, range (needs aircraft platform)
+%   config/sensors/PAR/my_PAR.json      → sector pointing at runway
 
-% Toggle trackers:
-%   config/default.json  →  "trackers_to_run": { "gnn_cv": true, "jpda_imm": true, ... }
+%% ---- TARGETS ------------------------------------------------
+% Edit target behaviors:
+%   config/targets/crossing_pair/my_crossing_pair.json  → two targets crossing
+%   config/targets/s_maneuver/my_s_maneuver.json        → evasive S-turn
+%   config/targets/orbit/my_orbit.json                  → holding pattern
+%   config/targets/high_density/my_high_density.json    → 5 mixed targets
 
-% Toggle environment effects:
-%   config/default.json  →  "environment":
-%       "terrain_occlusion": false
-%       "horizon_masking":   false
-%       "ground_clutter":    false
-%       "propagation_model": false
-%       "terrain_type":      "water" | "rural" | "urban" | "mountain" | "desert"
-%       "clutter_density":   0.5
+%% ---- TERRAIN ------------------------------------------------
+% Edit environment effects:
+%   config/terrain/mountain/my_mountain.json  → occlusion, clutter, masking
+%   config/terrain/water/default_water.json   → all effects OFF
 
-% Toggle visuals/output:
-%   config/default.json  →  "output":
-%       "show_visuals":      true/false
-%       "animate_visuals":   true/false
-%       "save_figures":      true/false     (saves .fig to results/figures_<timestamp>/)
-%       "save_results":      true/false     (saves .mat to results/)
-%       "print_diagnostics": true/false
+%% ---- TRACKERS -----------------------------------------------
+% Edit algorithm tuning:
+%   config/trackers/GNN/my_GNN.json     → gate, thresholds, volume, beta
+%   config/trackers/JPDA/my_JPDA.json   → gate_jpda, beta_jpda
+%   config/trackers/TOMHT/my_TOMHT.json → max_branches, thresholds
 
-% IDEAL vs RAINY:
-%   config/default.json  →  "degradation": { "enabled": true }
+% Shared tracker params (Pd, filter init):
+%   config/trackers/tracker_globals.json
 
-% Duration:
-%   config/default.json  →  "scenario": { "duration_s": 50 }
+%% ---- DEGRADATION (WEATHER) ----------------------------------
+% In the run file:
+%   "degradation": { "enabled": true, "type": "rain" }
+
+%% ---- DETECTION CACHING (fast tracker tuning) ----------------
+% In the run file:
+%   "cache": { "use_cached_detections": true, "save_detections": true }
+% First run: generates detections + saves to cache/<runName>.mat
+% Later runs with caching ON: skips detection gen, goes straight to tracker
+
+%% ---- OUTPUT -------------------------------------------------
+% In the run file:
+%   "output": {
+%       "show_visuals": true,
+%       "animate_visuals": true,
+%       "save_results": true,
+%       "print_diagnostics": true,
+%       "results_directory": "results"
+%   }
+
+%% ============================================================
+%%  BUILDING A NEW EXPERIMENT
+%% ============================================================
+
+% 1. Copy config/runs/run_template.json → config/runs/my_experiment.json
+% 2. Fill in sensor, target, terrain, tracker references
+% 3. Run:
+runSingleScenario("my_experiment")
 
 %% ============================================================
 %%  LOADING SAVED RESULTS
 %% ============================================================
 
-% Load batch results
-load('results/results_batch_20260224_030000.mat');   % change timestamp
+% Load results
+load('results/results_my_run_20260315_120000.mat');   % change timestamp
 
-% Browse what's inside
-fieldnames(allResults)
-fieldnames(allResults.crossing_targets.trackers)
-
-% Get metrics for a specific scenario + tracker
-allResults.crossing_targets.trackers.gnn_imm.trackMetrics
-allResults.crossing_targets.trackers.gnn_imm.truthMetrics
-allResults.crossing_targets.trackers.gnn_imm.swapReport
-
-% Re-plot the 3D scene from saved data (static)
-trackbench.reporting.plotInitialScenario(allResults.crossing_targets.dataLog, false);
-
-% Re-plot the 3D scene (animated)
-trackbench.reporting.plotInitialScenario(allResults.crossing_targets.dataLog, true);
-
-%% ============================================================
-%%  LOADING SAVED FIGURES
-%% ============================================================
-
-% Open a saved .fig (fully interactive — rotate, zoom, edit)
-openfig('results/figures_20260224_030000/crossing_targets_scenario.fig');
-openfig('results/figures_20260224_030000/crossing_targets_GNN_IMM_fig1.fig');
-
-% List all saved figures in a folder
-dir('results/figures_*//*.fig')
+% Browse
+fieldnames(results)
+results.gnn_imm.trackMetrics
+results.gnn_imm.truthMetrics
+results.gnn_imm.swapReport
 
 %% ============================================================
 %%  LOADING CACHED DETECTIONS
 %% ============================================================
 
-% Load cached detections (skip regenerating)
-%   config/default.json  →  "data_logging":
-%       "use_saved_datalog": true
-%       "datalog_file": "cache/myRun.mat"
-
-% Or load manually
-load('cache/myRun.mat');   % gives you dataLog
-fieldnames(dataLog)        % Time, Detections, Truth, SensorCoverage, TerrainGrid, ...
+% Load manually
+load('cache/my_run.mat');
+fieldnames(detections)   % Time, Detections, Truth, SensorCoverage, TerrainGrid, ...
 
 %% ============================================================
 %%  MANUAL PIPELINE (full control, no scripts)
@@ -154,8 +122,8 @@ fieldnames(dataLog)        % Time, Detections, Truth, SensorCoverage, TerrainGri
 
 addpath(genpath(fullfile(pwd, 'src')));
 
-% 1. Load a scenario
-[scenario, config, sensors, metas] = trackbench.scenario.loadScenario("crossing_targets");
+% 1. Load from run file
+[scenario, config, sensors, metas] = trackbench.config.loadRunFile("my_run");
 
 % 2. Generate detections
 dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas, config.environment);
@@ -201,26 +169,6 @@ addpath(genpath(fullfile(pwd, 'src')));
 %   LIDAR, ADSB_TX, ADSB_RX
 
 %% ============================================================
-%%  LIST AVAILABLE SCENARIOS
-%% ============================================================
-
-addpath(genpath(fullfile(pwd, 'src')));
-trackbench.scenario.loadScenarioCatalog;   % prints all scenario names + descriptions
-
-%% ============================================================
-%%  RUNNING TESTS
-%% ============================================================
-
-addpath(genpath(fullfile(pwd, 'src')));
-cd('tests');
-
-run('testBuildSensor.m');
-run('testLoadSensors.m');
-run('testLoadScenario.m');
-
-cd('..');
-
-%% ============================================================
 %%  TRACKER + FILTER COMBOS
 %% ============================================================
 
@@ -235,4 +183,50 @@ cd('..');
 %   TOMHT + CV    Best accuracy, slow, straight-line
 %   TOMHT + IMM   Best accuracy + maneuvering (slowest)
 
+%% ============================================================
+%%  TARGET BEHAVIORS
+%% ============================================================
 
+% behavior           | description              | extra fields
+% -------------------|--------------------------|------------------
+% constant_velocity  | straight line            | heading_deg
+% gentle_turn        | gradual heading change   | —
+% s_maneuver         | evasive S-path           | turn_rate_dps
+% crossing           | straight start→end       | end_pos
+% orbit              | circular holding         | orbit_radius_m
+% approach           | descending to runway     | end_pos
+% departure          | climbing away            | end_pos
+% head_on / parallel | → constant_velocity      | heading_deg
+
+%% ============================================================
+%%  TERRAIN TYPES
+%% ============================================================
+
+% type      | occlusion | masking | clutter | density | max elev
+% ----------|-----------|---------|---------|---------|----------
+% water     | OFF       | OFF     | OFF     | 0       | 0m
+% rural     | ON        | ON      | ON      | 0.3     | ~73m
+% urban     | ON        | ON      | ON      | 0.6     | ~150m
+% mountain  | ON        | ON      | ON      | 0.5     | ~1960m
+% desert    | ON        | ON      | ON      | 0.2     | ~40m
+
+%% ============================================================
+%%  RUNNING TESTS
+%% ============================================================
+
+addpath(genpath(fullfile(pwd, 'src')));
+cd('tests');
+run('testBuildSensor.m');
+cd('..');
+
+%% ============================================================
+%%  GIT COMMANDS (from terminal, inside repo folder)
+%% ============================================================
+
+% git status                    -- see what changed
+% git diff                      -- see exact line changes
+% git add -A                    -- stage everything
+% git commit -m "description"   -- save snapshot locally
+% git push                      -- send to remote
+% git pull                      -- get partner's changes
+% git log --oneline -10         -- last 10 commits

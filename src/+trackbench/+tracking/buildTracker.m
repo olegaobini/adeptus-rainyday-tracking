@@ -9,6 +9,8 @@ function tracker = buildTracker(trackerType, filterModel, params, globalParams, 
 %     so their score doesn't drop and they won't be falsely deleted during
 %     beam gaps. The detectable IDs are computed in helperRunTracker using
 %     the sensor configs stored in dataLog.SensorConfig.
+%   - Added MaxNumEvents=100 to JPDA to prevent combinatorial explosion
+%     when many clutter detections fall in overlapping gates.
 
     % Optional arg: number of unique sensors expected in the detection stream.
     % If detections contain SensorIndex values > 1, the tracker MUST be told
@@ -79,10 +81,12 @@ function tracker = buildTracker(trackerType, filterModel, params, globalParams, 
                 'ClutterDensity', params.far_jpda / globalParams.volume, ...
                 'NewTargetDensity', params.beta_jpda, ...
                 'TimeTolerance', params.time_tolerance_jpda, ...
+                'MaxNumEvents', 100, ...
                 'HasDetectableTrackIDsInput', true);
-            % HasDetectableTrackIDsInput: same benefit as GNN — tracks outside
-            % sensor FOV are excluded from the integrated likelihood update,
-            % preventing false track drops during beam gaps.
+            % MaxNumEvents=100: prevents combinatorial explosion when many
+            % clutter detections fall in overlapping gates. Without this,
+            % JPDA tries to enumerate 2^N events and crashes with OOM.
+            % HasDetectableTrackIDsInput: same benefit as GNN.
 
         otherwise
             error('[TRACKER] Unknown tracker type: %s', trackerType);

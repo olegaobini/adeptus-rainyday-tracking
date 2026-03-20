@@ -1,0 +1,15 @@
+{
+  "name": "PSR West (Dead Zone Demo)",
+  "type": "PSR",
+  "platform": "tower",
+  "params": {
+    "rpm": 25,
+    "fov": [1.4, 30],
+    "tilt": 2,
+    "pd": 0.9,
+    "far": 1e-6,
+    "rangeLimits": [0, 55560],
+    "rangeRes": 93,
+    "mountingLoc": [-70000, -30000, -15]
+  }
+}

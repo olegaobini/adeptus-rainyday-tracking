@@ -179,6 +179,11 @@ function sep = getTargetSeparation(truthData, scanTimes, swapTime, truthA, truth
 %
 % truthData is the [nTargets x nTimes] struct array from dataLog.Truth
 % with field 'Position'.
+%
+% TruthIDs from the tracker metrics are 1-based target indices, but
+% PlatformIDs in the scenario start at 2+ (platform 1 is the sensor).
+% We first try exact PlatformID match, then fall back to offset matching
+% (TruthID + offset), then fall back to row-index matching.
 
     sep = NaN;
 
@@ -191,14 +196,40 @@ function sep = getTargetSeparation(truthData, scanTimes, swapTime, truthA, truth
         posA = [];
         posB = [];
 
+        % Collect all PlatformIDs to detect offset
+        platIDs = zeros(nTgts, 1);
         for t = 1:nTgts
             tp = truthData(t, idx);
             if isfield(tp, 'PlatformID')
-                if tp.PlatformID == truthA
-                    posA = tp.Position(:);
-                elseif tp.PlatformID == truthB
-                    posB = tp.Position(:);
+                platIDs(t) = tp.PlatformID;
+            end
+        end
+
+        % Try direct PlatformID match first
+        for t = 1:nTgts
+            if platIDs(t) == truthA; posA = truthData(t, idx).Position(:); end
+            if platIDs(t) == truthB; posB = truthData(t, idx).Position(:); end
+        end
+
+        % If direct match failed, try offset: TruthID 1 → lowest PlatformID
+        if isempty(posA) || isempty(posB)
+            posA = []; posB = [];
+            sortedPlatIDs = sort(platIDs(platIDs > 0));
+            if numel(sortedPlatIDs) >= max(truthA, truthB)
+                platA = sortedPlatIDs(truthA);
+                platB = sortedPlatIDs(truthB);
+                for t = 1:nTgts
+                    if platIDs(t) == platA; posA = truthData(t, idx).Position(:); end
+                    if platIDs(t) == platB; posB = truthData(t, idx).Position(:); end
                 end
+            end
+        end
+
+        % Last resort: use row index directly (truthA=1 → row 1)
+        if isempty(posA) || isempty(posB)
+            if truthA <= nTgts && truthB <= nTgts
+                posA = truthData(truthA, idx).Position(:);
+                posB = truthData(truthB, idx).Position(:);
             end
         end
 

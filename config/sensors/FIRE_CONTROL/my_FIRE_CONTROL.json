@@ -1,0 +1,22 @@
+{
+  "name": "Fire Control Radar",
+  "type": "FIRE_CONTROL",
+  "platform": "tower",
+  "params": {
+    "sector": [
+      -5,
+      5
+    ],
+    "rangeLimits": [
+      0,
+      150000
+    ],
+    "pd": 0.98,
+    "far": 1E-8,
+    "mountingLoc": [
+      0,
+      0,
+      -15
+    ]
+  }
+}

@@ -1,0 +1,28 @@
+{
+  "description": "Maritime radar + active/passive sonar + towed array — surface+subsurface tracking",
+  "sensors": [
+    "MARITIME/default_MARITIME"
+  ],
+  "targets": "maritime_surface/default_maritime_surface",
+  "terrain": "water/default_water",
+  "trackers": [
+      "GNN/default_GNN",
+      "JPDA/default_JPDA"
+    ],
+  "degradation": {
+    "enabled": false,
+    "type": "rain"
+  },
+  "platforms": {},
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
+}

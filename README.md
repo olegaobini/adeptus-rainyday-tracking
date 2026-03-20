@@ -1,4 +1,4 @@
-# Rainy Day: Advanced Radar Tracking in Degraded Weather (V2)
+# Rainy Day: Advanced Radar Tracking in Degraded Weather
 
 ## Quick Start
 
@@ -6,311 +6,236 @@
 % cd to the adeptus-rainyday-tracking folder, then:
 addpath("scripts");
 
-% ── SINGLE SCENARIO ──────────────────────────────────────────────
-% Uses YOUR sensors from config/sensors/sensors.json + default.json:
-runSingleScenario("default")
+% First time only — creates config folder structure:
+buildModularConfig
 
-% Run a specific catalog scenario (uses that scenario's dedicated sensors):
-runSingleScenario("crossing_targets")
-runSingleScenario("fighter_intercept")
+% Run a simulation:
+runSingleScenario("my_run")              % your custom run file
+runSingleScenario("dasr_baseline")       % PSR+SSR, rural, GNN+JPDA
+runSingleScenario("demo_mountain")       % PSR, 5 targets, mountain terrain
+runSingleScenario("fighter_intercept")   % AESA+FLIR on aircraft
+runSingleScenario("dasr_storm")          % PSR+SSR, mountain, heavy rain
 
-% ── BATCH ────────────────────────────────────────────────────────
-% SHOWCASE MODE — each scenario uses its dedicated sensor config:
-runAllScenarios
-
-% MY SENSORS MODE — force YOUR sensors.json on every scenario:
-runAllScenarios(true)
+% Demo video (1080p MP4):
+recordDemoVideo
 ```
 
-Configure in two files:
-- **`config/sensors/sensors.json`** — toggle sensors `"enabled": true/false`
-- **`config/default.json`** — scenarios_to_run, trackers_to_run, duration, degradation, environment, visuals
+## How It Works
 
+Each simulation is defined by a **run file** (`config/runs/*.json`) that assembles four independent components:
 
-Advanced usage (manual pipeline):
+```
+config/runs/my_run.json
+  ├── sensors  → config/sensors/PSR/default_PSR.json
+  │              config/sensors/SSR/default_SSR.json
+  ├── targets  → config/targets/crossing_pair/default_crossing_pair.json
+  ├── terrain  → config/terrain/mountain/default_mountain.json
+  └── trackers → config/trackers/GNN/default_GNN.json
+                  config/trackers/JPDA/default_JPDA.json
+```
+
+`runSingleScenario` reads the run file, loads each component, builds the MATLAB `trackingScenario`, generates detections, runs trackers, and reports metrics.
+
+### Run file format
+```json
+{
+  "description": "My experiment",
+  "sensors": ["PSR/default_PSR", "SSR/default_SSR"],
+  "targets": "crossing_pair/default_crossing_pair",
+  "terrain": "mountain/default_mountain",
+  "trackers": ["GNN/default_GNN", "JPDA/default_JPDA"],
+  "degradation": { "enabled": false, "type": "rain" },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true }
+}
+```
+
+See `config/runs/run_template.json` for the fully documented version.
+
+## Building a Custom Simulation
+
+### 1. Pick or create sensors
+Each sensor type has its own folder in `config/sensors/<TYPE>/` with three files: `default_<TYPE>.json` (works out of box), `<TYPE>_template.json` (documented), `my_<TYPE>.json` (your copy).
+
+```
+config/sensors/PSR/my_PSR.json     — edit rpm, range, Pd, mounting location
+config/sensors/AESA/my_AESA.json   — edit sector, range (needs aircraft platform)
+```
+
+### 2. Pick or create targets
+Target folders define flight behaviors and duration:
+```
+config/targets/crossing_pair/my_crossing_pair.json   — two targets crossing
+config/targets/s_maneuver/my_s_maneuver.json         — evasive S-turn
+```
+
+### 3. Pick terrain
+Terrain folders define environment effects:
+```
+config/terrain/mountain/my_mountain.json   — ridges, occlusion ON, clutter ON
+config/terrain/water/default_water.json    — flat ocean, all effects OFF
+```
+
+### 4. Pick trackers
+Tracker folders define algorithm + tuning. Shared parameters (Pd, filter init) live in `tracker_globals.json`.
+```
+config/trackers/GNN/my_GNN.json     — gate, volume, beta, thresholds
+config/trackers/JPDA/my_JPDA.json   — JPDA-specific tuning
+```
+
+### 5. Create a run file
+Copy `config/runs/run_template.json` → `config/runs/my_experiment.json`, fill in references.
+
+### 6. Run it
 ```matlab
-addpath(genpath(fullfile(pwd, 'src')));
-[scenario, config, sensors, metas] = trackbench.scenario.loadScenario("crossing_targets");
-dataLog = trackbench.detections.runDetections(scenario, config.degradation.enabled, metas, config.environment);
-tracker = trackbench.tracking.buildTracker('GNN', 'IMM', config.active_params, ...
-    config.tracker_global, config.filter_params, config.active_params.pd, numel(sensors.tower));
-[trkSum, trSum] = trackbench.tracking.runTracker(dataLog, tracker);
+runSingleScenario("my_experiment")
 ```
 
-## What Changed from V1 → V2
-
-1. **DASR sensor architecture** — PSR + MSSR co-rotating (not single generic radar)
-2. **19 sensor types** — Radar, IR, Sonar, Lidar, ADS-B via universal `buildSensor` factory
-3. **21 pre-built scenarios** — Airport, military, maritime, airborne, layered defense
-4. **JSON-driven config** — Scenarios, sensors, tracker params all in JSON catalogs
-5. **Track swap analysis** — Detects and reports identity swaps between targets
-6. **Detectable track IDs** — GNN/JPDA don't penalize tracks outside sensor FOV
-7. **Assignment timeline plots** — Visual track-to-truth assignment with swap overlay
-8. **Batch runner** — `runAllScenarios` with showcase mode (dedicated sensors) or my-sensors mode (your picks)
-9. **+trackbench namespace** — Clean MATLAB package structure
-10. **No truth-based pre-filtering** — All detections (incl. clutter/outliers) pass directly to trackers for honest performance evaluation
-11. **Horizon masking** — 4/3 Earth radius model prevents detections for targets below the radar horizon
-12. **Ground clutter model** — Terrain-dependent false returns (water/rural/urban/mountain) concentrated at low elevation angles
-13. **Environment config** — Per-scenario terrain type, clutter density, and refraction factor in `default.json`
-14. **Multipath propagation (VCP)** — `radarvcd`-based vertical coverage patterns with terrain-dependent surface reflection
-15. **Terrain occlusion** — Procedural terrain generation + SurfaceManager LOS blocking per terrain type
-16. **Sensor coverage visualization** — Range rings (360° rotators) and sector wedges (PAR, FLIR) in 3D plots
-17. **3D altitude display** — Correct NED-to-altitude conversion; terrain mesh rendering in tracker and scenario plots
+### Detection caching
+After your first run, set `"use_cached_detections": true` in the run file. This skips detection generation and goes straight to the tracker — much faster when tuning gates, thresholds, or trying different algorithms.
 
 ## Project Structure
 
 ```
 adeptus-rainyday-tracking/
 ├── config/
-│   ├── default.json                 ← Base config (tracker params, toggles, environment)
-│   ├── sensors.json                 ← Sensor catalog (19 types, enable/disable)
-│   ├── scenarios/
-│   │   └── scenario_catalog.json    ← All 21 scenario definitions
-│   ├── sensors/
-│   │   ├── sensors.json             ← User-configurable (runSingleScenario "default")
-│   │   ├── sensors_dasr.json        ← PSR+SSR (DASR scenarios)
-│   │   ├── sensors_approach.json    ← PSR+SSR+PAR (par_approach)
-│   │   ├── sensors_default_wedge.json ← 40° sector wedge (main-branch baseline)
-│   │   ├── sensors_fighter.json     ← AESA+FLIR (fighter_intercept)
-│   │   ├── sensors_maritime.json    ← Maritime+Sonar (maritime_surface)
-│   │   ├── sensors_fire_control.json
-│   │   ├── sensors_ir_fusion.json
-│   │   ├── sensors_layered_defense.json
-│   │   ├── sensors_long_range.json
-│   │   └── sensors_phased_array.json
-│   └── trackers/
-│       └── jpda.json                ← Tracker-specific overrides
+│   ├── runs/                        ← Run files (pass to runSingleScenario)
+│   │   ├── run_template.json        ← Documented template (copy + edit)
+│   │   ├── my_run.json              ← Your custom run
+│   │   ├── dasr_baseline.json       ← PSR+SSR, rural, GNN+JPDA
+│   │   ├── demo_first_run.json      ← Boeing demo
+│   │   ├── demo_tuned_performance.json
+│   │   ├── fighter_intercept.json
+│   │   ├── dasr_storm.json
+│   │   ├── README.md
+│   │   └── showcase/                ← Pre-built scenarios (converted from catalog)
+│   ├── sensors/                     ← Per-type sensor folders
+│   │   ├── PSR/                     ← Primary Search Radar
+│   │   │   ├── default_PSR.json
+│   │   │   ├── PSR_template.json
+│   │   │   └── my_PSR.json
+│   │   ├── SSR/                     ← Secondary Surveillance (IFF)
+│   │   ├── AESA/                    ← Active Electronic Scan Array
+│   │   ├── PAR/                     ← Precision Approach Radar
+│   │   ├── TWS/                     ← Track-While-Scan Phased Array
+│   │   ├── FIRE_CONTROL/            ← Fire Control Radar
+│   │   ├── ARSR/                    ← Air Route Surveillance
+│   │   ├── IRST/                    ← IR Search and Track
+│   │   ├── FLIR/                    ← Forward-Looking Infrared
+│   │   ├── MARITIME/                ← Maritime Surface Search
+│   │   └── WEDGE/                   ← Original wedge radar
+│   ├── targets/                     ← Per-behavior target folders
+│   │   ├── crossing_pair/           ← Two targets crossing
+│   │   ├── gentle_turn/             ← Gradual heading change
+│   │   ├── crossing_5way/           ← 5 targets (Boeing demo)
+│   │   ├── s_maneuver/              ← Evasive S-turn
+│   │   ├── head_on/                 ← Two targets converging
+│   │   ├── approach/                ← Landing approach (descending)
+│   │   ├── orbit/                   ← Circular holding pattern
+│   │   ├── high_density/            ← 5 mixed-behavior targets
+│   │   ├── dead_zone/              ← 6 targets, multi-site radar gap
+│   │   └── (more from catalog...)
+│   ├── terrain/                     ← Per-type terrain folders
+│   │   ├── water/                   ← Flat sea, all effects OFF
+│   │   ├── rural/                   ← Rolling hills, light clutter
+│   │   ├── urban/                   ← Building clusters, moderate clutter
+│   │   ├── mountain/                ← Ridges + peaks, heavy occlusion
+│   │   └── desert/                  ← Gentle dunes, light clutter
+│   └── trackers/                    ← Per-algorithm tracker folders
+│       ├── tracker_globals.json     ← Shared: Pd, filter, max tracks
+│       ├── GNN/                     ← Global Nearest Neighbor
+│       ├── JPDA/                    ← Joint Probabilistic Data Association
+│       └── TOMHT/                   ← Track-Oriented Multi-Hypothesis
 │
 ├── src/+trackbench/
 │   ├── +config/
-│   │   └── loadConfig.m             ← JSON config loader with overrides
+│   │   └── loadRunFile.m            ← Modular run file loader
 │   ├── +detections/
-│   │   └── runDetections.m          ← Detection generator (PSR+MSSR+terrain+VCP)
+│   │   └── runDetections.m          ← Detection generator
 │   ├── +scenario/
-│   │   ├── createScenario.m         ← DASR scenario builder (legacy)
-│   │   ├── loadScenario.m           ← Load scenario from catalog + terrain
-│   │   └── loadScenarioCatalog.m    ← List available scenarios
+│   │   ├── addTargetFromDef.m       ← Universal target builder from JSON
+│   │   └── validateScanCoverage.m   ← Pre-flight scan count check
 │   ├── +tracking/
 │   │   ├── buildTracker.m           ← Tracker factory (GNN/TOMHT/JPDA)
 │   │   ├── initCVFilter.m           ← Constant Velocity filter
 │   │   ├── initIMMFilter.m          ← IMM filter
-│   │   └── runTracker.m             ← Run tracker + metrics + 3D visualization
+│   │   └── runTracker.m             ← Run tracker + metrics + 3D plots
 │   ├── +sensors/
-│   │   ├── buildSensor.m            ← Universal sensor factory (19 types)
-│   │   ├── buildCustomFusionRadarSensor.m
-│   │   ├── buildIFFSensor.m         ← MSSR/IFF sensor builder
-│   │   ├── customSensorTemplate.m
-│   │   └── loadSensors.m            ← Load sensors from JSON catalog
+│   │   └── buildSensor.m            ← Universal sensor factory (19 types)
 │   ├── +reporting/
 │   │   ├── plotInitialScenario.m    ← 3D animated truth + detections + terrain
-│   │   ├── plotScenarioAndDetections.m
 │   │   ├── plotPlatformToTrackAssignment.m ← Assignment timeline
 │   │   ├── plotTrackSwapAnalysis.m  ← Swap analysis figure
-│   │   ├── drawSensorCoverage.m     ← Range rings + sector wedges on 3D plot
+│   │   ├── drawSensorCoverage.m     ← Range rings + sector wedges
 │   │   └── tabbedAxes.m            ← Tabbed figure manager
 │   ├── +environment/
 │   │   ├── isAboveHorizon.m         ← 4/3 Earth horizon masking
 │   │   ├── generateGroundClutter.m  ← Terrain-dependent clutter model
-│   │   ├── computeVerticalCoverage.m ← radarvcd-based VCP computation
+│   │   ├── computeVerticalCoverage.m ← radarvcd-based VCP
 │   │   ├── applyVCPMask.m          ← Per-detection VCP range check
-│   │   ├── computePropFactor.m      ← Propagation factor utility
-│   │   └── generateTerrain.m       ← Procedural heightmap (water/rural/urban/mountain/desert)
-│   ├── +analysis/
-│   │   └── analyzeTrackSwaps.m      ← Track swap detection
-│   └── +batch/
-│       └── runAllScenarios.m        ← Batch runner for all scenarios
+│   │   └── generateTerrain.m       ← Procedural heightmap generator
+│   ├── +validation/
+│   │   └── validateScenarioConfig.m ← Pre-flight checks (10 categories)
+│   └── +analysis/
+│       └── analyzeTrackSwaps.m      ← Track swap detection
 │
 ├── scripts/
-│   ├── runSingleScenario.m          ← Single scenario (smart router)
-│   ├── runAllScenarios.m            ← Batch runner (showcase or my-sensors)
-│   ├── runSingleExperiment.m        ← Single scenario driver (legacy)
-│   ├── quickBatch.m                 ← Quick batch wrapper
-│   └── runTrackingWithWeather.m     ← Weather degradation driver
+│   ├── runSingleScenario.m          ← Main entry point
+│   ├── buildModularConfig.m         ← One-time setup (creates config folders)
+│   ├── recordDemoVideo.m            ← Record MP4 demo video
+│   └── cleanupLegacy.m             ← Removes V2 legacy files (run once)
 │
 ├── tests/
-│   ├── testBuildSensor.m
-│   ├── testLoadScenario.m
-│   └── testLoadSensors.m
+│   └── testBuildSensor.m            ← Sensor factory test
 │
-├── cache/                           ← Saved detection logs (.mat per scenario)
-└── results/                         ← Saved run results (.mat per batch)
+├── Cheatsheet.txt                   ← Quick-reference command sheet
+├── README.md                        ← This file
+├── .gitignore
+├── cache/                           ← Saved detection logs (gitignored)
+└── results/                         ← Saved run results (gitignored)
 ```
-
-## How To: Run Everything
-
-All commands start with:
-```matlab
-addpath("scripts");
-```
-
-### Option A: Single scenario — your sensors
-```matlab
-runSingleScenario("default")          % uses sensors.json + default.json
-```
-Edit `config/sensors/sensors.json` to toggle which sensors run. Edit `config/default.json` for duration, trackers, environment, visuals.
-
-### Option B: Batch showcase — dedicated sensors per scenario
-```matlab
-runAllScenarios                       % each scenario uses its own sensor config
-```
-Each scenario loads its dedicated sensors (PSR+SSR for DASR, AESA+FLIR for fighter, etc.). Toggle which scenarios run in `default.json` → `scenarios_to_run`. Trackers, environment, and visuals all come from `default.json`.
-
-### Option C: Batch — your sensors on every scenario
-```matlab
-runAllScenarios(true)                 % forces sensors.json on all scenarios
-```
-Same targets/durations/degradation as showcase, but uses whatever sensors you have enabled in `sensors.json`. Good for testing one sensor setup across many target geometries.
-
-### Option D: Single catalog scenario
-```matlab
-runSingleScenario("fighter_intercept") % uses that scenario's dedicated sensors
-runSingleScenario("crossing_targets") % DASR PSR+SSR, two crossing targets
-```
-
-## Available Scenarios (21)
-
-| Scenario | Sensors | Terrain | What It Tests |
-|----------|---------|---------|---------------|
-| **default** | **sensors.json** | **default.json** | **User-configured — reads sensor toggles from sensors.json** |
-| default_wedge_ideal | Wedge Radar | default.json | Original main-branch 40° sector radar, clear |
-| default_wedge_degraded | Wedge Radar | default.json | Original 40° sector radar, rain degradation |
-| dasr_ideal | PSR+SSR (sensors_dasr) | rural | Baseline clear weather |
-| dasr_degraded | PSR+SSR (sensors_dasr) | rural | Rain — tracker robustness |
-| crossing_targets | PSR+SSR (sensors_dasr) | rural | Track swap — two targets crossing |
-| head_on | PSR+SSR (sensors_dasr) | rural | Identity — targets approaching |
-| high_density | PSR+SSR (sensors_dasr) | rural | Stress test — 5 targets |
-| maneuvering_evasive | PSR+SSR (sensors_dasr) | rural | S-maneuver, IMM vs CV |
-| storm_window | PSR+SSR (sensors_dasr) | rural | Max degradation — heavy rain |
-| approach_pattern | PSR+SSR (sensors_dasr) | rural | Landing approach |
-| long_range_arsr | ARSR+SSR | rural | 250nm en-route surveillance |
-| par_approach | PSR+SSR+PAR | rural | Precision approach |
-| phased_array_intercept | TWS+AESA | rural | Phased array fusion |
-| fire_control_engagement | PSR+Fire Control | rural | Search-to-track handoff |
-| ir_radar_fusion | PSR+IRST+IR | rural | Passive+active complementarity |
-| ir_degraded_weather | PSR+IRST+IR | rural | Rain — radar degrades, IR doesn't |
-| maritime_surface | Maritime+Sonar | water | Surface+subsurface tracking |
-| fighter_intercept | AESA+FLIR | mountain | Fighter tracking bogey (terrain occlusion) |
-| layered_defense | PSR+SSR+IRST+FC+TWS | rural | 5-sensor fusion |
-| layered_defense_storm | PSR+SSR+IRST+FC+TWS | rural | Same in heavy rain |
 
 ## Available Sensor Types (19)
 
-| Type | What It Is | Range |
-|------|-----------|-------|
-| PSR | Primary Search Radar | 60 nm |
-| SSR | Secondary Surveillance (IFF) | 120 nm |
-| ASR | Airport Surveillance | 60 nm |
-| ARSR | Air Route Surveillance | 250 nm |
-| PAR | Precision Approach | 20 nm |
-| TWS | Track-While-Scan Phased Array | 200 km |
-| AESA | Active Electronic Scan Array | 300 km |
-| FIRE_CONTROL | Fire Control Radar | 150 km |
-| WEATHER | Weather Radar (NEXRAD) | 250 nm |
-| MARITIME | Maritime Surface Search | 40 nm |
-| IRST | IR Search & Track | 100 km |
-| IR_STARING | Staring IR Sensor | 50 km |
-| FLIR | Forward-Looking Infrared | 30 km |
-| ACTIVE_SONAR | Active Sonar | 20 km |
-| PASSIVE_SONAR | Passive Sonar | 50 km |
-| TOWED_ARRAY | Towed Array Sonar | 80 km |
-| LIDAR | Lidar Point Cloud | 200 m |
-| ADSB_TX | ADS-B Transponder | — |
-| ADSB_RX | ADS-B Receiver | — |
+| Type | What It Is | Range | Platform |
+|------|-----------|-------|----------|
+| PSR | Primary Search Radar | 60 nm | tower |
+| SSR | Secondary Surveillance (IFF) | 120 nm | tower |
+| ASR | Airport Surveillance | 60 nm | tower |
+| ARSR | Air Route Surveillance | 250 nm | tower |
+| PAR | Precision Approach | 20 nm | tower |
+| TWS | Track-While-Scan Phased Array | 200 km | tower |
+| AESA | Active Electronic Scan Array | 300 km | aircraft |
+| FIRE_CONTROL | Fire Control Radar | 150 km | tower |
+| WEATHER | Weather Radar (NEXRAD) | 250 nm | tower |
+| MARITIME | Maritime Surface Search | 40 nm | ship |
+| IRST | IR Search & Track | 100 km | tower |
+| IR_STARING | Staring IR Sensor | 50 km | tower |
+| FLIR | Forward-Looking Infrared | 30 km | aircraft |
+| ACTIVE_SONAR | Active Sonar | 20 km | ship |
+| PASSIVE_SONAR | Passive Sonar | 50 km | ship |
+| TOWED_ARRAY | Towed Array Sonar | 80 km | ship |
+| LIDAR | Lidar Point Cloud | 200 m | tower |
+| ADSB_TX | ADS-B Transponder | — | aircraft |
+| ADSB_RX | ADS-B Receiver | — | tower |
 
-## Environment Modeling
+## Target Behaviors
 
-The simulation includes five layers of physically-motivated environment effects that degrade sensor performance realistically. All layers are toggled independently in config.
+| Behavior | Description | Extra Fields |
+|----------|-------------|-------------|
+| `constant_velocity` | Straight line, fixed heading | `heading_deg` |
+| `gentle_turn` | Gradual heading change | — |
+| `s_maneuver` | Evasive S-shaped path | `turn_rate_dps` (2–5 typical) |
+| `crossing` | Straight line start→end | `end_pos` |
+| `orbit` | Circular holding pattern | `orbit_radius_m` (3000–5000) |
+| `approach` | Descending to runway | `end_pos` (near threshold) |
+| `departure` | Climbing away from airport | `end_pos` |
+| `head_on` / `parallel` | Mapped to constant_velocity | `heading_deg` |
 
-### 1. Horizon Masking
-Uses the standard 4/3 effective Earth radius model for atmospheric refraction. Before each sensor step, targets below the radar horizon are removed — the sensor never gets a chance to detect them.
+All targets require: `speed_kmh`, `start_pos` [x,y,z NED], `altitude_m`.
 
-**Impact by scenario:**
-- High-altitude targets (>3km) at DASR range (60nm): always visible
-- Low-altitude approach (50m) at 30nm: visible. At 50nm: masked
-- Maritime (surface, ~0m altitude): horizon at ~16km from a 15m tower
-
-The refraction factor is configurable per-scenario (default 4/3). Set to 1.0 for optical line-of-sight, >4/3 for ducting.
-
-File: `+environment/isAboveHorizon.m`
-
-### 2. Ground Clutter
-Terrain-dependent false returns concentrated at low elevation angles where the radar beam intersects the ground.
-
-| Terrain | Returns/scan | Noise (m) | Use Case |
-|---------|-------------|-----------|----------|
-| water | ~1-2 | 50 | Maritime, coastal |
-| rural | ~3-6 | 100 | Default, airport |
-| urban | ~8-15 | 150 | City approach |
-| mountain | ~5-10 | 200 | Mountainous terrain |
-
-All clutter passes through to the tracker unfiltered — the tracker's own gating handles rejection.
-
-File: `+environment/generateGroundClutter.m`
-
-### 3. Propagation Model (Multipath Lobing / VCP)
-Uses MATLAB Radar Toolbox's `radarvcd` to compute vertical coverage patterns for each radar sensor. Multipath ground-bounce creates constructive/destructive interference — targets at certain elevation angles sit in nulls where detection is impossible.
-
-Physics modelled:
-- Multipath interference (direct + ground-reflected path)
-- Surface roughness scattering (terrain-dependent via `landroughness`/`searoughness`)
-- Surface permittivity (frequency + terrain via `earthSurfacePermittivity`)
-- Vegetation attenuation
-- Atmospheric refraction (effective Earth radius via `refractiveidx`)
-
-| Terrain | Typical Effect | Notes |
-|---------|---------------|-------|
-| water | Strong lobing, peaks can exceed free-space | Smooth surface = strong reflection |
-| rural | Moderate lobing, ~30% avg range reduction | Vegetation scatters some energy |
-| urban | Mild lobing, surface roughness breaks coherence | Rough surface = weak reflection |
-| mountain | Minimal lobing, terrain scatter dominates | Very rough = near free-space |
-
-MSSR/SSR sensors are exempt (transponder link budget follows a different model).
-
-Files: `+environment/computeVerticalCoverage.m`, `+environment/applyVCPMask.m`
-
-### 4. Terrain Occlusion (LOS Blocking)
-Procedurally generated terrain heightmaps attach to the tracking scenario via MATLAB's `groundSurface` API. At each timestep, `SurfaceManager.occlusion()` performs line-of-sight checks between every sensor-target pair — if terrain blocks the path, the detection is suppressed.
-
-**Terrain profiles** (200×200 grid, seeded RNG for reproducibility):
-
-| Type | Features | Max Elevation | Occlusion Impact |
-|------|----------|--------------|-----------------|
-| water | Flat (z=0) | 0m | None — open ocean |
-| rural | Rolling hills, gaussian bumps | ~73m | Low — blocks at very low angles/long range |
-| urban | Flat with building clusters (50-150m) | ~150m | Moderate near clusters |
-| mountain | Ridge lines + isolated peaks | ~1960m | High — significant LOS blocking |
-| desert | Gentle dunes + occasional mesa | ~40m | Low |
-
-The terrain heightmap is also rendered as a 3D surface mesh in both `plotInitialScenario` and `runTracker` plots when available.
-
-**Verified results:**
-- `dasr_ideal` (rural, high-altitude targets): 0 terrain-occluded
-- `par_approach` (rural, approach targets): 9644 terrain-occluded pairs (~2% of checks)
-- `maritime_surface` (water): 0 terrain-occluded, 15760 horizon-masked (surface targets)
-- `fighter_intercept` (mountain): 2402 terrain-occluded (ridge lines block low-angle LOS)
-
-Files: `+environment/generateTerrain.m`, `+scenario/loadScenario.m` (Section 7)
-
-### 5. Sensor Coverage Visualization
-Range rings (360° rotators like PSR/SSR) and sector wedges (PAR, FLIR, fire control) are drawn on the ground plane of all 3D plots. Labels show sensor name, range in nm, and beam width.
-
-File: `+reporting/drawSensorCoverage.m`
-
-### Configuration
-In `default.json` (overridable per-scenario in `scenario_catalog.json`):
-```json
-"environment": {
-    "terrain_occlusion": false,
-    "horizon_masking": false,
-    "ground_clutter": false,
-    "propagation_model": false,
-    "terrain_type": "water",
-    "clutter_density": 0.5
-}
-```
-All five effects are independently toggleable. Set any to `true` to enable.
-
-## Key Algorithms
+## Tracker Algorithms
 
 | Tracker | Strength | Best For |
 |---------|----------|----------|
@@ -323,11 +248,91 @@ All five effects are independently toggleable. Set any to `true` to enable.
 | CV | Straight line | Fast targets, baseline |
 | IMM | Switches between straight & turn | Maneuvering aircraft |
 
-## Known Issues / In Progress
+### Tracker globals vs per-tracker params
+- **`tracker_globals.json`** — shared: max tracks, detection probability (ideal/degraded), filter initialization (speed, IMM transition prob, process noise)
+- **Per-tracker JSON** — algorithm-specific: volume, beta, gate sizes, confirm/delete thresholds, branch limits
 
-- **Sonar sensors**: Maritime scenario builds sonar sensors but `runDetections` currently skips them (sonar uses `sonarEmission` step interface, not `fusionRadarSensor`). Only the maritime radar generates detections.
-- **Terrain visibility at small scale**: Rural terrain (73m peaks) is physically present but visually indistinguishable from flat ground when viewed at aircraft altitude scale (3+ km). Use `fighter_intercept` (mountain, 1960m peaks) to see terrain mesh in plots.
-- **Truth trajectory plotter**: The `showTruth` option in `runTracker` hardcodes 2 targets for `trajectoryPlotter` — scenarios with different target counts may error.
+Volume and beta live per-tracker because GNN and JPDA use them with opposite effects.
+
+## Environment Modeling
+
+Five layers of physically-motivated effects, each independently toggleable in terrain configs.
+
+### 1. Horizon Masking
+4/3 effective Earth radius model. Targets below radar horizon are invisible.
+
+### 2. Ground Clutter
+Terrain-dependent false returns at low elevation angles.
+
+| Terrain | Returns/scan | Noise (m) |
+|---------|-------------|-----------|
+| water | ~1–2 | 50 |
+| rural | ~3–6 | 100 |
+| urban | ~8–15 | 150 |
+| mountain | ~5–10 | 200 |
+
+### 3. Propagation Model (VCP)
+`radarvcd`-based vertical coverage patterns. Multipath ground-bounce creates interference nulls.
+
+### 4. Terrain Occlusion
+Procedural heightmaps via `groundSurface` API. Line-of-sight checks between every sensor-target pair.
+
+### 5. Sensor Coverage Visualization
+Range rings (360° rotators) and sector wedges (PAR, FLIR) drawn on 3D ground plane.
+
+### Terrain Presets
+
+| terrain_type | Occlusion | Masking | Clutter | Density | Max Elevation |
+|-------------|-----------|---------|---------|---------|--------------|
+| `water` | OFF | OFF | OFF | 0 | 0m |
+| `rural` | ON | ON | ON | 0.3 | ~73m |
+| `urban` | ON | ON | ON | 0.6 | ~150m |
+| `mountain` | ON | ON | ON | 0.5 | ~1960m |
+| `desert` | ON | ON | ON | 0.2 | ~40m |
+
+## Data Flow
+
+```
+runSingleScenario("my_run")
+  └── trackbench.config.loadRunFile("my_run")
+      ├── Read config/runs/my_run.json
+      ├── Load each config/sensors/<TYPE>/<file>.json
+      │   └── trackbench.sensors.buildSensor (per sensor)
+      ├── Load config/targets/<PATTERN>/<file>.json
+      │   └── trackbench.scenario.addTargetFromDef (per target)
+      ├── Load config/terrain/<TYPE>/<file>.json
+      │   └── trackbench.environment.generateTerrain
+      ├── Load config/trackers/<TYPE>/<file>.json (per tracker)
+      ├── trackbench.scenario.validateScanCoverage
+      └── trackbench.validation.validateScenarioConfig
+            ↓
+  trackbench.detections.runDetections
+      ├── Radar sensor step loop
+      ├── trackbench.environment.isAboveHorizon
+      ├── trackbench.environment.computeVerticalCoverage
+      ├── trackbench.environment.applyVCPMask
+      ├── trackbench.environment.generateGroundClutter
+      └── SurfaceManager.occlusion (terrain LOS)
+            ↓
+  For each enabled tracker:
+    trackbench.tracking.buildTracker
+      ├── trackbench.tracking.initCVFilter
+      └── trackbench.tracking.initIMMFilter
+    trackbench.tracking.runTracker
+      ├── trackbench.analysis.analyzeTrackSwaps
+      ├── trackbench.reporting.tabbedAxes
+      ├── trackbench.reporting.drawSensorCoverage
+      ├── trackbench.reporting.plotPlatformToTrackAssignment
+      └── trackbench.reporting.plotTrackSwapAnalysis
+            ↓
+  Save results to results/ and detections to cache/
+```
+
+## Known Issues
+
+- **Sonar sensors**: Maritime scenario builds sonar sensors but `runDetections` skips them (sonar uses `sonarEmission` step interface). Only maritime radar generates detections.
+- **Terrain visibility at small scale**: Rural terrain (73m peaks) is physically present but visually flat at aircraft altitude. Use mountain terrain to see mesh.
+- **Truth trajectory plotter**: `showTruth` in `runTracker` hardcodes 2 targets — scenarios with different target counts may error.
 
 ## Required Toolboxes
 
@@ -347,157 +352,52 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v2.4.1 — February 24, 2026 (current)
+### v3.0.0 — March 15–19, 2026 (current)
 
-**Dedicated Sensor Configs Per Scenario**
-- Created `sensors_dasr.json` — PSR + SSR always-on. All DASR-based scenarios
-  (`dasr_ideal`, `crossing_targets`, `head_on`, `high_density`, etc.) now point
-  to this instead of the shared `sensors.json`. Ensures showcase mode always
-  uses the right sensors regardless of what the user has toggled.
-- Only `"default"` still reads from `sensors.json` (user-configurable).
+**Modular Config Architecture** — Complete restructure from monolithic `default.json` to individual component files.
+- Run files (`config/runs/`) assemble sensors + targets + terrain + trackers by reference
+- Per-sensor type folders with default/template/user configs (PSR, SSR, AESA, etc.)
+- Per-terrain type folders with environment flag presets (water, rural, urban, mountain, desert)
+- Per-tracker algorithm folders with algorithm-specific tuning (GNN, JPDA, TOMHT)
+- Per-behavior target folders (crossing_pair, s_maneuver, orbit, etc.)
+- Detection caching per run file for fast tracker tuning
+- `tracker_globals.json` separates shared params from per-tracker volume/beta
 
-**Batch Runner: Showcase vs My-Sensors Mode**
-- `runAllScenarios` (no args) = SHOWCASE: each scenario uses its dedicated sensor config.
-- `runAllScenarios(true)` = MY SENSORS: forces `sensors.json` on every scenario.
-- `loadScenario` now accepts optional `sensorOverride` argument.
-- Run plan header shows which mode is active.
+**New Source Files**
+- `loadRunFile.m` — modular config loader (reads run file, builds scenario from components)
+- `addTargetFromDef.m` — universal target builder supporting 8 flight behaviors
+- `buildModularConfig.m` — one-time setup script for folder structure
+- `cleanupLegacy.m` — removes V2 catalog files no longer needed
 
-**scripts/runAllScenarios.m Wrapper**
-- Added `scripts/runAllScenarios.m` so users just need `addpath("scripts")` —
-  no package paths required. Matches the `runSingleScenario` pattern.
+**Simplified `runSingleScenario.m`** — single path through modular `loadRunFile`, no legacy routing.
 
-**default.json: terrain_occlusion field added**
-- Was implemented in `runDetections.m` but missing from the actual JSON.
-  Now present and set to `false` by default.
+**Legacy Removal** — catalog system (`scenario_catalog.json`, `loadScenario`, `createScenario`, `loadSensors`, `loadConfig`, `runScenario`, flat sensor configs, batch runner, compat shims, patch scripts) removed. Copies preserved in backup.
+
+### v2.6.0 — March 15, 2026
+Auto-terrain environment resolution, pre-flight scenario validator, sandbox templates.
+
+### v2.5.0 — March 14, 2026
+Demo video recording (`recordDemoVideo.m`).
+
+### v2.4.1 — February 24, 2026
+Dedicated sensor configs per scenario, batch runner showcase/my-sensors modes.
 
 ### v2.4 — February 24, 2026
-
-**One-Command Entrypoint**
-- Rewrote `scripts/runSingleScenario.m` as a smart router. It checks the scenario
-  catalog first — if the name exists there, it uses the full V2 pipeline
-  (`loadScenario` → custom sensors/targets/environment). Otherwise it falls back
-  to the simple `loadConfig` → `createScenario` (DASR) path.
-- Added `"default"` entry to `scenario_catalog.json` that reads `sensors.json`.
-  This means `runSingleScenario("default")` now honors sensor toggles in
-  `config/sensors/sensors.json` instead of using the hardcoded DASR.
-- All scenarios are now accessible via one command:
-  ```matlab
-  addpath("scripts");
-  runSingleScenario("default")              % sensors.json + default.json
-  runSingleScenario("crossing_targets")     % catalog scenario
-  runSingleScenario("default_wedge_ideal")  % original wedge radar
-  runSingleScenario("fighter_intercept")    % AESA on aircraft
-  ```
-
-**Default Wedge Radar Restored**
-- Added "Default Wedge Radar (Main Branch Baseline)" to `sensors.json`
-  (`enabled: false` by default). This is the original main-branch 40° sector
-  radar: 25 RPM, FOV [1.5, 10], sector [250, 290], Pd 0.8.
-- Created `config/sensors/sensors_default_wedge.json` (standalone sensor config).
-- Added `default_wedge_ideal` and `default_wedge_degraded` to scenario catalog.
-
-**Sector Scanner Fix (`runDetections.m`)**
-- Added `isMechanical` flag to sensor classification. Previously only 360°
-  rotators (`isRotator`) were recognized as having `IsScanDone`. Sector
-  scanners (like the wedge radar, PAR) also produce `IsScanDone` on each
-  sweep completion but were falling to the 1-second time-based flush.
-  This caused ~4 detections per target per scan (multiple sweeps merged),
-  leading to duplicate tracks.
-- Scan master selection now uses `isMechanical` (true for both rotators
-  AND sector scanners) instead of `isRotator`.
-- Result: wedge radar now correctly produces ~2 detections/scan (one per
-  target) and tracker forms exactly 2 tracks for 2 targets.
-
-**Terrain Occlusion Toggle**
-- Added `terrain_occlusion` field to environment config in `runDetections.m`.
-  Set `"terrain_occlusion": false` in `default.json` to disable LOS checks
-  against the terrain heightmap.
-- All five environment effects are now independently toggleable from JSON:
-  ```json
-  "environment": {
-      "terrain_occlusion": false,
-      "horizon_masking": false,
-      "ground_clutter": false,
-      "propagation_model": false,
-      "terrain_type": "water",
-      "clutter_density": 0.2
-  }
-  ```
-
-**Scan Coverage Safeguard**
-- NEW `+scenario/validateScanCoverage.m` — pre-flight check that verifies
-  scenario duration produces enough scans for the configured sensor(s).
-  Prints a per-sensor diagnostic table and warns with recommended minimum
-  duration if insufficient.
-- Integrated into all three entry paths: `runScenario`, `runExperiment`,
-  `loadScenario`.
-- Post-detection scan count check in `runSingleScenario` catalog path.
-
-**Main-Branch Compatibility Shims**
-- `+loader/loadConfig.m` — forwards to `+config/loadConfig.m`
-- `+detections/createDetections.m` — forwards to `runDetections.m` with defaults
-- `runScenario.m` (package root) — matches main's `[results, detections]` signature
-- `+results/ResultsSchema.m` — standard results struct factory
-- Environment effects disabled in compat path for clean baseline behavior
-
-**Misc Fixes**
-- Populated `clear_weather.json` and `storm_window.json` (were empty/broken).
-- Fixed `default.json` duration: 10s → 50s (DASR at 12.5 RPM needs 4.8s/scan).
+One-command entrypoint, sector scanner fix, terrain occlusion toggle, scan coverage safeguard.
 
 ### v2.3 — February 23, 2026
-
-**Terrain Occlusion**
-- NEW `generateTerrain.m` — Procedural heightmap generator for 5 terrain types (water/rural/urban/mountain/desert). 200×200 grid, seeded RNG, NED z-negative convention.
-- `loadScenario.m` — Section 7: attaches terrain via `groundSurface(scenario, 'Terrain', Z, 'Boundary', bounds)` after target creation. Terrain type read from scenario config.
-- `runDetections.m` — Two-stage visibility masking: (1) `SurfaceManager.occlusion()` for terrain LOS, (2) `isAboveHorizon()` for Earth curvature. Terrain grid passed through `envConfig.terrainGrid` to `dataLog.TerrainGrid` for visualization.
-- `plotInitialScenario.m` — Renders terrain as `surf()` mesh with earth-tone colormap when `dataLog.TerrainGrid` exists; falls back to flat ground plane otherwise.
-- `runTracker.m` — Same terrain mesh rendering in tracker 3D plots.
-
-**3D Visualization Fixes**
-- `runTracker.m` — Fixed NED Z-axis display: removed broken `ZDir='reverse'` (theaterPlot overrides it) and instead negate all Z values manually for plotting. Altitude now displays positive/upward across all plot elements (detections, tracks, terrain, ground plane).
-- `runTracker.m` — Added axis labels with units (`X (km)`, `Y (km)`, `Altitude (km)`) applied *after* theaterPlot setup (which overwrites labels set earlier).
-- `runTracker.m` — ROI Z-limits now computed from display altitude (negated NED Z) so theaterPlot axis range is correct.
-
-**Bugfixes**
-- `applyVCPMask.m` — Fixed crash on AESA 6-element measurements (`[x,y,z,vx,vy,vz]`). Now extracts `meas(1:3)` position-only before computing relative position to sensor. Previously failed with "Arrays have incompatible sizes" on `fighter_intercept`.
-- `runTracker.m` — Fixed `cat(2, allDets.Measurement)` crash when scan contains mixed measurement sizes (e.g., AESA 6-element + clutter 3-element). Now extracts position-only per detection via loop.
-
-**Sensor Coverage Visualization**
-- NEW `drawSensorCoverage.m` — Draws range rings (360° rotators) and sector wedges (PAR, FLIR, fire control) on 3D ground plane with per-type color coding.
-- Integrated into both `plotInitialScenario.m` and `runTracker.m`.
-- Coverage metadata stored in `dataLog.SensorCoverage` during `runDetections`.
+Terrain occlusion, 3D visualization fixes, sensor coverage visualization.
 
 ### v2.2 — February 23, 2026
-
-**Propagation Model (VCP)**
-- NEW `computeVerticalCoverage.m` — Computes vertical coverage diagrams using `radarvcd` with terrain-dependent surface parameters.
-- NEW `applyVCPMask.m` — Per-detection range check against VCP. Soft fade zone at 90-100% of VCP max range.
-- NEW `computePropFactor.m` — Propagation factor utility.
-- Integrated into `runDetections.m` detection pipeline.
-
-**Environment Modeling**
-- NEW `isAboveHorizon.m` — 4/3 Earth radius horizon masking.
-- NEW `generateGroundClutter.m` — Terrain-dependent false returns.
-- `default.json` — Added `environment` config block with toggles.
-
-**3D Visualization**
-- Ground plane rendering in `plotInitialScenario.m` and `runTracker.m`.
-- Dark theme styling for plots.
+Propagation model (VCP), environment modeling, ground clutter.
 
 ### v2.1
-
-- `loadScenario.m` — JSON-driven scenario loading from catalog.
-- `loadSensors.m` — Multi-platform sensor loading from JSON.
-- `buildSensor.m` — Universal sensor factory (19 types).
-- `runAllScenarios.m` — Batch runner with formatted results summary.
-- Track swap analysis (`analyzeTrackSwaps.m`, `plotTrackSwapAnalysis.m`).
-- Detectable track ID support for GNN/JPDA.
+JSON-driven scenario loading, 19 sensor types, batch runner, track swap analysis.
 
 ### v2.0
-
-- Initial V2 architecture: +trackbench namespace, JSON config, DASR sensor model.
+Initial V2: +trackbench namespace, JSON config, DASR sensor model.
 
 ---
 
-**Last Updated:** February 24, 2026
-**Version:** 2.4.1
+**Last Updated:** March 19, 2026
+**Version:** 3.0.0

@@ -1,0 +1,25 @@
+{
+  "name": "Air Route Surveillance Radar",
+  "type": "ARSR",
+  "platform": "tower",
+  "params": {
+    "rpm": 5,
+    "fov": [
+      1.4,
+      40
+    ],
+    "tilt": 3,
+    "pd": 0.8,
+    "far": 1E-6,
+    "rangeLimits": [
+      0,
+      463000
+    ],
+    "rangeRes": 200,
+    "mountingLoc": [
+      0,
+      0,
+      -30
+    ]
+  }
+}

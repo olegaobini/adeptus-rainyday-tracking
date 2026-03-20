@@ -1,0 +1,22 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/AESA/my_AESA"
+  ],
+  "PARAM_DOCS": {
+    "sector": "[minAz, maxAz] electronic scan limits. ±60 typical for fighter.",
+    "rangeLimits": "300km. Airborne radar, high power.",
+    "pd": "0.85 — lower than ground due to airborne clutter.",
+    "mountingLoc": "Nose-mounted: [0,0,0]. Requires aircraft platform in run file."
+  },
+  "name": "AESA Fighter Radar",
+  "type": "AESA",
+  "platform": "aircraft",
+  "params": {
+    "sector": [-60, 60],
+    "rangeLimits": [0, 300000],
+    "pd": 0.85,
+    "far": 1e-6,
+    "mountingLoc": [0, 0, 0]
+  }
+}

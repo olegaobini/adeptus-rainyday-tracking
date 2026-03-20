@@ -1,0 +1,11 @@
+{
+  "description": "Flat sea level. No effects. Open ocean / coastal.",
+  "terrain_type": "water",
+  "terrain_scale": 1,
+  "terrain_occlusion": false,
+  "horizon_masking": false,
+  "ground_clutter": false,
+  "propagation_model": false,
+  "clutter_density": 0,
+  "refraction_factor": 1.333
+}

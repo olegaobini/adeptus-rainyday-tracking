@@ -1,0 +1,24 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/ARSR/my_ARSR"
+  ],
+  "PARAM_DOCS": {
+    "rpm": "5 RPM = 12s per rotation. Slow scan, long range.",
+    "rangeLimits": "250nm (463km). En-route surveillance.",
+    "pd": "0.8 — lower at extreme range is expected."
+  },
+  "name": "Air Route Surveillance Radar",
+  "type": "ARSR",
+  "platform": "tower",
+  "params": {
+    "rpm": 5,
+    "fov": [1.4, 40],
+    "tilt": 3,
+    "pd": 0.8,
+    "far": 1e-6,
+    "rangeLimits": [0, 463000],
+    "rangeRes": 200,
+    "mountingLoc": [0, 0, -30]
+  }
+}

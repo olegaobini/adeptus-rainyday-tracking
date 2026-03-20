@@ -1,0 +1,29 @@
+{
+  "description": "Heavy rain — maximum degradation, tests tracker robustness",
+  "sensors": [
+    "PSR/default_PSR",
+    "SSR/default_SSR"
+  ],
+  "targets": "storm_window/default_storm_window",
+  "terrain": "rural/default_rural",
+  "trackers": [
+      "GNN/default_GNN",
+      "JPDA/default_JPDA"
+    ],
+  "degradation": {
+    "enabled": true,
+    "type": "heavy_rain"
+  },
+  "platforms": {},
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
+}

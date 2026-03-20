@@ -1,39 +1,28 @@
-function runSingleScenario(configName)
-% runSingleScenario  ONE-COMMAND entrypoint for all scenarios.
+function runSingleScenario(runName)
+% runSingleScenario  Run a modular simulation from a run file.
 %
 % USAGE
-%   runSingleScenario("default")              % DASR radar, IDEAL, default.json
-%   runSingleScenario("clear_weather")        % DASR radar, IDEAL (override file)
-%   runSingleScenario("storm_window")         % catalog: DASR + storm degradation
-%   runSingleScenario("dasr_ideal")           % catalog: DASR baseline
-%   runSingleScenario("crossing_targets")     % catalog: track swap test
-%   runSingleScenario("default_wedge_ideal")  % catalog: original 40° wedge radar
-%   runSingleScenario("fighter_intercept")    % catalog: AESA on moving aircraft
-%   runSingleScenario("maritime_surface")     % catalog: X-band ship radar
+%   addpath("scripts");
+%   runSingleScenario("my_run")              % your custom run file
+%   runSingleScenario("dasr_baseline")       % PSR+SSR, rural, GNN+JPDA
+%   runSingleScenario("demo_mountain")       % PSR, 5 targets, mountain
+%   runSingleScenario("demo_first_run")      % Boeing demo, cached detections
+%   runSingleScenario("fighter_intercept")   % AESA+FLIR on aircraft
 %
 % HOW IT WORKS
-%   1. Checks if the name exists in the scenario catalog
-%      → YES: Uses loadScenario (custom sensors, targets, environment)
-%      → NO:  Uses loadConfig + createScenario (DASR default radar)
-%   2. Generates or loads cached detections
-%   3. Runs all enabled trackers from default.json
-%   4. Saves results
+%   Reads config/runs/<runName>.json which references individual components:
+%     sensors  → config/sensors/<TYPE>/  (one file per sensor)
+%     targets  → config/targets/<PATTERN>/ (target definitions)
+%     terrain  → config/terrain/<TYPE>/  (terrain + environment)
+%     trackers → config/trackers/<TYPE>/ (tracker + filter params)
 %
-% CONFIGURATION
-%   Edit config/default.json to change:
-%     scenario.duration_s       — sim length (must be long enough for sensor)
-%     degradation.enabled       — true for RAINY, false for IDEAL
-%     trackers_to_run.*         — toggle GNN/TOMHT/JPDA × CV/IMM
-%     tracker_params.*          — gate, FAR, confirm/delete thresholds
-%     output.*                  — visuals, diagnostics, save
+%   Run buildModularConfig to create the folder structure and templates.
+%   See config/runs/run_template.json for the file format.
 %
-%   Catalog scenarios override these via their own settings.
-%   See: trackbench.scenario.loadScenarioCatalog  (lists all scenarios)
-%
-% See also: trackbench.scenario.loadScenarioCatalog, trackbench.scenario.loadScenario
+% See also: trackbench.config.loadRunFile, buildModularConfig
 
 arguments
-    configName (1,1) string = "default"
+    runName (1,1) string = "my_run"
 end
 
 clc; close all;
@@ -42,217 +31,238 @@ clc; close all;
 root = resolveRootFromThisFile();
 addpath(genpath(fullfile(root, "src")));
 
-%% Decide which path to take: catalog scenario vs simple config
-isCatalogScenario = checkCatalog(root, configName);
+%% Validate run file exists
+runPath = fullfile(root, "config", "runs", runName + ".json");
+if ~isfile(runPath)
+    fprintf('\n[ERROR] Run file not found: %s\n', runPath);
+    fprintf('\nAvailable run files:\n');
+    runsDir = fullfile(root, "config", "runs");
+    files = dir(fullfile(runsDir, '*.json'));
+    for i = 1:numel(files)
+        [~, name] = fileparts(files(i).name);
+        if ~startsWith(name, '_')
+            fprintf('  runSingleScenario("%s")\n', name);
+        end
+    end
+    fprintf('\nCreate a new run file: copy config/runs/run_template.json\n');
+    fprintf('Or run buildModularConfig to regenerate defaults.\n\n');
+    return;
+end
 
-if isCatalogScenario
-    fprintf('\n[ROUTE] "%s" found in scenario catalog → full V2 pipeline\n', configName);
-    runCatalogPath(root, configName);
+%% Load via modular run file
+[scenario, config, sensors, metas] = trackbench.config.loadRunFile(runName);
+paths = buildPaths(root, config);
+scenarioLabel = config.run_name;
+
+%% Count sensors
+platformNames = fieldnames(sensors);
+totalSensors = 0;
+for p = 1:numel(platformNames)
+    totalSensors = totalSensors + numel(sensors.(platformNames{p}));
+end
+
+%% Build enabled tracker list for display
+comboMap = {
+    'gnn_cv','GNN','CV'; 'gnn_imm','GNN','IMM';
+    'tomht_cv','TOMHT','CV'; 'tomht_imm','TOMHT','IMM';
+    'jpda_cv','JPDA','CV'; 'jpda_imm','JPDA','IMM'
+};
+enabledTrackers = {};
+for i = 1:size(comboMap, 1)
+    key = comboMap{i, 1};
+    if isfield(config.trackers_to_run, key) && ...
+            (config.trackers_to_run.(key) == true || config.trackers_to_run.(key) == 1)
+        enabledTrackers{end+1} = sprintf('%s+%s', comboMap{i,2}, comboMap{i,3}); %#ok<AGROW>
+    end
+end
+
+%% Print run plan
+sensorStr = config.sensor_config_name;
+fprintf('\n');
+fprintf('╔══════════════════════════════════════════════════════════╗\n');
+fprintf('║              runSingleScenario — RUN PLAN               ║\n');
+fprintf('╠══════════════════════════════════════════════════════════╣\n');
+fprintf('║  Run File  : %-44s║\n', scenarioLabel);
+fprintf('║  Sensors   : %-44s║\n', sensorStr);
+fprintf('║  Terrain   : %-44s║\n', config.environment.terrain_type);
+fprintf('║  Degraded  : %-44s║\n', string(config.degradation.enabled));
+fprintf('║  Trackers  : %-3d enabled                                 ║\n', numel(enabledTrackers));
+fprintf('╠══════════════════════════════════════════════════════════╣\n');
+fprintf('║  %s\n', strjoin(enabledTrackers, ', '));
+fprintf('╚══════════════════════════════════════════════════════════╝\n\n');
+
+%% Generate or load detections
+dataLog = [];
+if config.data_logging.use_saved_datalog
+    dataLog = loadDetections(paths.data_log_file);
+end
+
+if isempty(dataLog)
+    envCfg = config.environment;
+    dataLog = trackbench.detections.runDetections( ...
+        scenario, config.degradation.enabled, metas, envCfg);
+
+    if config.data_logging.save_after_generation
+        saveDetections(paths.data_log_file, dataLog);
+    end
 else
-    fprintf('\n[ROUTE] "%s" → config override path (DASR default radar)\n', configName);
-    runConfigPath(root, configName);
+    totalSensors = max(totalSensors, 1);
 end
 
+if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
+    dataLog.TerrainGrid = config.terrainGrid;
 end
 
+%% Scan check
+numScans = numel(dataLog.Time);
+if numScans < 5
+    warning('runSingleScenario:fewScans', 'Only %d scan(s) — need at least 5.', numScans);
+else
+    fprintf('[SCAN CHECK] %d scans — OK.\n', numScans);
+end
 
-%% ========================================================================
-%  PATH 1: Catalog scenario (loadScenario → custom sensors/targets)
-%% ========================================================================
-function runCatalogPath(root, scenarioName)
+%% Visualization
+showVis = true; animVis = true;
+if isfield(config.output, 'show_visuals');    showVis = config.output.show_visuals;    end
+if isfield(config.output, 'animate_visuals'); animVis = config.output.animate_visuals; end
 
-    %% Load scenario from catalog (builds scenario + sensors + targets)
-    [scenario, config, sensors, metas] = trackbench.scenario.loadScenario(scenarioName);
+if showVis
+    trackbench.reporting.plotInitialScenario(dataLog, animVis);
+end
 
-    %% Resolve paths
-    paths = buildPaths(root, config);
+%% Run trackers
+params = config.active_params;
+pd = params.pd;
+results = struct();
+results.run_id = scenarioLabel;
+results.config = config;
+summaryRows = {};
 
-    fprintf("\n==============================\n");
-    fprintf(" RUN START | %s\n", scenarioName);
-    fprintf("==============================\n\n");
+trackerCombos = {
+    {'GNN','CV',config.trackers_to_run.gnn_cv};
+    {'GNN','IMM',config.trackers_to_run.gnn_imm};
+    {'TOMHT','CV',config.trackers_to_run.tomht_cv};
+    {'TOMHT','IMM',config.trackers_to_run.tomht_imm};
+    {'JPDA','CV',config.trackers_to_run.jpda_cv};
+    {'JPDA','IMM',config.trackers_to_run.jpda_imm}
+};
 
-    %% Load or generate detections
-    dataLog = [];
-    if config.data_logging.use_saved_datalog
-        dataLog = loadDetections(paths.data_log_file);
+for c = 1:length(trackerCombos)
+    tType = trackerCombos{c}{1}; fModel = trackerCombos{c}{2};
+    enabled = trackerCombos{c}{3};
+    if ~enabled; continue; end
+
+    comboName = lower(sprintf('%s_%s', tType, fModel));
+    fprintf('\n============ %s + %s ============\n', tType, fModel);
+
+    % Use tracker-specific params if available
+    trkParams = params;
+    trkGlobal = config.tracker_global;
+    trkFilter = config.filter_params;
+    if isfield(config, 'tracker_configs')
+        for tc = 1:numel(config.tracker_configs)
+            tcfg = config.tracker_configs{tc};
+            if strcmpi(tcfg.tracker_type, tType) && strcmpi(tcfg.filter_model, fModel)
+                if isfield(tcfg, 'params'); trkParams = mergeStructs(trkParams, tcfg.params); end
+                if isfield(tcfg, 'global'); trkGlobal = mergeStructs(trkGlobal, tcfg.global); end
+                if isfield(tcfg, 'filter'); trkFilter = mergeStructs(trkFilter, tcfg.filter); end
+                if isfield(tcfg, 'volume'); trkGlobal.volume = tcfg.volume; end
+                if isfield(tcfg, 'beta');   trkGlobal.beta   = tcfg.beta;   end
+                fprintf('  [%s] volume=%.0e, beta=%.0e\n', tType, trkGlobal.volume, trkGlobal.beta);
+                break;
+            end
+        end
     end
 
-    if isempty(dataLog)
-        % Count sensors for tracker
-        platformNames = fieldnames(sensors);
-        totalSensors = 0;
-        for p = 1:numel(platformNames)
-            totalSensors = totalSensors + numel(sensors.(platformNames{p}));
-        end
+    tracker = trackbench.tracking.buildTracker(tType, fModel, trkParams, ...
+        trkGlobal, trkFilter, pd, totalSensors);
 
-        envCfg = struct('horizon_masking', true, 'refraction_factor', 4/3, ...
-                        'ground_clutter', true, 'terrain_type', 'rural', ...
-                        'clutter_density', 0.5);
-        if isfield(config, 'environment')
-            envCfg = config.environment;
-        end
+    [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLog, swapReport] = ...
+        trackbench.tracking.runTracker(dataLog, tracker, false, showVis, animVis);
 
-        dataLog = trackbench.detections.runDetections( ...
-            scenario, config.degradation.enabled, metas, envCfg);
-
-        if config.data_logging.save_after_generation
-            saveDetections(paths.data_log_file, dataLog);
-        end
-    else
-        totalSensors = 1;
-        if isfield(dataLog, 'HasIFF') && dataLog.HasIFF
-            totalSensors = 2;
-        end
-    end
-
-    %% Scan check
-    numScans = numel(dataLog.Time);
-    if numScans < 5
-        avgPeriod = config.scenario.duration_s / max(numScans, 1);
-        warning('runSingleScenario:fewScans', ...
-            'Only %d scan(s) — trackers need at least 5. Increase duration_s to %.0fs.', ...
-            numScans, ceil(8 * avgPeriod));
-    else
-        fprintf('[SCAN CHECK] %d scans — OK.\n', numScans);
-    end
-
-    %% Visualization
-    showVis = true; animVis = true;
-    if isfield(config.output, 'show_visuals');    showVis = config.output.show_visuals;    end
-    if isfield(config.output, 'animate_visuals'); animVis = config.output.animate_visuals; end
-
-    if showVis
-        trackbench.reporting.plotInitialScenario(dataLog, animVis);
-    end
-
-    %% Detection stats
-    params = config.active_params;
-    pd     = params.pd;
+    results.(comboName).trackSummary = trackSummary;
+    results.(comboName).truthSummary = truthSummary;
+    results.(comboName).trackMetrics = trackMetrics;
+    results.(comboName).truthMetrics = truthMetrics;
+    results.(comboName).time = time;
+    results.(comboName).assignLog = assignLog;
+    results.(comboName).swapReport = swapReport;
 
     if config.output.print_diagnostics
-        nPerScan = cellfun(@numel, dataLog.Detections);
-        fprintf("Detections/scan stats: min=%g, mean=%.2f, max=%g\n", ...
-            min(nPerScan), mean(nPerScan), max(nPerScan));
+        disp(trackSummary); disp(truthSummary);
     end
 
-    fprintf(" | gate=%.1f | pd=%.2f | volume=%.2e | beta=%.2e\n", ...
-        params.gate, pd, config.tracker_global.volume, config.tracker_global.beta);
+    swapStr = ternary(swapReport.swapFree, 'CLEAN', sprintf('%d SWAP(S)', swapReport.totalSwaps));
+    posRMS_vals = []; velRMS_vals = [];
+    if istable(trackMetrics) && ismember('posRMS', trackMetrics.Properties.VariableNames)
+        posRMS_vals = trackMetrics.posRMS;
+    end
+    if istable(trackMetrics) && ismember('velRMS', trackMetrics.Properties.VariableNames)
+        velRMS_vals = trackMetrics.velRMS;
+    end
 
-    %% Run enabled trackers
-    results = struct();
-    results.run_id = scenarioName;
-    results.config = config;
-
-    trackerCombos = {
-        {'GNN', 'CV',   config.trackers_to_run.gnn_cv};
-        {'GNN', 'IMM',  config.trackers_to_run.gnn_imm};
-        {'TOMHT','CV',  config.trackers_to_run.tomht_cv};
-        {'TOMHT','IMM', config.trackers_to_run.tomht_imm};
-        {'JPDA', 'CV',  config.trackers_to_run.jpda_cv};
-        {'JPDA', 'IMM', config.trackers_to_run.jpda_imm}
-    };
-
-    for c = 1:length(trackerCombos)
-        tType   = trackerCombos{c}{1};
-        fModel  = trackerCombos{c}{2};
-        enabled = trackerCombos{c}{3};
-        if ~enabled; continue; end
-
-        comboName = lower(sprintf('%s_%s', tType, fModel));
-        fprintf('\n============ %s + %s ============\n', tType, fModel);
-
-        tracker = trackbench.tracking.buildTracker(tType, fModel, params, ...
-            config.tracker_global, config.filter_params, pd, totalSensors);
-
-        [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLog, swapReport] = ...
-            trackbench.tracking.runTracker(dataLog, tracker, false, showVis, animVis);
-
-        results.(comboName).trackSummary = trackSummary;
-        results.(comboName).truthSummary = truthSummary;
-        results.(comboName).trackMetrics = trackMetrics;
-        results.(comboName).truthMetrics = truthMetrics;
-        results.(comboName).time         = time;
-
-        if config.output.print_diagnostics
-            disp(trackSummary); disp(truthSummary);
+    fprintf('\n  ┌─────────────────────────────────────────────\n');
+    fprintf('  │ %s + %s  SUMMARY\n', tType, fModel);
+    fprintf('  ├─────────────────────────────────────────────\n');
+    fprintf('  │ Track Swaps : %s\n', swapStr);
+    if ~isempty(posRMS_vals)
+        fprintf('  │ Position RMS: ');
+        for ti = 1:numel(posRMS_vals); fprintf('T%d=%.1fm  ', ti, posRMS_vals(ti)); end
+        fprintf('\n');
+    end
+    if ~isempty(velRMS_vals)
+        fprintf('  │ Velocity RMS: ');
+        for ti = 1:numel(velRMS_vals); fprintf('T%d=%.1fm/s  ', ti, velRMS_vals(ti)); end
+        fprintf('\n');
+    end
+    if istable(trackMetrics) && ismember('Quality', trackMetrics.Properties.VariableNames)
+        fprintf('  │ Quality     : ');
+        for ti = 1:height(trackMetrics)
+            fprintf('T%d=%.0f%%  ', ti, trackMetrics.Quality(ti));
         end
+        fprintf('\n');
     end
+    fprintf('  └─────────────────────────────────────────────\n');
 
-    %% Save
-    if config.output.save_results
-        if ~exist(paths.results_dir, "dir"); mkdir(paths.results_dir); end
-        timestamp   = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-        resultsFile = fullfile(paths.results_dir, ...
-            sprintf("results_%s_%s.mat", strrep(scenarioName,"/","_"), timestamp));
-        save(resultsFile, "results", "config", "-v7.3");
-        fprintf("[INFO] Saved results to %s\n", resultsFile);
-    end
-
-    fprintf("\n==============================\n");
-    fprintf(" RUN END | %s\n", scenarioName);
-    fprintf("==============================\n\n");
+    summaryRows{end+1} = {tType, fModel, swapStr, posRMS_vals, velRMS_vals}; %#ok<AGROW>
 end
 
-
-%% ========================================================================
-%  PATH 2: Simple config override (loadConfig → DASR default)
-%% ========================================================================
-function runConfigPath(root, configName)
-
-    config = trackbench.loader.loadConfig(configName);
-    paths  = buildPaths(root, config);
-
-    fprintf("\n==============================\n");
-    fprintf(" RUN START\n");
-    fprintf("==============================\n\n");
-
-    detections = [];
-    if config.data_logging.use_saved_datalog
-        detections = loadDetections(paths.data_log_file);
+%% Final summary
+if numel(summaryRows) >= 1
+    fprintf('\n');
+    fprintf('╔═══════════════════════════════════════════════════════╗\n');
+    fprintf('║           %s — RESULTS SUMMARY             ║\n', upper(scenarioLabel));
+    fprintf('╠═══════════════════════════════════════════════════════╣\n');
+    fprintf('║  %-8s %-6s %-12s %-24s║\n', 'Tracker', 'Filter', 'Swaps', 'Avg posRMS (m)');
+    fprintf('╠═══════════════════════════════════════════════════════╣\n');
+    for ri = 1:numel(summaryRows)
+        r = summaryRows{ri};
+        avgPos = ternary(~isempty(r{4}), sprintf('%.1f', mean(r{4})), 'N/A');
+        fprintf('║  %-8s %-6s %-12s %-24s║\n', r{1}, r{2}, r{3}, avgPos);
     end
+    fprintf('╚═══════════════════════════════════════════════════════╝\n');
+end
 
-    if isempty(detections)
-        [results, detections] = trackbench.runScenario(config, configName);
-        if config.data_logging.save_after_generation
-            saveDetections(paths.data_log_file, detections);
-        end
-    else
-        results = trackbench.runScenario(config, configName, detections);
-    end
+%% Save
+if config.output.save_results
+    if ~exist(paths.results_dir, "dir"); mkdir(paths.results_dir); end
+    timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
+    resultsFile = fullfile(paths.results_dir, ...
+        sprintf("results_%s_%s.mat", strrep(char(scenarioLabel),"/","_"), timestamp));
+    save(resultsFile, "results", "config", "-v7.3");
+    fprintf("[INFO] Saved results to %s\n", resultsFile);
+end
 
-    if config.output.save_results
-        if ~exist(paths.results_dir, "dir"); mkdir(paths.results_dir); end
-        timestamp   = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-        scenarioTag = strrep(configName, "/", "_");
-        resultsFile = fullfile(paths.results_dir, ...
-            sprintf("results_%s_%s.mat", scenarioTag, timestamp));
-        save(resultsFile, "results", "config", "-v7.3");
-        fprintf("[INFO] Saved results to %s\n", resultsFile);
-    end
+fprintf("\n==============================\n");
+fprintf(" RUN END | %s\n", scenarioLabel);
+fprintf("==============================\n\n");
 
-    fprintf("\n==============================\n");
-    fprintf(" RUN END\n");
-    fprintf("==============================\n\n");
 end
 
 
 %% ========================================================================
 %  HELPERS
 %% ========================================================================
-function found = checkCatalog(root, scenarioName)
-%checkCatalog  Return true if scenarioName exists in the scenario catalog.
-    catPath = fullfile(root, "config", "scenarios", "scenario_catalog.json");
-    found = false;
-    if ~isfile(catPath); return; end
-    try
-        catalog = jsondecode(fileread(catPath));
-        if isfield(catalog, 'scenarios') && isfield(catalog.scenarios, scenarioName)
-            found = true;
-        end
-    catch
-    end
-end
-
 function root = resolveRootFromThisFile()
     thisFile = mfilename('fullpath');
     root = fileparts(fileparts(thisFile));
@@ -284,4 +294,17 @@ function saveDetections(detectionsFile, detections)
     if ~exist(detectionsDir, "dir"); mkdir(detectionsDir); end
     save(detectionsFile, "detections", "-v7.3");
     fprintf("[INFO] Saved detections to %s\n", detectionsFile);
+end
+
+function out = ternary(cond, a, b)
+    if cond; out = a; else; out = b; end
+end
+
+function merged = mergeStructs(base, overlay)
+    merged = base;
+    if ~isstruct(overlay); return; end
+    flds = fieldnames(overlay);
+    for i = 1:numel(flds)
+        merged.(flds{i}) = overlay.(flds{i});
+    end
 end

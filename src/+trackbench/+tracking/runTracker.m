@@ -74,10 +74,10 @@ catch
 end
 hasSensorConfigs = isfield(dataLog, 'SensorConfig') && ~isempty(dataLog.SensorConfig);
 
-% If a rotating sensor exists (360° sweep), ALL tracks are detectable every
+% If a rotating sensor exists (360 sweep), ALL tracks are detectable every
 % scan — the rotator sees everything in range. Skip the FOV check to avoid
 % false "not detectable" results caused by incomplete sensor config storage
-% (e.g., only the fire-control's 1.4° FOV is stored, not the PSR's 360°).
+% (e.g., only the fire-control's 1.4 FOV is stored, not the PSR's 360).
 hasRotator = isfield(dataLog, 'HasRotator') && dataLog.HasRotator;
 if useDetectableIDs && hasRotator
     fprintf('[runTracker] Rotating sensor present — all tracks detectable, skipping FOV gate.\n');
@@ -134,22 +134,18 @@ if showVisuals
     zlabel(tpaxes, 'Altitude (km)');
     
     % Draw terrain surface or flat ground plane
-    % All Z values are NEGATED for display (NED z-down → altitude up)
+    % All Z values are NEGATED for display (NED z-down -> altitude up)
     if isfield(dataLog, 'TerrainGrid') && ~isempty(dataLog.TerrainGrid)
         tg = dataLog.TerrainGrid;
         Xterr = tg.X;  Yterr = tg.Y;
-        Zterr = -tg.Z;  % NEGATE: NED z-down → altitude up for display
-        % Clip to ROI
-        xMask = Xterr(1,:) >= roi.xMin & Xterr(1,:) <= roi.xMax;
-        yMask = Yterr(:,1) >= roi.yMin & Yterr(:,1) <= roi.yMax;
-        if any(xMask) && any(yMask)
-            surf(tpaxes, Xterr(yMask,xMask), Yterr(yMask,xMask), Zterr(yMask,xMask), ...
-                'FaceColor', 'interp', 'EdgeColor', 'none', ...
-                'FaceAlpha', 0.45, 'HandleVisibility', 'off');
-            colormap(tpaxes, [0.15 0.12 0.08; 0.25 0.20 0.12; ...
-                              0.35 0.30 0.15; 0.45 0.40 0.20; ...
-                              0.55 0.50 0.30; 0.65 0.60 0.40]);
-        end
+        Zterr = -tg.Z;  % NEGATE: NED z-down -> altitude up for display
+        % Plot full terrain — no clipping (ROI already includes terrain bounds)
+        surf(tpaxes, Xterr, Yterr, Zterr, ...
+            'FaceColor', 'interp', 'EdgeColor', 'none', ...
+            'FaceAlpha', 0.45, 'HandleVisibility', 'off');
+        colormap(tpaxes, [0.15 0.12 0.08; 0.25 0.20 0.12; ...
+                          0.35 0.30 0.15; 0.45 0.40 0.20; ...
+                          0.55 0.50 0.30; 0.65 0.60 0.40]);
     else
         gx = [roi.xMin roi.xMax roi.xMax roi.xMin];
         gy = [roi.yMin roi.yMin roi.yMax roi.yMax];
@@ -180,6 +176,31 @@ if showVisuals
     xlabel(tpaxes, 'X (km)');
     ylabel(tpaxes, 'Y (km)');
     zlabel(tpaxes, 'Altitude (km)');
+    
+    % Zoom to match the Scenario Truth and Detections plot.
+    % theaterPlot AxesUnits=["km"] labels ticks in km but internal
+    % coordinates remain in METERS. So xlim/ylim/zlim take meters.
+    padM = 3000;  % 3km padding in meters (matches plotInitialScenario)
+    allTruthPos = [];
+    for ss = 1:size(dataLog.Truth, 2)
+        targets = dataLog.Truth(:, ss);
+        for kk = 1:numel(targets)
+            allTruthPos(:, end+1) = targets(kk).Position(:); %#ok<AGROW>
+        end
+    end
+    if ~isempty(allTruthPos)
+        xLimFit = [min(allTruthPos(1,:))-padM, max(allTruthPos(1,:))+padM];
+        yLimFit = [min(allTruthPos(2,:))-padM, max(allTruthPos(2,:))+padM];
+        % Z: negate for altitude display (NED z-down → positive altitude up)
+        zAlt = -allTruthPos(3,:);  % flip sign: NED negative → positive altitude
+        % Always include ground level (0) so terrain is visible,
+        % with a small buffer below for terrain peaks.
+        zLimFit = [min(-500, min(zAlt)-padM), max(zAlt)+padM];
+        xlim(tpaxes, xLimFit);
+        ylim(tpaxes, yLimFit);
+        zlim(tpaxes, zLimFit);
+    end
+    set(tpaxes, 'XLimMode', 'manual', 'YLimMode', 'manual', 'ZLimMode', 'manual');
 end
 
 %% Track Metrics (assignment + error)
@@ -191,8 +212,10 @@ if isempty(scanTime) || ~isfinite(scanTime) || scanTime <= 0
 end
 
 % maxGap controls how long a truth/track can go without an assignment being
-% considered "unreported". Larger tolerates missed detections; too large hides breaks.
-maxGap = max(25*scanTime, 0.2);
+% considered "unreported". Use the full scenario time span so dead-zone
+% gaps never crash the metrics. BreakCount still correctly counts re-acquisitions.
+scenarioSpan = dataLog.Time(end) - dataLog.Time(1);
+maxGap = max(scenarioSpan, 25*scanTime);
 
 % trackAssignmentMetrics (tam):
 %   Tracks which track is assigned to which truth and detects events like divergence.
@@ -250,19 +273,16 @@ while i < numSteps
         scanCells = num2cell(scanBuffer(:));
     end
 
+    % -------- Normalize mixed measurement dimensions --------
+    % Multi-sensor scenarios produce mixed 3/6-element detections.
+    % TOMHT crashes on mixed sizes. Normalize all to position-only (3-element).
+    scanCells = normalizeDetectionDimensions(scanCells);
+
     % No pre-filtering of detections. The tracker's own gating logic
     % (AssignmentGate / ClutterDensity) handles clutter rejection.
     % All detections pass through to give an honest performance picture.
 
     % -------- Compute detectable track IDs --------
-    % For GNN and JPDA built with HasDetectableTrackIDsInput=true:
-    %   Predict all current tracks to this scan time, then check which
-    %   ones fall inside at least one sensor's FOV. Only those get passed
-    %   to the tracker so out-of-FOV tracks aren't penalized.
-    %
-    % IMPORTANT: empty detectIDs = "NO tracks detectable" (not "all").
-    % When skipping FOV gating (e.g. rotator present), pass ALL track IDs
-    % so score-based logic can run on every track.
     if useDetectableIDs && isLocked(tracker)
         try
             predictedTracks = predictTracksToTime(tracker, 'all', simTime);
@@ -274,17 +294,13 @@ while i < numSteps
             detectIDs = uint32([allTracks.TrackID]');
         end
     elseif isLocked(tracker) && ~isempty(allTracks)
-        % Rotator present or no FOV gating — all tracks are detectable
         detectIDs = uint32([allTracks.TrackID]');
     else
         detectIDs = uint32([]);
     end
-    % ----------------------------------------------
 
     % Update tracker with detections at this scan time.
     tic
-    % Always pass 3 args if tracker was built with HasDetectableTrackIDsInput.
-    % When useDetectableIDs is false, pass empty = "all tracks detectable".
     trackerWants3Args = isprop(tracker, 'HasDetectableTrackIDsInput') && tracker.HasDetectableTrackIDsInput;
     if trackerWants3Args
         [tracks, ~, allTracks] = tracker(scanCells, simTime, detectIDs);
@@ -370,7 +386,7 @@ while i < numSteps
             meas = zeros(3, numel(scanCells));
             for jj = 1:numel(scanCells)
                 m = scanCells{jj}.Measurement(:);
-                meas(:,jj) = m(1:3);  % position only (handles 3 or 6-element)
+                meas(:,jj) = m(1:3);
             end
         end
 
@@ -379,7 +395,7 @@ while i < numSteps
             [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 0 1 0]);
 
         if animateVisuals
-            % Plot green detections cumulatively (negate Z: NED → altitude up)
+            % Plot green detections cumulatively (negate Z: NED -> altitude up)
             if ~isempty(meas)
                 addpoints(detLine, meas(1,:), meas(2,:), -meas(3,:));
             end
@@ -410,7 +426,7 @@ while i < numSteps
                 end
                 
                 thisP = trackPlotters(tID);
-                % Negate Z for display (NED z-down → altitude up)
+                % Negate Z for display (NED z-down -> altitude up)
                 displayPos = pos(tIdx, :);
                 displayPos(3) = -displayPos(3);
                 displayCov = cov(:, :, tIdx);
@@ -420,10 +436,10 @@ while i < numSteps
             
             drawnow limitrate;
         else
-            % Buffer data for static plot (negate Z: NED → altitude up)
+            % Buffer data for static plot (negate Z: NED -> altitude up)
             if ~isempty(meas)
                 measDisp = meas;
-                measDisp(3,:) = -measDisp(3,:);  % negate Z for display
+                measDisp(3,:) = -measDisp(3,:);
                 allStaticDets{i} = measDisp; 
             end
             for tIdx = 1:numel(tracks)
@@ -433,7 +449,7 @@ while i < numSteps
                     staticTrackHist.(fName) = [];
                 end
                 thisPos = pos(tIdx, :)';
-                thisPos(3) = -thisPos(3);  % negate Z for display
+                thisPos(3) = -thisPos(3);
                 staticTrackHist.(fName) = [staticTrackHist.(fName), thisPos];
             end
         end
@@ -542,10 +558,8 @@ end
 %% ========================================================================
 
 function roi = computeDynamicROI(dataLog)
-%computeDynamicROI  Compute ROI bounding box from all truth positions in dataLog.
-%  Returns a struct with fields xMin/xMax/yMin/yMax/zMin/zMax that encloses
-%  all target positions across all scans with generous padding.
-    pad = 6000;  % meters padding around target envelope
+%computeDynamicROI  Compute ROI bounding box from truth positions AND terrain grid.
+    pad = 6000;
     allPos = [];
     for s = 1:size(dataLog.Truth, 2)
         targets = dataLog.Truth(:, s);
@@ -555,7 +569,6 @@ function roi = computeDynamicROI(dataLog)
         end
     end
     if isempty(allPos)
-        % Fallback if no truths
         roi.xMin = -50000; roi.xMax = 50000;
         roi.yMin = -50000; roi.yMax = 50000;
         roi.zMin = -500;   roi.zMax = 20000;
@@ -564,17 +577,35 @@ function roi = computeDynamicROI(dataLog)
         roi.xMax = max(allPos(:,1)) + pad;
         roi.yMin = min(allPos(:,2)) - pad;
         roi.yMax = max(allPos(:,2)) + pad;
-        % Convert NED Z to display altitude (negate): z=-3000 → alt=3000
         altitudes = -allPos(:,3);
         roi.zMin = min(altitudes) - pad;
         roi.zMax = max(altitudes) + pad;
-        roi.zMin = min(roi.zMin, -500);  % show a bit below ground level
+        roi.zMin = min(roi.zMin, -500);
     end
+
+    % Expand ROI to include terrain grid so mountains fill the entire plot.
+    % boundary is [xMin xMax; yMin yMax] — use explicit (row,col) indexing
+    % because MATLAB linear indexing is column-major and gets it wrong.
+    if isfield(dataLog, 'TerrainGrid') && ~isempty(dataLog.TerrainGrid)
+        tg = dataLog.TerrainGrid;
+        if isfield(tg, 'boundary') && numel(tg.boundary) >= 4
+            roi.xMin = min(roi.xMin, tg.boundary(1,1));
+            roi.xMax = max(roi.xMax, tg.boundary(1,2));
+            roi.yMin = min(roi.yMin, tg.boundary(2,1));
+            roi.yMax = max(roi.yMax, tg.boundary(2,2));
+        elseif isfield(tg, 'X')
+            roi.xMin = min(roi.xMin, min(tg.X(:)));
+            roi.xMax = max(roi.xMax, max(tg.X(:)));
+            roi.yMin = min(roi.yMin, min(tg.Y(:)));
+            roi.yMax = max(roi.yMax, max(tg.Y(:)));
+        end
+    end
+
+    % Cap altitude at 15km — PSR elevation noise produces 60km+ outliers
+    roi.zMax = min(max(roi.zMax, 8000), 15000);
 end
 
 function configs = getScanConfigs(dataLog, scanIdx)
-%getScanConfigs  Extract sensor config(s) for a given scan index.
-% Returns a cell array of sensor config structs (one per sensor).
     raw = dataLog.SensorConfig{scanIdx};
     if iscell(raw)
         configs = raw;
@@ -584,53 +615,23 @@ function configs = getScanConfigs(dataLog, scanIdx)
 end
 
 function detectableIDs = getDetectableTrackIDs(predictedTracks, configs)
-%getDetectableTrackIDs  Return IDs of tracks whose predicted position falls
-% inside at least one sensor's field of view.
-%
-% INPUTS
-%   predictedTracks : objectTrack array (from predictTracksToTime)
-%   configs         : cell array of sensor configuration structs
-%                     (from dataLog.SensorConfig, as returned by fusionRadarSensor)
-%
-% OUTPUT
-%   detectableIDs : uint32 column vector of track IDs in FOV
-%
-% HOW IT WORKS
-%   For each track, we take its predicted position (State(1:2:end)) and
-%   transform it into each sensor's coordinate frame using the
-%   MeasurementParameters chain stored in the config. We then check if the
-%   resulting azimuth and elevation fall within the sensor's FieldOfView.
-%   If a track is in any sensor's FOV, it's detectable.
-
     detectableIDs = uint32([]);
-
     if isempty(predictedTracks) || isempty(configs)
         return;
     end
-
     for iTrk = 1:numel(predictedTracks)
-        posWorld = predictedTracks(iTrk).State(1:2:end);  % [x; y; z]
+        posWorld = predictedTracks(iTrk).State(1:2:end);
         posWorld = posWorld(:);
-
         inFOV = false;
         for iSens = 1:numel(configs)
             cfg = configs{iSens};
-
-            % Skip configs that aren't valid for this time step
             if isfield(cfg, 'IsValidTime') && ~cfg.IsValidTime
                 continue;
             end
-
-            % Transform position from world frame into sensor frame
-            % using the MeasurementParameters chain (parent->child frames)
             posSensor = transformToSensorFrame(posWorld, cfg);
-
-            % Convert to azimuth/elevation (degrees)
             [az, el] = cart2sph(posSensor(1), posSensor(2), posSensor(3));
             az = rad2deg(az);
             el = rad2deg(el);
-
-            % Check against sensor FOV
             if isfield(cfg, 'FieldOfView') && numel(cfg.FieldOfView) >= 2
                 fov = cfg.FieldOfView;
                 if abs(az) <= fov(1)/2 && abs(el) <= fov(2)/2
@@ -638,53 +639,32 @@ function detectableIDs = getDetectableTrackIDs(predictedTracks, configs)
                     break;
                 end
             else
-                % If FOV info is missing, assume detectable (safe fallback)
                 inFOV = true;
                 break;
             end
         end
-
         if inFOV
             detectableIDs(end+1) = predictedTracks(iTrk).TrackID; %#ok<AGROW>
         end
     end
-
     detectableIDs = uint32(detectableIDs(:));
 end
 
 function posSensor = transformToSensorFrame(posWorld, cfg)
-%transformToSensorFrame  Apply MeasurementParameters chain to go from world
-% to sensor coordinates.
-%
-% The MeasurementParameters field is a struct array defining a chain of
-% rigid body transforms (rotation + translation) from parent to child frames.
-% We apply them in reverse order (outermost frame first) to get the position
-% in the sensor's local frame.
-
     posSensor = posWorld(:);
-
     if ~isfield(cfg, 'MeasurementParameters') || isempty(cfg.MeasurementParameters)
-        return;  % No transform info — return world position as-is
+        return;
     end
-
     mp = cfg.MeasurementParameters;
-
-    % Apply transforms from outermost (scenario) to innermost (sensor) frame
     for m = numel(mp):-1:1
         if ~isstruct(mp(m))
             continue;
         end
-
-        % Translation: subtract origin position
         if isfield(mp(m), 'OriginPosition') && ~isempty(mp(m).OriginPosition)
             posSensor = posSensor - mp(m).OriginPosition(:);
         end
-
-        % Rotation
         if isfield(mp(m), 'Orientation') && ~isempty(mp(m).Orientation)
             R = mp(m).Orientation;
-            % IsParentToChild: true means R transforms parent->child (apply directly)
-            %                  false means R is child->parent (apply transpose)
             if isfield(mp(m), 'IsParentToChild') && ~mp(m).IsParentToChild
                 R = R';
             end
@@ -693,4 +673,36 @@ function posSensor = transformToSensorFrame(posWorld, cfg)
     end
 end
 
-
+function detsOut = normalizeDetectionDimensions(detsIn)
+%normalizeDetectionDimensions  Normalize all detections to 3-element position-only.
+    if isempty(detsIn); detsOut = detsIn; return; end
+    detsOut = detsIn;
+    for ii = 1:numel(detsOut)
+        det = detsOut{ii};
+        nMeas = numel(det.Measurement);
+        if nMeas > 3
+            det.Measurement = det.Measurement(1:3);
+            R = det.MeasurementNoise;
+            if ~isscalar(R) && size(R,1) >= 3 && size(R,2) >= 3
+                det.MeasurementNoise = R(1:3, 1:3);
+            end
+            mp = det.MeasurementParameters;
+            if isstruct(mp)
+                for m = 1:numel(mp)
+                    if isfield(mp(m), 'HasVelocity')
+                        mp(m).HasVelocity = false;
+                    end
+                end
+                det.MeasurementParameters = mp;
+            elseif iscell(mp)
+                for m = 1:numel(mp)
+                    if isstruct(mp{m}) && isfield(mp{m}, 'HasVelocity')
+                        mp{m}.HasVelocity = false;
+                        det.MeasurementParameters = mp;
+                    end
+                end
+            end
+            detsOut{ii} = det;
+        end
+    end
+end

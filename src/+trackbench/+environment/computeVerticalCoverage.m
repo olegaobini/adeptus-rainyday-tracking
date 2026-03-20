@@ -35,15 +35,11 @@ function vcpData = computeVerticalCoverage(sensorInfos, terrainType, refractionK
 %                .terrainType  — terrain type used
 %                .enabled      — false for MSSR/non-radar (VCP not applied)
 %
-%  DESIGN NOTES
-%    - VCP is computed ONCE at simulation setup, not per-scan. The pattern
-%      depends on fixed geometry (antenna height, frequency, terrain) which
-%      doesn't change during a run.
-%    - MSSR/SSR sensors skip VCP (transponder link budget is different from
-%      radar multipath model).
-%    - The VCP from radarvcd is in km; we convert to meters for internal use.
-%    - Surface height std dev is capped at 90% of antenna height per the
-%      radarvcd constraint (ANHT >= SurfaceHeightStandardDeviation).
+%  CHANGE LOG
+%    - Fixed: platform height now read from Trajectory.Position (not
+%      InitialPosition which doesn't exist on fusion.scenario.Platform).
+%      With the hilltop fix in loadScenario, antenna height is now correct
+%      (e.g. 69m = 54m hilltop + 15m mount) instead of defaulting to 15m.
 %
 %  REQUIRES: Radar Toolbox (radarvcd, landroughness, searoughness,
 %            earthSurfacePermittivity, effearthradius, refractiveidx)
@@ -80,8 +76,9 @@ function vcpData = computeVerticalCoverage(sensorInfos, terrainType, refractionK
         end
         
         %% Antenna height (NED: z-negative = altitude)
+        % Use Trajectory.Position (fusion.scenario.Platform doesn't have InitialPosition)
         platZ = 0;
-        try platZ = si.platform.InitialPosition(3); catch; end
+        try platZ = si.platform.Trajectory.Position(3); catch; end
         mountZ = 0;
         try mountZ = si.sensor.MountingLocation(3); catch; end
         antennaHeight = max(-(platZ + mountZ), 5);  % at least 5m
@@ -125,7 +122,7 @@ function vcpData = computeVerticalCoverage(sensorInfos, terrainType, refractionK
             [vcp_km, angles] = radarvcd(freq, freeSpaceRange_km, antennaHeight, nvargs{:});
             
             vcpData(k).angles      = angles;
-            vcpData(k).maxRange_m  = vcp_km * 1000;  % convert km → m
+            vcpData(k).maxRange_m  = vcp_km * 1000;  % convert km -> m
             vcpData(k).enabled     = true;
             
             % Diagnostic summary

@@ -1,0 +1,38 @@
+{
+  "description": "Two targets crossing paths at close range — tests track swap handling",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [
+        -5000,
+        -20000,
+        -3000
+      ],
+      "end_pos": [
+        5000,
+        -20000,
+        -3000
+      ],
+      "altitude_m": 3000,
+      "x_note": "West to east"
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [
+        0,
+        -25000,
+        -3200
+      ],
+      "end_pos": [
+        0,
+        -15000,
+        -3200
+      ],
+      "altitude_m": 3200,
+      "x_note": "South to north, crosses target 1 around midpoint"
+    }
+  ]
+}

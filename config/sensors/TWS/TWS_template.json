@@ -1,0 +1,21 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/TWS/my_TWS"
+  ],
+  "PARAM_DOCS": {
+    "sector": "[minAz, maxAz] electronic scan limits. ±60 typical.",
+    "rangeLimits": "200km. Phased array, no mechanical scanning.",
+    "pd": "0.9 — electronic beam steering, fast revisit."
+  },
+  "name": "Track-While-Scan Phased Array",
+  "type": "TWS",
+  "platform": "tower",
+  "params": {
+    "sector": [-60, 60],
+    "rangeLimits": [0, 200000],
+    "pd": 0.9,
+    "far": 1e-6,
+    "mountingLoc": [0, 0, -20]
+  }
+}

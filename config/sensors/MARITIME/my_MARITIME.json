@@ -1,0 +1,25 @@
+{
+  "name": "Maritime Surface Search Radar",
+  "type": "MARITIME",
+  "platform": "ship",
+  "params": {
+    "rpm": 25,
+    "fov": [
+      1,
+      25
+    ],
+    "tilt": 0,
+    "pd": 0.85,
+    "far": 1E-5,
+    "rangeLimits": [
+      0,
+      74000
+    ],
+    "rangeRes": 50,
+    "mountingLoc": [
+      0,
+      0,
+      -20
+    ]
+  }
+}
