@@ -4,11 +4,8 @@
 %% ============================================================
 
 %% ---- SETUP (run once per MATLAB session) --------------------
-cd('C:\Users\Admin\Documents\RAINY DAY GIT COPY\AfterDemoCopyCleanedForGit\adeptus-rainyday-tracking')
 addpath("scripts");
 
-%% ---- FIRST TIME ONLY (creates config folder structure) ------
-buildModularConfig
 
 %% ============================================================
 %%  RUNNING SCENARIOS
