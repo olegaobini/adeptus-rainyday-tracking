@@ -1,0 +1,11 @@
+{
+  "description": "COMPOUND DEMO: 747 (airliner, 30 dBsm) vs Stealth Bomber (stealth, -10 dBsm) in heavy rain (50 mm/hr). ALL physics: aspect RCS + Doppler fade + rain + range. All 3 trackers.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA", "TOMHT/crossing_TOMHT"],
+  "degradation": { "enabled": true, "type": "rain", "rain_rate_mmhr": 50 },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

@@ -99,6 +99,20 @@ end
 
 if isempty(dataLog)
     envCfg = config.environment;
+    % Pass rain config from degradation settings into environment config
+    % so runDetections can access rain_rate_mmhr for physics-based degradation
+    if config.degradation.enabled && isfield(config.degradation, 'rain_rate_mmhr')
+        envCfg.rain_rate_mmhr = config.degradation.rain_rate_mmhr;
+    end
+    if config.degradation.enabled && isfield(config.degradation, 'pd_floor')
+        envCfg.pd_floor = config.degradation.pd_floor;
+    end
+    if config.degradation.enabled && isfield(config.degradation, 'noise_ceiling')
+        envCfg.noise_ceiling = config.degradation.noise_ceiling;
+    end
+    if config.degradation.enabled && isfield(config.degradation, 'clutter_multiplier')
+        envCfg.clutter_multiplier = config.degradation.clutter_multiplier;
+    end
     dataLog = trackbench.detections.runDetections( ...
         scenario, config.degradation.enabled, metas, envCfg);
 
@@ -218,7 +232,7 @@ for c = 1:length(trackerCombos)
     if istable(trackMetrics) && ismember('Quality', trackMetrics.Properties.VariableNames)
         fprintf('  │ Quality     : ');
         for ti = 1:height(trackMetrics)
-            fprintf('T%d=%.0f%%  ', ti, trackMetrics.Quality(ti));
+            fprintf('T%d=%s  ', ti, string(trackMetrics.Quality(ti)));
         end
         fprintf('\n');
     end

@@ -1,0 +1,11 @@
+{
+  "description": "RANGE vs RCS TEST: 747 takeoff+cruise (30 dBsm) vs stealth bomber evasive egress (-10 dBsm). No rain — pure physics of range, aspect RCS, Doppler fade. All 3 trackers.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA", "TOMHT/crossing_TOMHT"],
+  "degradation": { "enabled": false },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

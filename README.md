@@ -18,6 +18,9 @@ runSingleScenario("dasr_storm")          % PSR+SSR, mountain, heavy rain
 
 % Demo video (1080p MP4):
 recordDemoVideo
+
+% Physics comparison (clean vs rain, all 3 trackers):
+runComparisonDemo
 ```
 
 ## How It Works
@@ -352,7 +355,89 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v3.0.0 — March 15–19, 2026 (current)
+### v3.2.0 — March 21, 2026 (current)
+
+**Rain Attenuation via MATLAB `rainpl()`** — Replaced hand-coded ITU coefficient table with MATLAB's official Phased Array Toolbox `rainpl()` function (ITU-R P.838-3). Falls back gracefully if toolbox unavailable. Full inline citations for Boeing briefing.
+
+**Aspect-Dependent RCS Profiles** — Targets can now have realistic angle-varying radar cross sections.
+- New `buildRCSProfile.m` in `+environment/`: creates full azimuth×elevation `rcsSignature` pattern matrices
+- 5 preset profiles: `stealth`, `fighter`, `airliner`, `drone`, `missile`
+- Stealth profile: -10 dBsm nose-on, +7 dBsm broadside, -1 dBsm rear
+- `fusionRadarSensor` natively interpolates the pattern at each scan — no custom code needed
+- Target JSON: `"rcs_profile": "stealth"` with `"rcs_dbsm": -10` as base value
+- Ref: MathWorks `rcsSignature` documentation
+
+**Doppler/MTI Fade** — Targets flying tangentially (across the radar beam) now lose detections.
+- New `applyDopplerFade.m` in `+environment/`: computes radial velocity per detection
+- Targets with |v_radial| < MDV (Minimum Detectable Velocity) fall into the clutter notch
+- MDV auto-computed from radar frequency and assumed PRF (~40 m/s for S-band)
+- Configurable: `"doppler_fade": true/false` and `"mdv_ms": 40` in terrain config
+- Ref: MathWorks MTI radar example, Skolnik Ch. 3
+
+**Custom Waypoint Trajectories** — New `"behavior": "waypoints"` for user-defined flight paths.
+- Define arbitrary [x,y,z] waypoints with arrival times in target JSON
+- Uses MATLAB `waypointTrajectory` directly — any path, any timing, any complexity
+- Velocities auto-computed from waypoint spacing
+- Supports spiral, loop, reversal, climb/dive patterns
+
+**Enhanced Target Definitions** — All target types now support optional fields:
+- `rcs_dbsm`: scalar radar cross section (isotropic)
+- `rcs_profile`: named aspect-dependent profile (stealth, fighter, airliner, drone, missile)
+- `dimensions`: physical size {length_m, width_m, height_m} for cuboid visualization
+- `class_id`: integer classification for SSR/IFF identification
+- `label`: descriptive name shown in logs and plots
+- New `config/targets/target_template.json` with documented examples of all options
+
+**Vertical Process Noise Fix** — IMM and CV filters now properly model vertical acceleration.
+- Previous: vertical process noise = 1 m/s² (hardcoded default), horizontal = 900 m/s²
+- Fixed: vertical process noise = 400 m/s² (configurable via `scale_accel_vert`)
+- Climbing/descending targets (takeoff, approach, departure) now track correctly
+- Filters modified BEFORE `trackingIMM` construction (TrackingFilters is read-only after)
+
+**Range-Adaptive Performance Metrics** — Track-to-truth assignment now scales to any scenario.
+- `trackAssignmentMetrics` uses `posabserr` with threshold = 5% of max truth range
+- Quality score: posRMS as percentage of scenario range (Excellent <1%, Good <3%, Acceptable <5%)
+- Replaces hardcoded 300m threshold that failed at long range
+
+**Tracker Improvements**
+- `buildTracker.m` now wires `ConfirmationThreshold` and `DeletionThreshold` from JSON configs
+- Previously these were silently ignored — MATLAB defaults (20/-7) always used
+- JPDA uses probability-based thresholds (Integrated logic): `jpda_confirm_prob`, `jpda_delete_prob`
+- New crossing-pair tracker configs: `crossing_GNN.json`, `crossing_JPDA.json` with wider gates for 30-50km targets
+
+**New Demo Scenarios**
+- `rain_demo_baseline/sband/xband`: S-band vs X-band rain comparison (proves frequency selection)
+- `crossing_test`: crossing targets with tuned trackers
+- `rcs_demo`: airliner (20 dBsm) vs stealth UAV (-10 dBsm)
+- `range_rcs_test`: 747 takeoff+cruise vs stealth bomber evasive egress — compound degradation demo
+
+### v3.1.0 — March 20, 2026
+
+**Physics-Based Rain Degradation Model** — Replaced binary weather switch with ITU-R P.838-3 rain attenuation model.
+- New `applyRainDegradation.m` in `+environment/`: computes range-dependent, frequency-dependent Pd reduction using ITU-R P.838-3 specific attenuation coefficients
+- S-band (2.8 GHz PSR) barely affected by rain (~0.2 dB at 100km); X-band (9 GHz PAR/AESA) severely degraded (~8 dB) — matches real-world physics
+- Weather clutter now generated within actual sensor coverage volume (range, FOV) instead of hardcoded box
+- Measurement noise scales with rain rate + wet radome loss model
+- IR sensors use visibility-based degradation model (exponential decay with rain rate)
+- SSR/MSSR uses mild link-budget degradation (active transponder, rain-resistant)
+- Run file config: `"degradation": {"enabled": true, "type": "rain", "rain_rate_mmhr": 16}` — defaults to 16 mm/hr if omitted
+- Optional tuning: `pd_floor`, `clutter_multiplier` for advanced users
+
+**Verification Suite** — New `scripts/verifySimulation.m` runs 40+ automated checks across 8 phases.
+- Phase 1: Config loading & smoke test
+- Phase 2: Terrain generation & occlusion (all 5 terrain types, SurfaceManager, LOS checks)
+- Phase 3: Horizon masking (4/3 Earth model, vectorized multi-target)
+- Phase 4: Propagation model / VCP (radarvcd, multipath lobing, applyVCPMask)
+- Phase 5: Sensor & detection verification (9 sensor types, detection format, clutter)
+- Phase 6: Weather degradation (Pd reduction, noise increase, clutter generation)
+- Phase 7: Tracker verification (GNN, JPDA, TOMHT + CV/IMM filter init)
+- Phase 8: Known issues & code quality audit
+
+**showTruth N-Target Fix** — `runTracker.m` now loops over `size(dataLog.Truth, 1)` instead of hardcoding 2 targets.
+
+**Legacy Cleanup** — Removed 38 legacy files (V2 patch scripts, flat sensor configs, old batch system, catalog loaders, backward-compat wrappers). Project structure is now clean V3 only.
+
+### v3.0.0 — March 15–19, 2026
 
 **Modular Config Architecture** — Complete restructure from monolithic `default.json` to individual component files.
 - Run files (`config/runs/`) assemble sensors + targets + terrain + trackers by reference
@@ -399,5 +484,5 @@ Initial V2: +trackbench namespace, JSON config, DASR sensor model.
 
 ---
 
-**Last Updated:** March 19, 2026
-**Version:** 3.0.0
+**Last Updated:** March 21, 2026
+**Version:** 3.2.0

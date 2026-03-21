@@ -1,0 +1,11 @@
+{
+  "description": "RCS DEMO: Boeing 737 (20 dBsm) vs Stealth UAV (-10 dBsm) — same radar, same weather",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "rcs_demo/default_rcs_demo",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA"],
+  "degradation": { "enabled": false },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

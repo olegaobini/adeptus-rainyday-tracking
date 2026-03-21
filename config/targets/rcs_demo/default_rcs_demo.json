@@ -1,0 +1,30 @@
+{
+  "description": "RCS demo: airliner (20 dBsm) vs stealth drone (-10 dBsm) — same path, different visibility",
+  "duration_s": 60,
+  "targets": [
+    {
+      "label": "Boeing 737",
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [-20000, -30000, -8000],
+      "end_pos": [20000, -30000, -8000],
+      "altitude_m": 8000,
+      "rcs_dbsm": 20,
+      "dimensions": { "length_m": 38, "width_m": 34, "height_m": 12 },
+      "class_id": 1
+    },
+    {
+      "label": "Stealth UAV",
+      "behavior": "waypoints",
+      "waypoints": [
+        { "pos": [0, -50000, -5000], "time_s": 0 },
+        { "pos": [-5000, -40000, -5000], "time_s": 15 },
+        { "pos": [-3000, -30000, -4000], "time_s": 30 },
+        { "pos": [5000, -25000, -4000], "time_s": 45 },
+        { "pos": [10000, -20000, -3000], "time_s": 60 }
+      ],
+      "rcs_dbsm": -10,
+      "class_id": 2
+    }
+  ]
+}

@@ -324,6 +324,7 @@ function D = getDefaults(sensorType)
             D.refRCS       = 0;               % dBsm
             D.hasElevation = true;
             D.hasRangeRate = false;
+            D.centerFreq   = 2.8e9;           % S-band (2700-2900 MHz, ASR-11 spec)
 
         case 'SSR'
             D.rpm          = 12.5;
@@ -337,6 +338,7 @@ function D = getDefaults(sensorType)
             D.refRCS       = 20;              % high — transponder reply
             D.hasElevation = true;
             D.hasRangeRate = false;
+            D.centerFreq   = 1.06e9;          % L-band (1030/1090 MHz, SSR spec)
 
         case 'ASR'
             D.rpm          = 12.5;
@@ -441,6 +443,7 @@ function D = getDefaults(sensorType)
             D.refRCS       = -5;
             D.hasElevation = false;
             D.hasRangeRate = false;
+            D.centerFreq   = 9.4e9;           % X-band (9.3-9.5 GHz, nav radar spec)
 
         % --- INFRARED ---
         case 'IRST'
@@ -547,6 +550,7 @@ function [radar, meta] = buildRadar(idx, scanConfig, defaults, varargin)
     addParameter(p, 'detCoords',    'Scenario');
     addParameter(p, 'mountingLoc',  [0 0 -15]);
     addParameter(p, 'updateRate',   getOr(defaults,'updateRate',[]));
+    addParameter(p, 'centerFreq',   getOr(defaults,'centerFreq',0));
     parse(p, varargin{:});
     S = p.Results;
 
@@ -596,6 +600,11 @@ function [radar, meta] = buildRadar(idx, scanConfig, defaults, varargin)
     safeSet(radar, 'ReferenceRange',    S.refRange);
     safeSet(radar, 'ReferenceRCS',      S.refRCS);
 
+    % Center frequency (important for rain model, tropospheric refraction)
+    if S.centerFreq > 0
+        safeSet(radar, 'CenterFrequency', S.centerFreq);
+    end
+
     % Detection performance
     safeSet(radar, 'DetectionProbability', S.pd);
     safeSet(radar, 'FalseAlarmRate',       S.far);
@@ -624,6 +633,10 @@ function [radar, meta] = buildRadar(idx, scanConfig, defaults, varargin)
     meta.hasElevation   = S.hasElevation;
     meta.hasRangeRate   = S.hasRangeRate;
     meta.mountingLoc    = S.mountingLoc;
+    if S.centerFreq > 0
+        meta.centerFreq_Hz = S.centerFreq;
+        meta.radarFreq     = S.centerFreq;  % used by rain/Doppler models
+    end
 end
 
 

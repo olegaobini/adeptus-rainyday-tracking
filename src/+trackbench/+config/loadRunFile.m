@@ -130,6 +130,12 @@ for i = 1:numel(sensorPaths)
     if isfield(sDef, 'name'); meta.name = char(sDef.name); end
     try meta.maxRange = sObj.RangeLimits(2); catch; meta.maxRange = 111120; end
     try meta.frequency = getFreqForType(sType); catch; meta.frequency = 2.8e9; end
+    % Allow sensor config to override default frequency
+    if isfield(sDef, 'frequency_hz')
+        meta.frequency = sDef.frequency_hz;
+    elseif isfield(sParams, 'frequency_hz')
+        meta.frequency = sParams.frequency_hz;
+    end
     metas.(platformName){end+1} = meta;
 
     fprintf('[RUN] Sensor %d: %s (%s) → platform "%s"\n', ...
@@ -212,12 +218,26 @@ end
 % Degradation
 config.degradation.enabled = false;
 config.degradation.type = 'rain';
+config.degradation.rain_rate_mmhr = 16;  % default moderate rain
 if isfield(runDef, 'degradation')
     if isfield(runDef.degradation, 'enabled')
         config.degradation.enabled = logical(runDef.degradation.enabled);
     end
     if isfield(runDef.degradation, 'type')
         config.degradation.type = char(runDef.degradation.type);
+    end
+    % Optional rain parameters (all auto-derived from rain_rate if omitted)
+    if isfield(runDef.degradation, 'rain_rate_mmhr')
+        config.degradation.rain_rate_mmhr = runDef.degradation.rain_rate_mmhr;
+    end
+    if isfield(runDef.degradation, 'pd_floor')
+        config.degradation.pd_floor = runDef.degradation.pd_floor;
+    end
+    if isfield(runDef.degradation, 'noise_ceiling')
+        config.degradation.noise_ceiling = runDef.degradation.noise_ceiling;
+    end
+    if isfield(runDef.degradation, 'clutter_multiplier')
+        config.degradation.clutter_multiplier = runDef.degradation.clutter_multiplier;
     end
 end
 
@@ -251,7 +271,7 @@ else
     config.tracker_global = struct('max_num_tracks',500,'volume',1e9,'beta',1e-14, ...
         'detection_probability',struct('ideal',0.9,'degraded',0.7));
     config.filter_params = struct('init_speed_kmh',900,'imm_transition_prob',0.97, ...
-        'scale_accel_horz',30,'scale_omega_dot',30);    
+        'scale_accel_horz',30,'scale_accel_vert',20,'scale_omega_dot',30);    
     fprintf('[RUN] Tracker globals: using built-in defaults (tracker_globals.json not found)\n');
 end
 
@@ -298,7 +318,7 @@ else
         'beta_jpda',1e-14,'gate_jpda',45,'time_tolerance_jpda',0.05,'num_tracks_jpda',500);
     config.tracker_params.degraded = config.tracker_params.ideal;
     config.filter_params = struct('init_speed_kmh',900,'imm_transition_prob',0.97, ...
-        'scale_accel_horz',30,'scale_omega_dot',30);
+        'scale_accel_horz',30,'scale_accel_vert',20,'scale_omega_dot',30);
     config.trackers_to_run = struct('gnn_cv',false,'gnn_imm',true, ...
         'tomht_cv',false,'tomht_imm',false,'jpda_cv',false,'jpda_imm',false);
 end
