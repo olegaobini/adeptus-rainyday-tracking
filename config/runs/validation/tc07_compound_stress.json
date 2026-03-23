@@ -1,0 +1,15 @@
+{
+  "_TEST_CASE": "TC-07: Compound Stress Test",
+  "_OBJECTIVE": "Stress test with maximum degradation: rain + mountain terrain (occlusion, clutter, horizon masking) + mixed RCS targets (airliner 30 dBsm vs stealth -10 dBsm). TOMHT should handle compound ambiguity best.",
+  "_PASS_CRITERIA": "TOMHT completes without crash or OOM. Airliner tracked (Quality > 50%). Mountain terrain produces visible occlusion and clutter.",
+
+  "description": "TC-07: Compound stress — TOMHT + rain (50 mm/hr) + mountain + mixed RCS (747 vs stealth bomber)",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "mountain/default_mountain",
+  "trackers": ["TOMHT/default_TOMHT"],
+  "degradation": { "enabled": true, "type": "rain", "rain_rate_mmhr": 50 },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

@@ -16,6 +16,7 @@
     "init_speed_kmh": 900,
     "imm_transition_prob": 0.97,
     "scale_accel_horz": 30,
+    "scale_accel_vert": 20,
     "scale_omega_dot": 30
   },
   "PARAM_DOCS": {
@@ -24,7 +25,8 @@
     "detection_probability.degraded": "Pd in degraded weather. 0.5-0.7 typical.",
     "filter.init_speed_kmh": "Expected target speed for Kalman filter initialization.",
     "filter.imm_transition_prob": "IMM model switching probability. 0.97 default.",
-    "filter.scale_accel_horz": "Process noise acceleration (m/s^2). 30 default.",
+    "filter.scale_accel_horz": "Process noise acceleration horizontal (m/s^2). 30 default.",
+    "filter.scale_accel_vert": "Process noise acceleration vertical (m/s^2). 20 default. Increase for climbing/descending targets.",
     "filter.scale_omega_dot": "Process noise turn rate (deg/s^2). 30 default."
   }
 }

@@ -1,0 +1,16 @@
+{
+  "_TEST_CASE": "TC-04: Rain X-band (16 mm/hr)",
+  "_OBJECTIVE": "Verify that X-band PSR (9 GHz frequency tag) shows more Pd reduction than S-band in the SAME rain conditions. Uses 16 mm/hr (matching TC-03) so the ONLY variable is frequency.",
+  "_PASS_CRITERIA": "X-band target detection count < S-band target detection count at same rain rate. This isolates the frequency-dependent attenuation from rain rate effects.",
+  "_NOTE": "Previous version used 50 mm/hr which inflated weather clutter count and made comparison unfair. Now both TC-03 and TC-04 use 16 mm/hr.",
+
+  "description": "TC-04: X-band PSR (9 GHz) in moderate rain (16 mm/hr) — same rain rate as TC-03 for fair comparison",
+  "sensors": ["PSR/xband_PSR"],
+  "targets": "gentle_turn/default_gentle_turn",
+  "terrain": "water/default_water",
+  "trackers": ["JPDA/default_JPDA"],
+  "degradation": { "enabled": true, "type": "rain", "rain_rate_mmhr": 16 },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

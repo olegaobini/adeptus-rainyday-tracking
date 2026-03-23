@@ -1,27 +1,27 @@
 function tracker = buildTracker(trackerType, filterModel, params, globalParams, filterParams, pd, numSensors)
-% BUILDTRACKER Factory function to create configured tracker objects
-% Maps JSON parameters to the specific property names required by GNN/TOMHT/JPDA.
+% BUILDTRACKER Factory function to create configured tracker objects.
 %
-% CHANGE LOG
-%   - Added HasDetectableTrackIDsInput = true for GNN and JPDA.
-%     This tells the tracker which tracks were actually observable (in FOV)
-%     each scan. Tracks outside the sensor FOV are excluded from track logic,
-%     so their score doesn't drop and they won't be falsely deleted during
-%     beam gaps. The detectable IDs are computed in helperRunTracker using
-%     the sensor configs stored in dataLog.SensorConfig.
-%   - Added MaxNumEvents=100 to JPDA to prevent combinatorial explosion
-%     when many clutter detections fall in overlapping gates.
+%  Maps JSON parameters to the specific property names required by
+%  trackerGNN, trackerTOMHT, and trackerJPDA.
+%
+%  REFERENCES
+%    [1] MathWorks, trackerGNN documentation:
+%        https://www.mathworks.com/help/fusion/ref/trackergnn-system-object.html
+%    [2] MathWorks, trackerJPDA documentation:
+%        https://www.mathworks.com/help/fusion/ref/trackerjpda-system-object.html
+%    [3] MathWorks, trackerTOMHT documentation:
+%        https://www.mathworks.com/help/fusion/ref/trackertomht-system-object.html
+%    [4] MathWorks, "Introduction to Track Logic":
+%        https://www.mathworks.com/help/fusion/ug/introduction-to-track-logic.html
+%    [5] MathWorks, "Introduction to Using the GNN Tracker":
+%        https://www.mathworks.com/help/fusion/ug/introduction-to-using-the-global-nearest-neighbor-tracker.html
 
-    % Optional arg: number of unique sensors expected in the detection stream.
-    % If detections contain SensorIndex values > 1, the tracker MUST be told
-    % how many sensors to expect via MaxNumSensors.
     if nargin < 7 || isempty(numSensors)
         numSensors = 1;
     end
     numSensors = max(1, double(numSensors));
 
-    % Wrap the filter initialization function to bake in the config parameters.
-    % The tracker expects a function that only takes `det`.
+    % Wrap filter initialization to bake in config parameters.
     if strcmpi(filterModel, 'CV')
         initFcn = @(det) trackbench.tracking.initCVFilter(det, filterParams);
     elseif strcmpi(filterModel, 'IMM')
@@ -30,24 +30,39 @@ function tracker = buildTracker(trackerType, filterModel, params, globalParams, 
         error('[TRACKER] Unknown filter model: %s. Use CV or IMM.', filterModel);
     end
 
-    % Build the specific tracker type using the mapped parameters
+    % Extract confirm/delete thresholds with defaults
+    % These control when tentative tracks become confirmed and when
+    % stale tracks are deleted. [4]
+    %   Score logic (GNN/TOMHT): scalar thresholds on log-likelihood score
+    %   Integrated logic (JPDA): probability-based confirmation
+    confirmThresh = 20;   % MathWorks default for Score logic [5]
+    deleteThresh  = -7;   % MathWorks default for Score logic [5]
+    if isfield(params, 'confirm_threshold')
+        confirmThresh = params.confirm_threshold;
+    end
+    if isfield(params, 'delete_threshold')
+        deleteThresh = params.delete_threshold;
+    end
+
     switch upper(trackerType)
         case 'GNN'
+            % trackerGNN with Score-based track logic [1][4]
+            % AssignmentThreshold: Mahalanobis distance gate for association
+            % ConfirmationThreshold: score needed to confirm a tentative track
+            % DeletionThreshold: score drop from max before track is deleted
             tracker = trackerGNN( ...
                 'FilterInitializationFcn', initFcn, ...
                 'MaxNumTracks', globalParams.max_num_tracks, ...
                 'MaxNumSensors', numSensors, ...
                 'AssignmentThreshold', params.gate, ...
                 'TrackLogic', 'Score', ...
+                'ConfirmationThreshold', confirmThresh, ...
+                'DeletionThreshold', deleteThresh, ...
                 'DetectionProbability', pd, ...
                 'FalseAlarmRate', params.far_gnn, ...
                 'Volume', globalParams.volume, ...
                 'Beta', globalParams.beta, ...
                 'HasDetectableTrackIDsInput', true);
-            % HasDetectableTrackIDsInput: tracker will accept a 3rd argument
-            % (detectableTrackIDs) in each call. Track logic (score update,
-            % deletion) is only evaluated for tracks in that list. Tracks
-            % outside the FOV coast on Kalman prediction without penalty.
 
         case 'TOMHT'
             tomhtThresh = params.tomht_threshold_multiplier * params.gate;
@@ -60,33 +75,42 @@ function tracker = buildTracker(trackerType, filterModel, params, globalParams, 
                 'FalseAlarmRate', params.far_mht, ...
                 'Volume', globalParams.volume, ...
                 'Beta', globalParams.beta, ...
-                'ConfirmationThreshold', params.confirm_threshold, ...
-                'DeletionThreshold', params.delete_threshold, ...
+                'ConfirmationThreshold', confirmThresh, ...
+                'DeletionThreshold', deleteThresh, ...
                 'MaxNumHistoryScans', 10, ...
                 'MaxNumTrackBranches', params.max_branches, ...
                 'NScanPruning', 'Hypothesis', ...
                 'OutputRepresentation', 'Tracks');
-            % NOTE: trackerTOMHT does not support HasDetectableTrackIDsInput.
-            % TOMHT manages hypotheses internally and is more naturally robust
-            % to missed detections via its n-scan pruning logic.
 
         case 'JPDA'
+            % trackerJPDA with Integrated track logic [2]
+            % Integrated logic uses probability of existence, not score.
+            % ConfirmationThreshold/DeletionThreshold are probability values
+            % in [0,1] for Integrated logic. Default: confirm at 0.95, delete at 0.1.
+            % We map our score-based thresholds to probabilities.
+            jpda_confirm = 0.95;  % high confidence to confirm
+            jpda_delete  = 0.05;  % low confidence to delete
+            if isfield(params, 'jpda_confirm_prob')
+                jpda_confirm = params.jpda_confirm_prob;
+            end
+            if isfield(params, 'jpda_delete_prob')
+                jpda_delete = params.jpda_delete_prob;
+            end
+
             tracker = trackerJPDA( ...
                 'FilterInitializationFcn', initFcn, ...
                 'MaxNumTracks', params.num_tracks_jpda, ...
                 'MaxNumSensors', numSensors, ...
                 'AssignmentThreshold', params.gate_jpda, ...
                 'TrackLogic', 'Integrated', ...
+                'ConfirmationThreshold', jpda_confirm, ...
+                'DeletionThreshold', jpda_delete, ...
                 'DetectionProbability', pd, ...
                 'ClutterDensity', params.far_jpda / globalParams.volume, ...
                 'NewTargetDensity', params.beta_jpda, ...
                 'TimeTolerance', params.time_tolerance_jpda, ...
                 'MaxNumEvents', 100, ...
                 'HasDetectableTrackIDsInput', true);
-            % MaxNumEvents=100: prevents combinatorial explosion when many
-            % clutter detections fall in overlapping gates. Without this,
-            % JPDA tries to enumerate 2^N events and crashes with OOM.
-            % HasDetectableTrackIDsInput: same benefit as GNN.
 
         otherwise
             error('[TRACKER] Unknown tracker type: %s', trackerType);

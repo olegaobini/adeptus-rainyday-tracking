@@ -1,0 +1,15 @@
+{
+  "_TEST_CASE": "TC-01: Template Usability Test",
+  "_OBJECTIVE": "Validate that a user can create a run file from run_template.json, reference existing components, and run successfully with no source code modification.",
+  "_PASS_CRITERIA": "Simulation completes, 3D plot renders, metrics print to console, results/ receives .mat file.",
+
+  "description": "TC-01: User-created from template — PSR + crossing targets on rural terrain with GNN tracker",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "crossing_pair/default_crossing_pair",
+  "terrain": "rural/default_rural",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": { "enabled": false, "type": "rain" },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

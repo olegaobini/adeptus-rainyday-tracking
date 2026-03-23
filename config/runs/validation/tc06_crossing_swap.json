@@ -1,0 +1,15 @@
+{
+  "_TEST_CASE": "TC-06: Crossing Target Track Swap",
+  "_OBJECTIVE": "Verify tracker behavior when two targets cross paths. JPDA soft assignment should maintain track identity better than GNN hard assignment.",
+  "_PASS_CRITERIA": "Both trackers maintain tracks through crossover. JPDA swap count <= GNN swap count. plotTrackSwapAnalysis shows crossover clearly.",
+
+  "description": "TC-06: Crossing pair — GNN vs JPDA track swap comparison",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "crossing_pair/default_crossing_pair",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA"],
+  "degradation": { "enabled": false, "type": "rain" },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

@@ -1,20 +1,39 @@
 function addTargetFromDef(scenario, tDef, duration, idx)
 %addTargetFromDef  Add a target platform to a trackingScenario from a JSON definition.
 %
-%  Reads behavior, speed, position, and other fields from a target struct
-%  (parsed from JSON) and creates the appropriate waypointTrajectory.
+%  Creates a platform with waypointTrajectory and optional RCS signature,
+%  physical dimensions, class ID, and label.
 %
-%  USAGE (called by loadScenario and loadRunFile)
-%    trackbench.scenario.addTargetFromDef(scenario, tDef, 60, 1);
+%  SUPPORTED BEHAVIORS
+%    constant_velocity : Straight line at fixed heading
+%    gentle_turn       : Gradual heading change
+%    s_maneuver        : Evasive S-shaped path (set turn_rate_dps)
+%    crossing          : Straight line from start_pos to end_pos
+%    orbit             : Circular holding pattern (set orbit_radius_m)
+%    approach          : Descending glide path to end_pos
+%    departure         : Climbing away to end_pos
+%    waypoints         : ★ Custom — user defines [x,y,z] waypoints + times
 %
-%  INPUTS
-%    scenario : trackingScenario object to add the target to
-%    tDef     : struct from JSON with behavior, speed_kmh, start_pos, etc.
-%    duration : scenario duration in seconds
-%    idx      : target index (for logging and turn direction)
+%  OPTIONAL FIELDS (all behaviors)
+%    rcs_dbsm    : Radar cross section in dBsm (scalar). Sets platform.Signatures.
+%                  Ref: https://www.mathworks.com/help/fusion/ref/rcssignature.html
+%    dimensions  : struct with length_m, width_m, height_m. Sets platform.Dimensions.
+%                  Ref: https://www.mathworks.com/help/fusion/ref/platform.html
+%    class_id    : Integer classification (0=unknown, user-defined scheme).
+%    label       : String label for logging and plots.
 %
-%  See also: loadScenario, loadRunFile
+%  WAYPOINTS BEHAVIOR FORMAT
+%    "waypoints": [
+%      { "pos": [x, y, z], "time_s": 0 },
+%      { "pos": [x, y, z], "time_s": 10 },
+%      ...
+%    ]
+%    Uses MATLAB's waypointTrajectory directly — any path, any timing.
+%    Ref: https://www.mathworks.com/help/fusion/ref/waypointtrajectory-system-object.html
+%
+%  See also: waypointTrajectory, rcsSignature, platform
 
+    %% Parse common fields with defaults
     behavior = "constant_velocity";
     if isfield(tDef, 'behavior'); behavior = lower(string(tDef.behavior)); end
     speed_ms = 250;
@@ -28,6 +47,11 @@ function addTargetFromDef(scenario, tDef, duration, idx)
     if isfield(tDef, 'heading_deg'); heading = tDef.heading_deg; end
     T = duration;
 
+    %% Parse label for logging
+    label = behavior;
+    if isfield(tDef, 'label'); label = string(tDef.label); end
+
+    %% Build trajectory based on behavior
     switch behavior
         case "constant_velocity"
             [wp, t, vel] = buildConstantVelocity(startPos, heading, speed_ms, T);
@@ -58,20 +82,140 @@ function addTargetFromDef(scenario, tDef, duration, idx)
             [wp, t, vel] = buildCrossing(startPos, endPos, T);
         case {"parallel", "head_on"}
             [wp, t, vel] = buildConstantVelocity(startPos, heading, speed_ms, T);
+        case "waypoints"
+            [wp, t, vel] = buildFromWaypoints(tDef);
         otherwise
             endPos = startPos + 3000*(2*rand(1,3)-1);
             endPos(3) = startPos(3);
             [wp, t, vel] = buildCrossing(startPos, endPos, T);
     end
 
+    %% Create platform
     tgt = platform(scenario);
     tgt.Trajectory = waypointTrajectory( ...
         'Waypoints', wp, 'TimeOfArrival', t, 'Velocities', vel);
-    fprintf('  Target %d: %s | %.0f km/h | start=[%.0f,%.0f,%.0f]\n', ...
-        idx, behavior, speed_ms*3.6, startPos(1), startPos(2), startPos(3));
+
+    %% ── RCS Signature (target size + aspect dependence) ───────────────
+    % rcsSignature sets the radar cross section seen by fusionRadarSensor.
+    % Two modes:
+    %   rcs_dbsm  : scalar (isotropic) — same RCS from all angles
+    %   rcs_profile : named preset — aspect-dependent pattern
+    %     Options: 'stealth', 'fighter', 'airliner', 'drone', 'missile'
+    %     Uses buildRCSProfile() which creates a full az×el pattern matrix.
+    %     fusionRadarSensor automatically interpolates the pattern based on
+    %     the current aspect angle between radar and target.
+    % Ref: https://www.mathworks.com/help/fusion/ref/rcssignature.html
+    if isfield(tDef, 'rcs_profile') && ~isempty(tDef.rcs_profile)
+        baseRCS = 0;
+        if isfield(tDef, 'rcs_dbsm'); baseRCS = tDef.rcs_dbsm; end
+        tgt.Signatures = {trackbench.environment.buildRCSProfile(string(tDef.rcs_profile), baseRCS)};
+    elseif isfield(tDef, 'rcs_dbsm')
+        rcs_val = tDef.rcs_dbsm;
+        tgt.Signatures = {rcsSignature('Pattern', rcs_val)};
+    end
+
+    %% ── Physical Dimensions ──────────────────────────────────────────
+    % Sets the cuboid approximation for visualization and extended object tracking.
+    % Ref: https://www.mathworks.com/help/fusion/ref/platform.html
+    if isfield(tDef, 'dimensions') && isstruct(tDef.dimensions)
+        d = tDef.dimensions;
+        dimStruct = struct('Length', 0, 'Width', 0, 'Height', 0, 'OriginOffset', [0 0 0]);
+        if isfield(d, 'length_m'); dimStruct.Length = d.length_m; end
+        if isfield(d, 'width_m');  dimStruct.Width  = d.width_m;  end
+        if isfield(d, 'height_m'); dimStruct.Height = d.height_m; end
+        tgt.Dimensions = dimStruct;
+    end
+
+    %% ── Class ID ─────────────────────────────────────────────────────
+    % Integer for target classification. 0 = unknown (default).
+    % SSR/IFF sensors use this for identification.
+    if isfield(tDef, 'class_id')
+        tgt.ClassID = tDef.class_id;
+    end
+
+    %% Log
+    rcsStr = '';
+    if isfield(tDef, 'rcs_dbsm')
+        rcsStr = sprintf(' | RCS=%.0f dBsm', tDef.rcs_dbsm);
+    end
+    dimStr = '';
+    if isfield(tDef, 'dimensions') && isstruct(tDef.dimensions)
+        d = tDef.dimensions;
+        dimStr = sprintf(' | %.0fx%.0fx%.0fm', ...
+            getFieldDef(d,'length_m',0), getFieldDef(d,'width_m',0), getFieldDef(d,'height_m',0));
+    end
+
+    if behavior == "waypoints"
+        nWP = size(wp, 1);
+        fprintf('  Target %d: %s (%d waypoints, %.0fs)%s%s\n', ...
+            idx, label, nWP, t(end), rcsStr, dimStr);
+    else
+        fprintf('  Target %d: %s | %.0f km/h | start=[%.0f,%.0f,%.0f]%s%s\n', ...
+            idx, label, speed_ms*3.6, startPos(1), startPos(2), startPos(3), rcsStr, dimStr);
+    end
 end
 
-%% Local trajectory builders
+
+%% ========================================================================
+%  WAYPOINT BUILDER (new — user-defined paths)
+%% ========================================================================
+function [wp, t, vel] = buildFromWaypoints(tDef)
+%buildFromWaypoints  Build trajectory from user-defined waypoints in JSON.
+%
+%  Expects tDef.waypoints as an array of structs with fields:
+%    pos    : [x, y, z] in NED meters (z negative for altitude)
+%    time_s : arrival time in seconds
+%
+%  Velocities are auto-computed from waypoint spacing.
+
+    if ~isfield(tDef, 'waypoints') || isempty(tDef.waypoints)
+        error('addTargetFromDef:noWaypoints', ...
+            'behavior="waypoints" requires a "waypoints" array with pos and time_s fields.');
+    end
+
+    wpDefs = tDef.waypoints;
+    nPts = numel(wpDefs);
+    if nPts < 2
+        error('addTargetFromDef:tooFewWaypoints', ...
+            'Need at least 2 waypoints, got %d.', nPts);
+    end
+
+    wp = zeros(nPts, 3);
+    t  = zeros(nPts, 1);
+
+    for k = 1:nPts
+        wk = wpDefs(k);
+        if isstruct(wk)
+            wp(k,:) = reshape(wk.pos, 1, []);
+            t(k) = wk.time_s;
+        elseif iscell(wpDefs) && isstruct(wpDefs{k})
+            wk = wpDefs{k};
+            wp(k,:) = reshape(wk.pos, 1, []);
+            t(k) = wk.time_s;
+        end
+    end
+
+    % Ensure Z is negative for altitude (NED convention)
+    for k = 1:nPts
+        if isfield(tDef, 'altitude_m') && wp(k,3) >= 0
+            % If user forgot NED sign convention, fix it
+            wp(k,3) = -abs(wp(k,3));
+        end
+    end
+
+    % Ensure times are monotonically increasing
+    if any(diff(t) <= 0)
+        error('addTargetFromDef:nonMonotonicTime', ...
+            'Waypoint times must be strictly increasing.');
+    end
+
+    vel = computeVelocities(wp, t);
+end
+
+
+%% ========================================================================
+%  EXISTING TRAJECTORY BUILDERS (unchanged)
+%% ========================================================================
 function [wp, t, vel] = buildConstantVelocity(startPos, heading, speed, T)
     dx = speed * cosd(heading); dy = speed * sind(heading);
     endPos = startPos + [dx dy 0] * T;
@@ -126,6 +270,10 @@ function [wp, t, vel] = buildApproach(startPos, endPos, T)
     vel = computeVelocities(wp, t);
 end
 
+
+%% ========================================================================
+%  SHARED HELPERS
+%% ========================================================================
 function vel = computeVelocities(wp, t)
     nPts = size(wp, 1); vel = zeros(nPts, 3);
     for k = 1:nPts-1
@@ -133,4 +281,8 @@ function vel = computeVelocities(wp, t)
         if dt > 0; vel(k,:) = (wp(k+1,:) - wp(k,:)) / dt; end
     end
     vel(end,:) = vel(max(1,end-1),:);
+end
+
+function val = getFieldDef(s, field, default)
+    if isstruct(s) && isfield(s, field); val = s.(field); else; val = default; end
 end

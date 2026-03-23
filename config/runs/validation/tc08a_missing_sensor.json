@@ -1,0 +1,14 @@
+{
+  "_TEST_CASE": "TC-08a: Missing sensor file reference",
+  "_EXPECTED": "loadRunFile should error with clear message naming the missing file.",
+
+  "description": "TC-08a: References a sensor file that does not exist",
+  "sensors": ["PSR/this_sensor_does_not_exist"],
+  "targets": "gentle_turn/default_gentle_turn",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": { "enabled": false },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": false },
+  "output": { "show_visuals": false, "save_results": false }
+}

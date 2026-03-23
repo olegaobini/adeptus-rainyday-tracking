@@ -1,0 +1,16 @@
+{
+  "_TEST_CASE": "TC-05: RCS Verification",
+  "_OBJECTIVE": "Verify that target RCS directly affects fusionRadarSensor detection probability. A 20 dBsm airliner must produce measurably more detections per scan than a -10 dBsm stealth UAV from the same radar under clear weather.",
+  "_PASS_CRITERIA": "Detection count for 20 dBsm target > 2x detection count for -10 dBsm target at comparable range.",
+  "_NOTE": "Unlike frequency (metadata only), RCS is a first-class sensor property via platform.Signatures = rcsSignature.",
+
+  "description": "TC-05: RCS demo — Boeing 737 (20 dBsm) vs Stealth UAV (-10 dBsm), clear weather",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "rcs_demo/default_rcs_demo",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": { "enabled": false },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

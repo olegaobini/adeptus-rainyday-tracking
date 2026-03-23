@@ -1,0 +1,14 @@
+{
+  "_TEST_CASE": "TC-08b: Missing target file reference",
+  "_EXPECTED": "loadRunFile should error with clear message naming the missing target file.",
+
+  "description": "TC-08b: References a target file that does not exist",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "nonexistent_targets/fake_targets",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": { "enabled": false },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": false },
+  "output": { "show_visuals": false, "save_results": false }
+}
