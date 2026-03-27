@@ -10,11 +10,36 @@
     "duration_s": 5
   },
 
-  "degradation": {
+"degradation": {
     "enabled": false,
-    "type": "rain",
-    "description": "Weather/environmental degradation mode"
-  },
+    "active_type": "step",
+    "storm_start_s": 5,
+    "storm_end_s": 45,
+    "description": "Weather/environmental degradation mode",
+    "profiles": {
+        "rain": {
+            "pd_ideal": 0.95,
+            "pd_storm": 0.50,
+            "r_mult": 3.0,
+            "lambda_false_per_scan": 3.0,
+            "_validated": true
+        },
+        "fog": {
+            "pd_ideal": 0.95,
+            "pd_storm": 0.80,
+            "r_mult": 1.5,
+            "lambda_false_per_scan": 1.0,
+            "_validated": false
+        },
+        "icing": {
+            "pd_ideal": 0.95,
+            "pd_storm": 0.85,
+            "r_mult": 2.0,
+            "lambda_false_per_scan": 0.5,
+            "_validated": false
+        }
+    }
+},
 
   "environment": {
     "terrain_occlusion": false,
