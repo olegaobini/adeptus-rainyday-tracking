@@ -2,20 +2,11 @@
   "name": "Forward-Looking Infrared",
   "type": "FLIR",
   "platform": "aircraft",
+  "_frequency_hz": "N/A — IR sensor, not radar. FLIR operates in infrared wavelengths (~8-12 μm). Not affected by rain attenuation but severely degraded by fog, clouds, and humidity. The frequency_hz field is ignored for IR sensor types.",
   "params": {
-    "sector": [
-      -30,
-      30
-    ],
-    "rangeLimits": [
-      0,
-      30000
-    ],
+    "sector": [-30, 30],
+    "rangeLimits": [0, 30000],
     "pd": 0.75,
-    "mountingLoc": [
-      0,
-      0,
-      0
-    ]
+    "mountingLoc": [0, 0, 0]
   }
 }

@@ -4,6 +4,7 @@
     "Reference in a run file as: sensors/MARITIME/my_MARITIME"
   ],
   "PARAM_DOCS": {
+    "frequency_hz": "Operating frequency in Hz. Default 9.4e9 (X-band) for maritime. Optimized for sea surface detection, but severely affected by rain — major operational concern.",
     "rpm": "25 RPM — fast scan for surface contacts.",
     "rangeLimits": "40nm. X-band surface search.",
     "far": "1e-5 — higher due to sea clutter.",
@@ -12,6 +13,7 @@
   "name": "Maritime Surface Search Radar",
   "type": "MARITIME",
   "platform": "ship",
+  "frequency_hz": 9.4e9,
   "params": {
     "rpm": 25,
     "fov": [1.0, 25],

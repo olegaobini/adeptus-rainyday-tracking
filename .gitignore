@@ -13,5 +13,18 @@ results/
 Thumbs.db
 desktop.ini
 
+# IDE / local editor state
+.claude/
+
 # Nested repo artifact from buggy sync (safe to delete)
 adeptus-rainyday-tracking/
+
+# NASA DASHlink Tail 687 flight data — 812 MB, publicly re-downloadable.
+# Ignore all .mat files in Tail_687_1/ by default, then whitelist only the
+# specific flights referenced by demo run configs (nasa_tail687_sample and
+# nasa_multi_target) so the demos work out of the box after clone.
+# Full dataset source: https://c3.ndc.nasa.gov/dashlink/resources/664/
+Tail_687_1/*.mat
+!Tail_687_1/687200104121330.mat
+!Tail_687_1/687200107261425.mat
+!Tail_687_1/687200107282131.mat

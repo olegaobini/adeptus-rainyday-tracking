@@ -1,0 +1,52 @@
+{
+    "description": "Multi-target real flights — 3 departures from White Plains/NYC area, different RCS",
+    "duration_s": 600,
+    "targets": [
+        {
+            "name": "Flight_A_Airliner",
+            "label": "Airliner",
+            "behavior": "recorded_flight",
+            "flight_data_file": "../Tail_687_1/687200104121330.mat",
+            "rcs_dbsm": 10,
+            "rcs_profile": "airliner",
+            "waypoint_interval_s": 10,
+            "max_duration_s": 600,
+            "ref_lat": 41.07,
+            "ref_lon": -73.70,
+            "altitude_m": 0,
+            "speed_kmh": 0,
+            "start_pos": [0, 0, 0],
+            "notes": "White Plains → Detroit, 10 dBsm airliner"
+        },
+        {
+            "name": "Flight_B_RegionalJet",
+            "label": "RegionalJet",
+            "behavior": "recorded_flight",
+            "flight_data_file": "../Tail_687_1/687200107261425.mat",
+            "rcs_dbsm": 3,
+            "waypoint_interval_s": 10,
+            "max_duration_s": 600,
+            "ref_lat": 41.07,
+            "ref_lon": -73.70,
+            "altitude_m": 0,
+            "speed_kmh": 0,
+            "start_pos": [0, 0, 0],
+            "notes": "White Plains → Minneapolis, 3 dBsm regional jet"
+        },
+        {
+            "name": "Flight_C_SmallAC",
+            "label": "SmallAC",
+            "behavior": "recorded_flight",
+            "flight_data_file": "../Tail_687_1/687200107282131.mat",
+            "rcs_dbsm": -5,
+            "waypoint_interval_s": 10,
+            "max_duration_s": 600,
+            "ref_lat": 41.07,
+            "ref_lon": -73.70,
+            "altitude_m": 0,
+            "speed_kmh": 0,
+            "start_pos": [0, 0, 0],
+            "notes": "White Plains → Minneapolis, -5 dBsm small aircraft — hard to detect"
+        }
+    ]
+}

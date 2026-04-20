@@ -56,17 +56,16 @@ function [keptDets, diagInfo] = applyDopplerFade(dets, sensorPos, targets, senso
         if isfield(dopplerConfig, 'mdv_ms'); mdv = dopplerConfig.mdv_ms; end
     end
 
-    % Compute MDV from frequency if not explicitly set
-    % MDV ≈ wavelength * PRF / 4 (for 2-pulse canceller)
+    % Compute MDV from frequency if available
+    % MDV ≈ wavelength × PRF / 4 (for 2-pulse canceller)
     % For S-band (2.8 GHz), λ ≈ 0.107m, PRF ≈ 1000 Hz → MDV ≈ 27 m/s
     % For X-band (9 GHz), λ ≈ 0.033m, PRF ≈ 1000 Hz → MDV ≈ 8 m/s
+    % Lower frequency = larger wavelength = wider blind zone
     if nargin >= 4 && isfield(sensorInfo, 'radarFreq') && sensorInfo.radarFreq > 0
         freq = sensorInfo.radarFreq;
         lambda = physconst('LightSpeed') / freq;
         prf_assumed = 1000;  % typical PSR PRF
-        mdv_computed = lambda * prf_assumed / 4;
-        % Use the more conservative (larger) of computed vs config
-        mdv = max(mdv, mdv_computed);
+        mdv = lambda * prf_assumed / 4;  % frequency-derived MDV
     end
 
     % Build a map of target positions and velocities for lookup

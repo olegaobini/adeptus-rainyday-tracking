@@ -29,14 +29,11 @@ function [scenario, config, sensors, metas] = loadRunFile(runName)
 %    metas    : sensor metadata struct
 %
 %  See also: loadScenario, buildSensor, runSingleScenario
-
 arguments
     runName (1,1) string
 end
-
 root = pwd;
 configDir = fullfile(root, 'config');
-
 %% 1. Load run file
 if ~endsWith(runName, ".json")
     runName = runName + ".json";
@@ -45,14 +42,11 @@ runPath = fullfile(configDir, 'runs', runName);
 if ~isfile(runPath)
     error('loadRunFile:notFound', 'Run file not found: %s', runPath);
 end
-
 fprintf('\n[RUN] Loading: %s\n', runPath);
 runDef = jsondecode(fileread(runPath));
-
 if isfield(runDef, 'description')
     fprintf('[RUN] %s\n', runDef.description);
 end
-
 %% 2. Load individual sensors
 sensorPaths = {};
 if isfield(runDef, 'sensors')
@@ -64,11 +58,9 @@ if isfield(runDef, 'sensors')
         sensorPaths = cellstr(runDef.sensors);
     end
 end
-
 sensors = struct();
 metas = struct();
 sensorIndex = 0;
-
 for i = 1:numel(sensorPaths)
     sPath = char(sensorPaths{i});
     if ~endsWith(sPath, '.json')
@@ -78,23 +70,18 @@ for i = 1:numel(sensorPaths)
     if ~isfile(fullPath)
         error('loadRunFile:sensorNotFound', 'Sensor config not found: %s', fullPath);
     end
-
     sDef = jsondecode(fileread(fullPath));
     sensorIndex = sensorIndex + 1;
-
     % Determine platform
     platformName = 'tower';
     if isfield(sDef, 'platform')
         platformName = lower(char(sDef.platform));
     end
-
     % Build sensor using existing factory
     sType = 'PSR';
     if isfield(sDef, 'type'); sType = upper(char(sDef.type)); end
-
     sParams = struct();
     if isfield(sDef, 'params'); sParams = sDef.params; end
-
     % Convert params struct to name-value pairs (buildSensor uses varargin)
     nvPairs = {};
     if isstruct(sParams)
@@ -112,16 +99,13 @@ for i = 1:numel(sensorPaths)
             nvPairs = [nvPairs, {fields{f}, val}]; %#ok<AGROW>
         end
     end
-
     [sObj, ~] = trackbench.sensors.buildSensor(sensorIndex, sType, nvPairs{:});
-
     % Add to platform group
     if ~isfield(sensors, platformName)
         sensors.(platformName) = {};
         metas.(platformName) = {};
     end
     sensors.(platformName){end+1} = sObj;
-
     % Build metadata
     meta = struct();
     meta.sensorIndex = sensorIndex;
@@ -137,11 +121,9 @@ for i = 1:numel(sensorPaths)
         meta.frequency = sParams.frequency_hz;
     end
     metas.(platformName){end+1} = meta;
-
     fprintf('[RUN] Sensor %d: %s (%s) → platform "%s"\n', ...
         sensorIndex, meta.name, sType, platformName);
 end
-
 %% 3. Load target config
 targetDef = struct('duration_s', 50, 'targets', {{}});
 if isfield(runDef, 'targets') && ~isempty(runDef.targets)
@@ -154,11 +136,9 @@ if isfield(runDef, 'targets') && ~isempty(runDef.targets)
     targetDef = jsondecode(fileread(fullPath));
     fprintf('[RUN] Targets: %s\n', fullPath);
 end
-
 %% 4. Load terrain config
 terrainDef = struct('terrain_type','water','terrain_scale',1.0, ...
     'terrain_occlusion',false,'horizon_masking',false, ...
-    'ground_clutter',false,'propagation_model',false, ...
     'clutter_density',0,'refraction_factor',1.333);
 if isfield(runDef, 'terrain') && ~isempty(runDef.terrain)
     tPath = char(runDef.terrain);
@@ -170,7 +150,6 @@ if isfield(runDef, 'terrain') && ~isempty(runDef.terrain)
     terrainDef = jsondecode(fileread(fullPath));
     fprintf('[RUN] Terrain: %s (%s)\n', fullPath, terrainDef.terrain_type);
 end
-
 %% 5. Load tracker configs
 trackerConfigs = {};
 if isfield(runDef, 'trackers')
@@ -182,7 +161,6 @@ if isfield(runDef, 'trackers')
     else
         trkPaths = cellstr(runDef.trackers);
     end
-
     for i = 1:numel(trkPaths)
         tPath = char(trkPaths{i});
         if ~endsWith(tPath, '.json'); tPath = [tPath '.json']; end
@@ -196,10 +174,8 @@ if isfield(runDef, 'trackers')
             tDef.tracker_type, tDef.filter_model);
     end
 end
-
 %% 6. Assemble unified config (compatible with existing pipeline)
 config = struct();
-
 % Scenario params from target file
 config.scenario.mode = '3D';
 config.scenario.duration_s = 50;
@@ -214,36 +190,67 @@ if isfield(targetDef, 'targets')
         config.scenario.num_targets = numel(targetDef.targets);
     end
 end
-
 % Degradation
 config.degradation.enabled = false;
 config.degradation.type = 'rain';
-config.degradation.rain_rate_mmhr = 16;  % default moderate rain
+config.degradation.rain_rate_mmhr = 16;
 if isfield(runDef, 'degradation')
-    if isfield(runDef.degradation, 'enabled')
-        config.degradation.enabled = logical(runDef.degradation.enabled);
+    deg = runDef.degradation;
+    
+    % --- Weather config (NEW: load from config/weather/) ---
+    if isfield(deg, 'weather') && ~strcmpi(char(deg.weather), 'none') && ~isempty(deg.weather)
+        wPath = char(deg.weather);
+        if ~endsWith(wPath, '.json'); wPath = [wPath '.json']; end
+        weatherFile = fullfile(configDir, 'weather', wPath);
+        if isfile(weatherFile)
+            weatherDef = jsondecode(fileread(weatherFile));
+            config.degradation.enabled = true;
+            if isfield(weatherDef, 'type');              config.degradation.type = char(weatherDef.type); end
+            if isfield(weatherDef, 'rain_rate_mmhr');    config.degradation.rain_rate_mmhr = weatherDef.rain_rate_mmhr; end
+            if isfield(weatherDef, 'pd_floor');          config.degradation.pd_floor = weatherDef.pd_floor; end
+            if isfield(weatherDef, 'clutter_multiplier');config.degradation.clutter_multiplier = weatherDef.clutter_multiplier; end
+            if isfield(weatherDef, 'storm_start_s');     config.degradation.storm_start_s = weatherDef.storm_start_s; end
+            if isfield(weatherDef, 'storm_end_s');       config.degradation.storm_end_s = weatherDef.storm_end_s; end
+            if isfield(weatherDef, 'active_type');       config.degradation.active_type = char(weatherDef.active_type); end
+            fprintf('[RUN] Weather: %s (%s)\n', weatherFile, config.degradation.type);
+        else
+            warning('loadRunFile:weatherNotFound', 'Weather config not found: %s', weatherFile);
+        end
     end
-    if isfield(runDef.degradation, 'type')
-        config.degradation.type = char(runDef.degradation.type);
+    
+    % --- Legacy support: "enabled"/"type" inline (still works) ---
+    if isfield(deg, 'enabled')
+        config.degradation.enabled = logical(deg.enabled);
     end
-    % Optional rain parameters (all auto-derived from rain_rate if omitted)
-    if isfield(runDef.degradation, 'rain_rate_mmhr')
-        config.degradation.rain_rate_mmhr = runDef.degradation.rain_rate_mmhr;
+    if isfield(deg, 'type')
+        config.degradation.type = char(deg.type);
     end
-    if isfield(runDef.degradation, 'pd_floor')
-        config.degradation.pd_floor = runDef.degradation.pd_floor;
-    end
-    if isfield(runDef.degradation, 'noise_ceiling')
-        config.degradation.noise_ceiling = runDef.degradation.noise_ceiling;
-    end
-    if isfield(runDef.degradation, 'clutter_multiplier')
-        config.degradation.clutter_multiplier = runDef.degradation.clutter_multiplier;
-    end
+    if isfield(deg, 'rain_rate_mmhr');    config.degradation.rain_rate_mmhr = deg.rain_rate_mmhr; end
+    if isfield(deg, 'pd_floor');          config.degradation.pd_floor = deg.pd_floor; end
+    if isfield(deg, 'noise_ceiling');     config.degradation.noise_ceiling = deg.noise_ceiling; end
+    if isfield(deg, 'clutter_multiplier');config.degradation.clutter_multiplier = deg.clutter_multiplier; end
+    if isfield(deg, 'storm_start_s');     config.degradation.storm_start_s = deg.storm_start_s; end
+    if isfield(deg, 'storm_end_s');       config.degradation.storm_end_s = deg.storm_end_s; end
+    if isfield(deg, 'active_type');       config.degradation.active_type = char(deg.active_type); end
 end
-
-% Environment from terrain file
+% Storm window defaults
+if ~isfield(config.degradation, 'storm_start_s'); config.degradation.storm_start_s = 5; end
+if ~isfield(config.degradation, 'storm_end_s');   config.degradation.storm_end_s = 45; end
+if ~isfield(config.degradation, 'active_type');   config.degradation.active_type = 'step'; end
+% Environment from terrain file, then override with run file degradation toggles
 config.environment = terrainDef;
-
+if isfield(runDef, 'degradation')
+    deg = runDef.degradation;
+    % Run file degradation block overrides terrain file defaults
+    if isfield(deg, 'terrain_occlusion'); config.environment.terrain_occlusion = logical(deg.terrain_occlusion); end
+    if isfield(deg, 'horizon_masking');   config.environment.horizon_masking = logical(deg.horizon_masking); end
+    if isfield(deg, 'ground_clutter');    config.environment.ground_clutter = logical(deg.ground_clutter); end
+    if isfield(deg, 'doppler_fade');      config.environment.doppler_fade = logical(deg.doppler_fade); end
+    % v3.4.2: rcs_range_filter restored as OPT-IN (default OFF). When ON,
+    % runDetections applies a deterministic R_eff cutoff in addition to the
+    % sensor-native Swerling model. Used by TC-05 RCS validation.
+    if isfield(deg, 'rcs_range_filter');  config.environment.rcs_range_filter = logical(deg.rcs_range_filter); end
+end
 % Load shared tracker globals from config/trackers/tracker_globals.json
 % These are environment-level params (volume, beta, Pd) shared by ALL trackers.
 globalsPath = fullfile(configDir, 'trackers', 'tracker_globals.json');
@@ -274,16 +281,24 @@ else
         'scale_accel_horz',30,'scale_accel_vert',20,'scale_omega_dot',30);    
     fprintf('[RUN] Tracker globals: using built-in defaults (tracker_globals.json not found)\n');
 end
-
 % Tracker-specific params from individual tracker configs
 if ~isempty(trackerConfigs)
     tc = trackerConfigs{1};
-    % Legacy support: if a tracker file still has a 'filter' block, use it
-    % only if tracker_globals.json didn't provide one
-    if isfield(tc, 'filter') && ~isfield(config, 'filter_params')
-        config.filter_params = tc.filter;
+    % Filter override: per-tracker filter params override globals
+    % This is critical for autoTuneTracker output — the tuner finds
+    % optimal filter params for a specific scenario and saves them
+    % in the tracker JSON's 'filter' block.
+    if isfield(tc, 'filter')
+        if ~isfield(config, 'filter_params')
+            config.filter_params = tc.filter;
+        else
+            % Merge: tracker-specific values override globals
+            fNames = fieldnames(tc.filter);
+            for f = 1:numel(fNames)
+                config.filter_params.(fNames{f}) = tc.filter.(fNames{f});
+            end
+        end
     end
-
     % Build tracker_params.ideal and .degraded from tracker params
     if isfield(tc, 'params')
         config.tracker_params.ideal = tc.params;
@@ -296,7 +311,6 @@ if ~isempty(trackerConfigs)
             config.tracker_params.degraded.gate_jpda = tc.params.gate_jpda * 1.8;
         end
     end
-
     % Build trackers_to_run from loaded tracker configs
     config.trackers_to_run = struct( ...
         'gnn_cv',false,'gnn_imm',false,'tomht_cv',false, ...
@@ -322,7 +336,6 @@ else
     config.trackers_to_run = struct('gnn_cv',false,'gnn_imm',true, ...
         'tomht_cv',false,'tomht_imm',false,'jpda_cv',false,'jpda_imm',false);
 end
-
 % Select active params
 if config.degradation.enabled
     config.active_params = config.tracker_params.degraded;
@@ -333,7 +346,6 @@ else
     config.active_params.pd = config.tracker_global.detection_probability.ideal;
     fprintf('[RUN] Using IDEAL tracker parameters\n');
 end
-
 % Output
 config.output = struct('show_visuals',true,'animate_visuals',true, ...
     'save_results',true,'save_figures',true,'print_diagnostics',true, ...
@@ -344,7 +356,6 @@ if isfield(runDef, 'output')
         config.output.(outFields{f}) = runDef.output.(outFields{f});
     end
 end
-
 % Data logging / cache
 % Default: regenerate detections every run. Set cache.use_cached_detections
 % in the run file to reuse saved detections (faster tracker tuning).
@@ -364,16 +375,13 @@ if config.data_logging.use_saved_datalog
 else
     fprintf('[RUN] Cache: will REGENERATE detections fresh\n');
 end
-
 % Store tracker configs for runSingleScenario
 config.tracker_configs = trackerConfigs;
 config.run_name = erase(string(runName), '.json');
 config.sensor_config_name = strjoin(string(sensorPaths), ' + ');
-
 %% 7. Build trackingScenario
 scenario = trackingScenario;
 platformNames = fieldnames(sensors);
-
 % Platform definitions from run file
 % Handles three cases:
 %   "platforms": {}              → jsondecode returns [] (empty), no moving platforms
@@ -391,27 +399,21 @@ if isfield(runDef, 'platforms')
     end
     % If p is [] (from empty JSON {}), platformDefs stays as empty struct → all stationary
 end
-
 primaryUpdateRate = [];
-
 for p = 1:numel(platformNames)
     pName = platformNames{p};
     sensorList = sensors.(pName);
-
     plat = platform(scenario, 'Sensors', sensorList);
-
     if isstruct(platformDefs) && ~isempty(fieldnames(platformDefs)) && isfield(platformDefs, pName)
         pDef = platformDefs.(pName);
         pStart = [0 0 0]; pHeading = 90; pSpeed = 250;
         if isfield(pDef, 'start_pos');   pStart = reshape(pDef.start_pos, 1, []); end
         if isfield(pDef, 'heading_deg'); pHeading = pDef.heading_deg; end
         if isfield(pDef, 'speed_kmh');   pSpeed = pDef.speed_kmh * 1000 / 3600; end
-
         dx = pSpeed * sind(pHeading);
         dy = pSpeed * cosd(pHeading);
         T = config.scenario.duration_s;
         pEnd = pStart + [dx dy 0] * T;
-
         plat.Trajectory = waypointTrajectory( ...
             'Waypoints', [pStart; pEnd], ...
             'TimeOfArrival', [0; T], ...
@@ -422,18 +424,15 @@ for p = 1:numel(platformNames)
     else
         fprintf('[RUN] Platform "%s": %d sensor(s) — STATIONARY\n', pName, numel(sensorList));
     end
-
     if isempty(primaryUpdateRate) && ~isempty(sensorList)
         if isprop(sensorList{1}, 'UpdateRate')
             primaryUpdateRate = sensorList{1}.UpdateRate;
         end
     end
 end
-
 if ~isempty(primaryUpdateRate)
     scenario.UpdateRate = primaryUpdateRate;
 end
-
 %% 8. Build targets
 if isfield(targetDef, 'targets')
     tgts = targetDef.targets;
@@ -441,24 +440,20 @@ if isfield(targetDef, 'targets')
     numTargets = numel(tgts);
     duration = config.scenario.duration_s;
     fprintf('[RUN] Building %d target(s) over %.0fs\n', numTargets, duration);
-
     for i = 1:numTargets
         if iscell(tgts); tDef = tgts{i}; else; tDef = tgts(i); end
         trackbench.scenario.addTargetFromDef(scenario, tDef, duration, i);
     end
 end
-
 %% 9. Attach terrain
 terrainType = terrainDef.terrain_type;
 elevScale = 1.0;
 if isfield(terrainDef, 'terrain_scale'); elevScale = terrainDef.terrain_scale; end
-
 try
     scenBounds = computeScenarioBounds(scenario);
     [Zterrain, boundary, Xg, Yg] = trackbench.environment.generateTerrain( ...
         terrainType, scenBounds, elevScale);
     groundSurface(scenario, 'Terrain', Zterrain, 'Boundary', boundary);
-
     % Raise stationary platforms to terrain
     allPlats = scenario.Platforms;
     for pp = 1:numel(allPlats)
@@ -472,7 +467,6 @@ try
             end
         end
     end
-
     tg = struct('Z', Zterrain, 'boundary', boundary, 'X', Xg, 'Y', Yg);
     config.terrainGrid = tg;
     config.environment.terrainGrid = tg;
@@ -482,7 +476,6 @@ catch ME
     warning('loadRunFile:terrainFailed', 'Terrain failed: %s', ME.message);
     config.terrainGrid = [];
 end
-
 %% 10. Validate
 try
     [scanOk, scanInfo] = trackbench.scenario.validateScanCoverage(scenario, config.scenario.duration_s);
@@ -490,19 +483,14 @@ try
         warning('loadRunFile:fewScans', '%s', scanInfo.message);
     end
 catch; end
-
 try
     trackbench.validation.validateScenarioConfig(config, scenario, sensors, metas);
 catch; end
-
 %% Summary
 totalSensors = sensorIndex;
 fprintf('[RUN] Ready: %d sensor(s), %d target(s), %.0fs, terrain=%s\n', ...
     totalSensors, config.scenario.num_targets, config.scenario.duration_s, terrainType);
-
 end % main function
-
-
 %% ========================================================================
 function bounds = computeScenarioBounds(scenario)
     allPos = [0 0 0];
@@ -523,7 +511,6 @@ function bounds = computeScenarioBounds(scenario)
     halfSpan = max(maxExtent * 1.15, 130000);
     bounds = [-halfSpan, halfSpan; -halfSpan, halfSpan];
 end
-
 function freq = getFreqForType(sType)
     switch upper(sType)
         case {'PSR','ASR','WEATHER'};     freq = 2.8e9;

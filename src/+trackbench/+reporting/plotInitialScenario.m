@@ -6,6 +6,7 @@ function plotInitialScenario(dataLog, animateFlag)
 % The Z-axis label reads "Altitude (km)" instead of "Z (km)".
 %
 % Colors: Truth tracks are distinct (Blue, Red, etc.). Detections are Green.
+% Beam envelope cones show sensor elevation coverage (green=upper, red=lower).
     
     if nargin < 2
         animateFlag = true;
@@ -32,6 +33,15 @@ function plotInitialScenario(dataLog, animateFlag)
     %% 1B. DRAW SENSOR COVERAGE (background layer)
     if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
         trackbench.reporting.drawSensorCoverage(ax, dataLog.SensorCoverage, true);
+    end
+
+    %% 1C. DRAW BEAM ELEVATION ENVELOPE (3D cone showing beam limits)
+    if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
+        try
+            trackbench.reporting.drawBeamEnvelope(ax, dataLog.SensorCoverage);
+        catch ME
+            fprintf('[WARN] Beam envelope skipped: %s\n', ME.message);
+        end
     end
 
     %% 2. INITIALIZE ANIMATION OBJECTS
@@ -83,7 +93,7 @@ function plotInitialScenario(dataLog, animateFlag)
                 if numel(p) >= 3
                     xVal = p(1) * s; 
                     yVal = p(2) * s;
-                    zVal = -p(3) * s;  % NEGATE: NED Z-down → display altitude up
+                    zVal = -p(3) * s;
                     
                     addpoints(hTrails(ti), xVal, yVal, zVal);
                     set(hMarkers(ti), 'XData', xVal, 'YData', yVal, 'ZData', zVal);
@@ -141,24 +151,21 @@ function plotInitialScenario(dataLog, animateFlag)
             end
         end
         if ~isempty(allPos)
-            pad = 3;  % km padding
+            pad = 3;
             xLims = [min(allPos(1,:))-pad, max(allPos(1,:))+pad];
             yLims = [min(allPos(2,:))-pad, max(allPos(2,:))+pad];
             zLims = [min(allPos(3,:))-0.5, max(allPos(3,:))+pad];
-            zLims(1) = min(zLims(1), -0.2);  % always show a bit below ground
+            zLims(1) = min(zLims(1), -0.2);
             xlim(ax, xLims);
             ylim(ax, yLims);
             zlim(ax, zLims);
             
-            %% Draw terrain surface or flat ground plane
             if isfield(dataLog, 'TerrainGrid') && ~isempty(dataLog.TerrainGrid)
-                % Render 3D terrain heightmap
                 tg = dataLog.TerrainGrid;
-                Xterr = tg.X * s;  % convert m → km
+                Xterr = tg.X * s;
                 Yterr = tg.Y * s;
-                Zterr = -tg.Z * s;  % NED: negate Z for altitude-up display
+                Zterr = -tg.Z * s;
                 
-                % Clip terrain to plot extent + small margin
                 xMask = Xterr(1,:) >= xLims(1)-2 & Xterr(1,:) <= xLims(2)+2;
                 yMask = Yterr(:,1) >= yLims(1)-2 & Yterr(:,1) <= yLims(2)+2;
                 Xsub = Xterr(yMask, xMask);
@@ -174,9 +181,8 @@ function plotInitialScenario(dataLog, animateFlag)
                                   0.35 0.30 0.15; 0.45 0.40 0.20; ...
                                   0.55 0.50 0.30; 0.65 0.60 0.40]);
                     
-                    % Update Z limits to include terrain peaks
                     maxTerrElev = max(Zsub(:));
-                    if maxTerrElev > 0.05  % only label if terrain > 50m
+                    if maxTerrElev > 0.05
                         text(ax, xLims(2)-2, yLims(1)+1, maxTerrElev+0.1, ...
                             sprintf('Terrain (peak %.0fm)', maxTerrElev*1000), ...
                             'Color', [0.7 0.6 0.4], 'FontSize', 8, ...
@@ -184,7 +190,6 @@ function plotInitialScenario(dataLog, animateFlag)
                     end
                 end
             else
-                % Flat ground plane (no terrain data)
                 gx = [xLims(1) xLims(2) xLims(2) xLims(1)];
                 gy = [yLims(1) yLims(1) yLims(2) yLims(2)];
                 gz = [0 0 0 0];

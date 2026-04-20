@@ -25,6 +25,24 @@ arguments
     runName (1,1) string = "my_run"
 end
 
+%% Detect chained Command Window calls (before clc wipes the screen)
+%  When the user pastes multiple runSingleScenario(...) lines, MATLAB
+%  processes them as a command queue with no gap between runs. Without a
+%  pause, results from run N get wiped by run N+1's `clc; close all` the
+%  instant run N finishes. This flag is checked at the end of the function
+%  to decide whether to prompt the user before returning.
+%
+%  Default behavior: PAUSE between runs unless explicitly suppressed.
+%  To disable the pause (e.g., from a batch script):
+%      setappdata(0, 'trackbench_suppressPause', true);
+%      runSingleScenario(...)
+%      runSingleScenario(...)
+%      setappdata(0, 'trackbench_suppressPause', false);
+%
+%  The very first call of the MATLAB session never pauses, so a one-off
+%  run doesn't hang waiting for input.
+isChained = detectChainedCall();
+
 clc; close all;
 
 %% Setup
@@ -114,7 +132,7 @@ if isempty(dataLog)
         envCfg.clutter_multiplier = config.degradation.clutter_multiplier;
     end
     dataLog = trackbench.detections.runDetections( ...
-        scenario, config.degradation.enabled, metas, envCfg);
+        scenario, config.degradation.enabled, metas, envCfg, config);
 
     if config.data_logging.save_after_generation
         saveDetections(paths.data_log_file, dataLog);
@@ -259,17 +277,41 @@ end
 
 %% Save
 if config.output.save_results
-    if ~exist(paths.results_dir, "dir"); mkdir(paths.results_dir); end
+    % Preserve subdirectory structure (e.g., recorded_flight/nasa_flight_demo)
+    [subDir, baseName] = fileparts(char(scenarioLabel));
+    resultsDir = fullfile(paths.results_dir, subDir);
+    if ~exist(resultsDir, "dir"); mkdir(resultsDir); end
     timestamp = char(datetime("now", "Format", "yyyyMMdd_HHmmss"));
-    resultsFile = fullfile(paths.results_dir, ...
-        sprintf("results_%s_%s.mat", strrep(char(scenarioLabel),"/","_"), timestamp));
+    resultsFile = fullfile(resultsDir, ...
+        sprintf("results_%s_%s.mat", baseName, timestamp));
     save(resultsFile, "results", "config", "-v7.3");
     fprintf("[INFO] Saved results to %s\n", resultsFile);
+end
+
+%% Globe view for real flight data
+if isfield(config.output, 'globe_view') && config.output.globe_view
+    try
+        fprintf('\n[GLOBE] Launching globe viewer for %s...\n', scenarioLabel);
+        viewNASAFlightGlobe(scenarioLabel);
+    catch ME
+        fprintf('[GLOBE] Globe view skipped: %s\n', ME.message);
+    end
 end
 
 fprintf("\n==============================\n");
 fprintf(" RUN END | %s\n", scenarioLabel);
 fprintf("==============================\n\n");
+
+%% Pause between chained runs so the user can review results
+%  Only prompts when this call appears to be part of a pasted/queued
+%  sequence from the Command Window. One-off runs and scripted callers
+%  (like runTestPlan) are unaffected.
+if isChained
+    promptBetweenRuns(scenarioLabel);
+end
+
+%% Record end time so the NEXT runSingleScenario call can detect chaining
+setappdata(0, 'trackbench_lastRunEndTime', now);
 
 end
 
@@ -321,4 +363,68 @@ function merged = mergeStructs(base, overlay)
     for i = 1:numel(flds)
         merged.(flds{i}) = overlay.(flds{i});
     end
+end
+
+function isChained = detectChainedCall()
+%detectChainedCall  True if this call should pause at the end.
+%
+%  Default: pause. Skip only in these cases:
+%    - Explicit suppression flag set via setappdata(0,'trackbench_suppressPause',true)
+%      → for batch scripts that manage their own flow
+%    - First runSingleScenario call of the MATLAB session
+%      → no previous run's figures to protect
+%
+%  Note: we intentionally do NOT try to detect the caller via dbstack
+%  here. MATLAB's handling of pasted Command Window input is unreliable
+%  on that front — sometimes it inserts an implicit script frame,
+%  sometimes not. Simpler and more predictable: always pause unless told
+%  otherwise.
+
+    % 1. Honor explicit suppression flag.
+    suppress = getappdata(0, 'trackbench_suppressPause');
+    if ~isempty(suppress) && logical(suppress)
+        isChained = false;
+        return;
+    end
+
+    % 2. First run of the session — no previous figures to preserve.
+    lastEnd = getappdata(0, 'trackbench_lastRunEndTime');
+    if isempty(lastEnd)
+        isChained = false;
+        return;
+    end
+
+    % 3. Otherwise, pause.
+    isChained = true;
+end
+
+function promptBetweenRuns(scenarioLabel)
+%promptBetweenRuns  Ask the user to confirm before the next queued run.
+%
+%  Prints a clearly-visible prompt and waits on input(). Behavior:
+%    y / <Enter>  → continue, next queued run proceeds
+%    n / anything → throw error, aborting the rest of the command queue
+%
+%  Throwing an error is the mechanism that stops MATLAB from executing
+%  subsequent queued commands. A plain return() would let the next
+%  runSingleScenario(...) line run anyway.
+    fprintf('\n');
+    fprintf('┌──────────────────────────────────────────────────────────┐\n');
+    fprintf('│  Review results above: %-33s │\n', char(scenarioLabel));
+    fprintf('│  Press [Y / Enter] to continue to next queued run        │\n');
+    fprintf('│  Press [N] to abort the remaining queue                  │\n');
+    fprintf('└──────────────────────────────────────────────────────────┘\n');
+
+    resp = input('  Continue? [Y/n]: ', 's');
+    resp = strtrim(lower(string(resp)));
+
+    if resp == "" || resp == "y" || resp == "yes"
+        fprintf('  → Continuing to next run...\n\n');
+        return;
+    end
+
+    % Any other response (including 'n') aborts the queue.
+    error('runSingleScenario:userAborted', ...
+        'Run queue aborted by user after "%s". Remaining queued runs will not execute.', ...
+        scenarioLabel);
 end

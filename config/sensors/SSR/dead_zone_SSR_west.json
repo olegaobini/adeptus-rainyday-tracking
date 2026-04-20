@@ -2,6 +2,7 @@
   "name": "SSR West (Dead Zone Demo)",
   "type": "SSR",
   "platform": "tower",
+  "frequency_hz": 1.03e9,
   "params": {
     "rpm": 25,
     "fov": [1.4, 10],

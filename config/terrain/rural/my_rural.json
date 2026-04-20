@@ -2,10 +2,6 @@
   "description": "Rolling farmland, 80m peaks, light clutter.",
   "terrain_type": "rural",
   "terrain_scale": 1,
-  "terrain_occlusion": false,
-  "horizon_masking": false,
-  "ground_clutter": false,
-  "propagation_model": false,
   "clutter_density": 0.3,
   "refraction_factor": 1.333
 }

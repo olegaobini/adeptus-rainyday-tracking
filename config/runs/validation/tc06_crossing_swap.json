@@ -8,7 +8,13 @@
   "targets": "crossing_pair/default_crossing_pair",
   "terrain": "water/default_water",
   "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA"],
-  "degradation": { "enabled": false, "type": "rain" },
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": true,
+    "weather": "none"
+  },
   "cache": { "use_cached_detections": false, "save_detections": true },
   "platforms": {},
   "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }

@@ -12,6 +12,7 @@ function addTargetFromDef(scenario, tDef, duration, idx)
 %    orbit             : Circular holding pattern (set orbit_radius_m)
 %    approach          : Descending glide path to end_pos
 %    departure         : Climbing away to end_pos
+%    recorded_flight   : ★ Real FDR data from NASA DASHlink .mat files
 %    waypoints         : ★ Custom — user defines [x,y,z] waypoints + times
 %
 %  OPTIONAL FIELDS (all behaviors)
@@ -22,6 +23,17 @@ function addTargetFromDef(scenario, tDef, duration, idx)
 %    class_id    : Integer classification (0=unknown, user-defined scheme).
 %    label       : String label for logging and plots.
 %
+%  RECORDED_FLIGHT FORMAT
+%    "behavior": "recorded_flight"
+%    "flight_data_file": "path/to/file.mat"  (absolute or relative to project root)
+%    "waypoint_interval_s": 30               (optional, default 30)
+%    "max_duration_s": 600                   (optional, default = scenario duration)
+%    "ref_lat": 41.5                         (optional, auto from flight midpoint)
+%    "ref_lon": -78.0                        (optional, auto from flight midpoint)
+%    Loads real flight recorder data via trackbench.flightdata.loadNASAFlight.
+%    The NED origin is the ref point (auto or specified), which is where the
+%    sensor tower sits. speed_kmh/start_pos/altitude_m are ignored.
+%
 %  WAYPOINTS BEHAVIOR FORMAT
 %    "waypoints": [
 %      { "pos": [x, y, z], "time_s": 0 },
@@ -31,7 +43,8 @@ function addTargetFromDef(scenario, tDef, duration, idx)
 %    Uses MATLAB's waypointTrajectory directly — any path, any timing.
 %    Ref: https://www.mathworks.com/help/fusion/ref/waypointtrajectory-system-object.html
 %
-%  See also: waypointTrajectory, rcsSignature, platform
+%  See also: waypointTrajectory, rcsSignature, platform,
+%            trackbench.flightdata.loadNASAFlight
 
     %% Parse common fields with defaults
     behavior = "constant_velocity";
@@ -82,6 +95,10 @@ function addTargetFromDef(scenario, tDef, duration, idx)
             [wp, t, vel] = buildCrossing(startPos, endPos, T);
         case {"parallel", "head_on"}
             [wp, t, vel] = buildConstantVelocity(startPos, heading, speed_ms, T);
+
+        case "recorded_flight"
+            [wp, t, vel] = buildRecordedFlight(tDef, T);
+
         case "waypoints"
             [wp, t, vel] = buildFromWaypoints(tDef);
         otherwise
@@ -145,7 +162,11 @@ function addTargetFromDef(scenario, tDef, duration, idx)
             getFieldDef(d,'length_m',0), getFieldDef(d,'width_m',0), getFieldDef(d,'height_m',0));
     end
 
-    if behavior == "waypoints"
+    if behavior == "recorded_flight"
+        nWP = size(wp, 1);
+        fprintf('  Target %d: %s (%d waypoints, %.0fs, real FDR)%s%s\n', ...
+            idx, label, nWP, t(end), rcsStr, dimStr);
+    elseif behavior == "waypoints"
         nWP = size(wp, 1);
         fprintf('  Target %d: %s (%d waypoints, %.0fs)%s%s\n', ...
             idx, label, nWP, t(end), rcsStr, dimStr);
@@ -157,7 +178,69 @@ end
 
 
 %% ========================================================================
-%  WAYPOINT BUILDER (new — user-defined paths)
+%  RECORDED FLIGHT BUILDER (NASA DASHlink FDR data)
+%% ========================================================================
+function [wp, t, vel] = buildRecordedFlight(tDef, scenarioDuration)
+%buildRecordedFlight  Load real FDR data and return waypoints/times/velocities.
+
+    if ~isfield(tDef, 'flight_data_file') || isempty(tDef.flight_data_file)
+        error('addTargetFromDef:noFlightFile', ...
+            'behavior="recorded_flight" requires a "flight_data_file" field.');
+    end
+
+    flightFile = string(tDef.flight_data_file);
+
+    % ── Path resolution (portable across machines) ────────────────────────
+    % Project root is 4 levels up from this file:
+    %   src/+trackbench/+scenario/addTargetFromDef.m  →  <project root>
+    projRoot = fileparts(fileparts(fileparts(fileparts(mfilename('fullpath')))));
+    parentDir = fileparts(projRoot);   % directory containing the project folder
+
+    flightFile = resolveFlightPath(flightFile, projRoot, parentDir);
+
+    if ~isfile(flightFile)
+        error('addTargetFromDef:flightFileNotFound', ...
+            ['Flight data file not found: %s\n' ...
+             '  Searched (in order):\n' ...
+             '    1. As-given (absolute or cwd-relative)\n' ...
+             '    2. Relative to project root: %s\n' ...
+             '    3. Relative to project parent: %s\n' ...
+             '  TIP: Use a relative path in the JSON (e.g. "../Tail_687_1/<file>.mat")\n' ...
+             '       so the config works on every machine.'], ...
+            flightFile, projRoot, parentDir);
+    end
+
+    % Build name-value args for the loader
+    nvArgs = {};
+
+    if isfield(tDef, 'waypoint_interval_s')
+        nvArgs = [nvArgs, {'WaypointInterval', tDef.waypoint_interval_s}];
+    end
+
+    % Use the smaller of max_duration_s and scenario duration
+    maxDur = scenarioDuration;
+    if isfield(tDef, 'max_duration_s') && tDef.max_duration_s < maxDur
+        maxDur = tDef.max_duration_s;
+    end
+    nvArgs = [nvArgs, {'MaxDuration', maxDur}];
+
+    if isfield(tDef, 'ref_lat')
+        nvArgs = [nvArgs, {'RefLat', tDef.ref_lat}];
+    end
+    if isfield(tDef, 'ref_lon')
+        nvArgs = [nvArgs, {'RefLon', tDef.ref_lon}];
+    end
+
+    fd = trackbench.flightdata.loadNASAFlight(flightFile, nvArgs{:});
+
+    wp  = fd.waypoints;
+    t   = fd.timeOfArrival;
+    vel = fd.velocities;
+end
+
+
+%% ========================================================================
+%  WAYPOINT BUILDER (user-defined paths)
 %% ========================================================================
 function [wp, t, vel] = buildFromWaypoints(tDef)
 %buildFromWaypoints  Build trajectory from user-defined waypoints in JSON.
@@ -198,7 +281,6 @@ function [wp, t, vel] = buildFromWaypoints(tDef)
     % Ensure Z is negative for altitude (NED convention)
     for k = 1:nPts
         if isfield(tDef, 'altitude_m') && wp(k,3) >= 0
-            % If user forgot NED sign convention, fix it
             wp(k,3) = -abs(wp(k,3));
         end
     end
@@ -285,4 +367,52 @@ end
 
 function val = getFieldDef(s, field, default)
     if isstruct(s) && isfield(s, field); val = s.(field); else; val = default; end
+end
+
+function outPath = resolveFlightPath(inPath, projRoot, parentDir)
+%resolveFlightPath  Make a flight-data path portable across machines.
+%
+%  Tries (in order):
+%    1. The path as given (absolute, or relative to current working dir)
+%    2. Relative to the project root
+%    3. Relative to the project's parent directory
+%       (covers the common case where Tail_687_1/ is a sibling of the
+%       project folder, e.g. <something>/Adding Flight Data/Tail_687_1/...)
+%
+%  Returns the first candidate that exists, or the as-given path if none
+%  match (so the caller can produce a helpful error message).
+
+    inPath = string(inPath);
+
+    % 1) As-given
+    if isfile(inPath)
+        outPath = inPath;
+        return;
+    end
+
+    % If the path looks absolute (Windows drive-letter or UNIX root) and
+    % doesn't exist, do NOT try to graft it onto another root — that's
+    % what produced the original "...\src\C:\Users\..." Frankenstein path.
+    isAbsolute = ~isempty(regexp(char(inPath), '^([A-Za-z]:[\\/]|[\\/])', 'once'));
+    if isAbsolute
+        outPath = inPath;   % let the caller error out cleanly
+        return;
+    end
+
+    % 2) Relative to project root
+    cand = fullfile(projRoot, inPath);
+    if isfile(cand)
+        outPath = string(cand);
+        return;
+    end
+
+    % 3) Relative to project parent (sibling-folder layout)
+    cand = fullfile(parentDir, inPath);
+    if isfile(cand)
+        outPath = string(cand);
+        return;
+    end
+
+    % Nothing matched; return the original so the caller can report it.
+    outPath = inPath;
 end

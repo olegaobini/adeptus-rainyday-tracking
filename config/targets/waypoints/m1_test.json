@@ -1,0 +1,42 @@
+{
+  "description": "Custom path drawn interactively on 2026-04-17",
+  "duration_s": 155,
+  "targets": [
+    {
+      "name": "m1_test",
+      "label": "m1_test",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "waypoints": [
+        {
+          "pos": [
+            13441.441441441442,
+            7747.7477477477469,
+            -3000
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            -5603.6036036036021,
+            16522.522522522515,
+            -3000
+          ],
+          "time_s": 83.877092283013084,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            3234.3620663944175,
+            1371.3360076004037,
+            -3000
+          ],
+          "time_s": 154.03897253079677,
+          "speed_kmh": 900
+        }
+      ]
+    }
+  ]
+}

@@ -2,6 +2,7 @@
   "name": "PSR East (Dead Zone Demo)",
   "type": "PSR",
   "platform": "tower",
+  "frequency_hz": 2.8e9,
   "params": {
     "rpm": 25,
     "fov": [1.4, 30],

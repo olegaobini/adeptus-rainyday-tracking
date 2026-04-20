@@ -1,6 +1,6 @@
 %% ============================================================
 %%  RAINY DAY TRACKING — CHEATSHEET
-%%  v3.0 | March 19, 2026
+%%  v3.5.0 | April 17, 2026
 %% ============================================================
 
 %% ---- SETUP (run once per MATLAB session) --------------------
@@ -215,6 +215,47 @@ addpath(genpath(fullfile(pwd, 'src')));
 cd('tests');
 run('testBuildSensor.m');
 cd('..');
+
+%% ============================================================
+%%  PATH EDITOR (v3.5.0) — draw custom flight paths on a map
+%% ============================================================
+
+% Launch (always clear classes first — +editor is cached aggressively)
+clear classes; clear all
+addpath("scripts"); addpath(genpath("src"))
+pathEditor
+
+% --- Drawing ---
+% Left-click .................. append waypoint
+% Drag a waypoint ............. move it (undo per drag, not per pixel)
+% Shift+click on segment ...... insert a new waypoint there
+% Delete / Backspace .......... remove selected waypoint
+% Ctrl+Z / Ctrl+Y ............. undo / redo (50 levels)
+% V ........................... toggle 2D <-> 3D view
+% Middle-click + drag ......... pan (2D only)
+% Scroll wheel ................ zoom around cursor
+
+% --- Sidebar ---
+% Target name, description, RCS (dBsm + preset profile)
+% Default altitude + default speed (applied to new waypoints)
+% Per-waypoint edit of x / y / altitude / leg speed / time
+% Color-by-altitude toggle, grid spacing, editable radar marker position
+% Spline preview, animation preview window, Load JSON (re-edit a saved path)
+
+% --- Export ---
+% "Export JSON" button writes:
+%     config/targets/waypoints/<target_name>.json
+% Reference it from a run file like any other target:
+%     { "targets": "waypoints/<target_name>", ... }
+% Then:
+%     runSingleScenario("<your_run>")
+
+% --- Tests (no uifigure spawned) ---
+testPathEditor_M1          % click / export / schema
+testPathEditor_M2          % select / drag / insert / delete / undo / load
+testPathEditor_M3          % 2D<->3D, grid, altitude colormap, radar marker
+testPathEditor_M3_preview  % animated preview window
+testPathEditor_shortcuts   % keyboard shortcuts
 
 %% ============================================================
 %%  GIT COMMANDS (from terminal, inside repo folder)

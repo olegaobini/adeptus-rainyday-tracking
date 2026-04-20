@@ -8,6 +8,7 @@
       "type": "CUSTOM_RADAR",
       "enabled": true,
       "platform": "tower",
+      "frequency_hz": 2.8e9,
       "params": {
         "rpm": 25,
         "fov": [1.5, 10],

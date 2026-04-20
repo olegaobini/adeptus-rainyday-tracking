@@ -1,0 +1,10 @@
+{
+    "type": "fog",
+    "description": "Fog for NASA 600s flight — moderate fog (~300m visibility), covers 100-500s, step onset",
+    "rain_rate_mmhr": 15,
+    "storm_start_s": 100,
+    "storm_end_s": 500,
+    "active_type": "step",
+    "pd_floor": 0.15,
+    "_physics": "Visibility-based. Mainly degrades IR/optical sensors. Negligible RF below 10 GHz. Uses fogpl() (ITU-R P.840) above 10 GHz."
+}

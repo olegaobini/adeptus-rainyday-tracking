@@ -1,27 +1,12 @@
 {
-  "description": "YOUR DESCRIPTION HERE",
-  "sensors": [
-    "PSR/default_PSR"
-  ],
+  "description": "YOUR DESCRIPTION HERE — copy this file and customize",
+  "sensors": ["PSR/default_PSR"],
   "targets": "gentle_turn/default_gentle_turn",
   "terrain": "rural/default_rural",
-  "trackers": [
-    "GNN/default_GNN"
-  ],
-  "degradation": {
-    "enabled": false,
-    "type": "rain"
-  },
-  "cache": {
-    "use_cached_detections": false,
-    "save_detections": true
-  },
+  "trackers": ["GNN/default_GNN"],
+  "compare_trackers": ["GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+  "degradation": { "terrain_occlusion": true, "horizon_masking": true, "ground_clutter": true, "doppler_fade": true, "weather": "none" },
+  "cache": { "use_cached_detections": false, "save_detections": true },
   "platforms": {},
-  "output": {
-    "show_visuals": true,
-    "animate_visuals": true,
-    "save_results": true,
-    "print_diagnostics": true,
-    "results_directory": "results"
-  }
+  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true }
 }

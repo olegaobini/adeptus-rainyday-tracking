@@ -8,7 +8,13 @@
   "targets": "crossing_pair/default_crossing_pair",
   "terrain": "rural/default_rural",
   "trackers": ["GNN/default_GNN"],
-  "degradation": { "enabled": false, "type": "rain" },
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "none"
+  },
   "cache": { "use_cached_detections": false, "save_detections": true },
   "platforms": {},
   "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }

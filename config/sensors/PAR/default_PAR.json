@@ -2,21 +2,13 @@
   "name": "Precision Approach Radar",
   "type": "PAR",
   "platform": "tower",
+  "frequency_hz": 9.0e9,
+  "_frequency_hz": "X-band. Short-range precision — high resolution needed for approach guidance. Severely affected by rain. If omitted, defaults to 9.0e9.",
   "params": {
-    "sector": [
-      170,
-      190
-    ],
-    "rangeLimits": [
-      0,
-      37040
-    ],
+    "sector": [170, 190],
+    "rangeLimits": [0, 37040],
     "pd": 0.95,
-    "far": 1E-7,
-    "mountingLoc": [
-      0,
-      0,
-      -10
-    ]
+    "far": 1e-7,
+    "mountingLoc": [0, 0, -10]
   }
 }

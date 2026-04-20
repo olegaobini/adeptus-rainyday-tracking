@@ -2,24 +2,16 @@
   "name": "Primary Search Radar (DASR)",
   "type": "PSR",
   "platform": "tower",
+  "frequency_hz": 2.8e9,
+  "_frequency_hz": "S-band. Affects rain attenuation, clutter scaling, Doppler MDV. If omitted, defaults to 2.8e9 for PSR.",
   "params": {
     "rpm": 12.5,
-    "fov": [
-      1.4,
-      30
-    ],
+    "fov": [1.4, 30],
     "tilt": 2,
     "pd": 0.9,
-    "far": 1E-6,
-    "rangeLimits": [
-      0,
-      111120
-    ],
+    "far": 1e-6,
+    "rangeLimits": [0, 20000],
     "rangeRes": 93,
-    "mountingLoc": [
-      0,
-      0,
-      -15
-    ]
+    "mountingLoc": [0, 0, -15]
   }
 }

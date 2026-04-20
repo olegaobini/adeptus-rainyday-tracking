@@ -1,0 +1,12 @@
+{
+    "type": "rain",
+    "description": "Validation rain profile for TC-03/TC-04 -- same 16 mm/hr rate as default_rain but with storm window (5-50s) aligned to the 50s gentle_turn scenario duration. The default_rain profile starts at t=50s which is after the validation scenario ends, so the rain never actually fires. This config ensures ITU-R P.838-3 attenuation is actually active during the detection scans so the frequency-dependent differential (TC-03 S-band vs TC-04 X-band) is observable.",
+    "rain_rate_mmhr": 16,
+    "storm_start_s": 5,
+    "storm_end_s": 50,
+    "active_type": "step",
+    "pd_floor": 0.15,
+    "clutter_multiplier": 1.0,
+    "_physics": "ITU-R P.838-3 via MATLAB rainpl(). S-band (2.8 GHz) barely affected, X-band (9 GHz) severely degraded at 100 km ranges. Over ~20 km paths the differential is smaller but still measurable.",
+    "_rain_rate_guide": "1-4: drizzle | 4-16: moderate | 16-50: heavy | 50+: tropical downpour"
+}

@@ -352,7 +352,12 @@ while i < numSteps
                     trackHistLines(tID) = hLine;
                 end
                 displayPos = pos(tIdx, :); displayPos(3) = -displayPos(3);
-                trackPlotters(tID).plotTrack(displayPos, zeros(1,3), cov(:,:,tIdx), {num2str(tID)});
+                try
+                    trackPlotters(tID).plotTrack(displayPos, zeros(1,3), cov(:,:,tIdx), {num2str(tID)});
+                catch
+                    % R2025b fallback: plot position only if full signature fails
+                    try; trackPlotters(tID).plotTrack(displayPos); catch; end
+                end
                 addpoints(trackHistLines(tID), displayPos(1), displayPos(2), displayPos(3));
             end
             drawnow limitrate;

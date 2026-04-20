@@ -1,34 +1,51 @@
 # Rainy Day: Advanced Radar Tracking in Degraded Weather
 
+**Version 3.5.0** — Boeing-sponsored senior capstone project, University of Washington.
+
+A modular MATLAB framework for evaluating radar target tracking performance under
+real-world degraded conditions. Users compose custom scenarios by combining
+independent JSON configuration files for sensors, targets, terrain, trackers,
+and weather — no MATLAB code required.
+
 ## Quick Start
 
 ```matlab
 % cd to the adeptus-rainyday-tracking folder, then:
-addpath("scripts");
+addpath("scripts"); addpath(genpath("src"));
 
 % First time only — creates config folder structure:
-buildModularConfig
+buildModularConfig   % (only if config/ is missing)
 
 % Run a simulation:
-runSingleScenario("my_run")              % your custom run file
 runSingleScenario("dasr_baseline")       % PSR+SSR, rural, GNN+JPDA
 runSingleScenario("demo_mountain")       % PSR, 5 targets, mountain terrain
 runSingleScenario("fighter_intercept")   % AESA+FLIR on aircraft
 runSingleScenario("dasr_storm")          % PSR+SSR, mountain, heavy rain
+runSingleScenario("my_run")              % your custom run file
 
-% Physics comparison (clean vs rain, all 3 trackers):
-runComparisonDemo
+% NASA real flight data (new in v3.4.0):
+runNASAFlight                  % Track real Tail-687 flight with simulated radar
+viewNASAFlightGlobe            % Earth-centered 3D view of real flights
+scanNASAFlights                % Profile all flight files in a folder
 
-% Automated validation (27 checks, 9 test cases):
-runTestPlan
+% Automated parameter sweep (new in v3.4.0):
+autoTuneTracker("my_run", "GNN")   % Two-pass GNN tuning on cached detections
+
+% Validation suite (new in v3.3.0):
+runTestPlan                    % All 9 test cases, 27 assertions
+verifySimulation               % 40+ diagnostic checks across 8 phases
 
 % Demo video (1080p MP4):
 recordDemoVideo
+
+% Interactive path editor (new in v3.5.0):
+pathEditor                     % click-and-drag target path drawing → JSON
 ```
 
 ## How It Works
 
-Each simulation is defined by a **run file** (`config/runs/*.json`) that assembles four independent components:
+Each simulation is defined by a **run file** (`config/runs/*.json`) that
+assembles five independent components:
 
 ```
 config/runs/my_run.json
@@ -36,13 +53,17 @@ config/runs/my_run.json
   │              config/sensors/SSR/default_SSR.json
   ├── targets  → config/targets/crossing_pair/default_crossing_pair.json
   ├── terrain  → config/terrain/mountain/default_mountain.json
-  └── trackers → config/trackers/GNN/default_GNN.json
-                  config/trackers/JPDA/default_JPDA.json
+  ├── trackers → config/trackers/GNN/default_GNN.json
+  │              config/trackers/JPDA/default_JPDA.json
+  └── weather  → config/weather/rain/default_rain.json   (new in v3.4.0)
 ```
 
-`runSingleScenario` reads the run file, loads each component, builds the MATLAB `trackingScenario`, generates detections, runs trackers, and reports metrics.
+`runSingleScenario` reads the run file, loads each component, builds the MATLAB
+`trackingScenario`, generates detections through the environment pipeline, runs
+each specified tracker, and reports metrics with 3D visualization.
 
-### Run file format
+### Run file format (v3.4.2)
+
 ```json
 {
   "description": "My experiment",
@@ -50,189 +71,216 @@ config/runs/my_run.json
   "targets": "crossing_pair/default_crossing_pair",
   "terrain": "mountain/default_mountain",
   "trackers": ["GNN/default_GNN", "JPDA/default_JPDA"],
-  "degradation": { "enabled": false, "type": "rain" },
-  "cache": { "use_cached_detections": false, "save_detections": true },
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking":   true,
+    "ground_clutter":    true,
+    "doppler_fade":      true,
+    "rcs_range_filter":  false,
+    "weather":           "rain/default_rain"
+  },
+  "cache":    { "use_cached_detections": false, "save_detections": true },
   "platforms": {},
-  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true }
+  "output":   { "show_visuals": true, "animate_visuals": true, "save_results": true }
 }
 ```
+
+Legacy `"degradation": { "enabled": true, "type": "rain" }` format still works.
+The `weather` key supersedes inline rain params — see `config/weather/`.
 
 See `config/runs/run_template.json` for the fully documented version.
 
 ## Building a Custom Simulation
 
 ### 1. Pick or create sensors
-Each sensor type has its own folder in `config/sensors/<TYPE>/` with three files: `default_<TYPE>.json` (works out of box), `<TYPE>_template.json` (documented), `my_<TYPE>.json` (your copy).
+Each sensor type has its own folder under `config/sensors/<TYPE>/` with three
+files: `default_<TYPE>.json` (works out of box), `<TYPE>_template.json`
+(documented), `my_<TYPE>.json` (your copy).
 
 ```
-config/sensors/PSR/my_PSR.json     — edit rpm, range, Pd, mounting location
+config/sensors/PSR/my_PSR.json     — edit rpm, range, Pd, mounting
 config/sensors/AESA/my_AESA.json   — edit sector, range (needs aircraft platform)
 ```
 
 ### 2. Pick or create targets
 Target folders define flight behaviors and duration:
+
 ```
-config/targets/crossing_pair/my_crossing_pair.json   — two targets crossing
-config/targets/s_maneuver/my_s_maneuver.json         — evasive S-turn
+config/targets/crossing_pair/my_crossing_pair.json  — two targets crossing
+config/targets/s_maneuver/my_s_maneuver.json        — evasive S-turn
+config/targets/recorded_flight/my_recorded.json     — real NASA flight data (v3.4.0)
 ```
 
 ### 3. Pick terrain
 Terrain folders define environment effects:
+
 ```
-config/terrain/mountain/my_mountain.json   — ridges, occlusion ON, clutter ON
-config/terrain/water/default_water.json    — flat ocean, all effects OFF
+config/terrain/mountain/my_mountain.json  — ridges, occlusion ON, clutter ON
+config/terrain/water/default_water.json   — flat ocean, all effects OFF
 ```
 
-### 4. Pick trackers
-Tracker folders define algorithm + tuning. Shared parameters (Pd, filter init) live in `tracker_globals.json`.
+### 4. Pick weather (new in v3.4.0)
+Weather configs live under `config/weather/<TYPE>/`. Four types: `rain`, `snow`,
+`fog`, `icing`. Each has a storm-window profile (step / ramp / pulse) that
+controls when degradation fires during the scenario.
+
+```
+config/weather/rain/default_rain.json      — 16 mm/hr moderate
+config/weather/rain/heavy_rain.json        — 40 mm/hr
+config/weather/rain/tropicalStorm.json     — 60+ mm/hr
+config/weather/snow/default_snow.json      — equivalent precip rate
+config/weather/fog/default_fog.json        — visibility-based
+config/weather/icing/default_icing.json    — antenna hardware degradation
+config/weather/validation_rain.json        — short storm window for validation tests
+```
+
+### 5. Pick trackers
+Tracker folders define algorithm + tuning. Shared parameters (Pd, filter init)
+live in `tracker_globals.json`.
+
 ```
 config/trackers/GNN/my_GNN.json     — gate, volume, beta, thresholds
 config/trackers/JPDA/my_JPDA.json   — JPDA-specific tuning
+config/trackers/TOMHT/my_TOMHT.json — multi-hypothesis tuning
 ```
 
-### 5. Create a run file
-Copy `config/runs/run_template.json` → `config/runs/my_experiment.json`, fill in references.
+### 6. Create a run file
+Copy `config/runs/run_template.json` → `config/runs/my_experiment.json`, fill
+in references to the components above.
 
-### 6. Run it
+### 7. Run it
 ```matlab
 runSingleScenario("my_experiment")
 ```
 
 ### Detection caching
-After your first run, set `"use_cached_detections": true` in the run file. This skips detection generation and goes straight to the tracker — much faster when tuning gates, thresholds, or trying different algorithms.
-
-## Validation Test Plan
-
-An automated test suite validates the full pipeline across 9 test cases (27 individual checks). Test run files live in `config/runs/validation/` — separate from user experiments.
-
-```matlab
-addpath("scripts");
-runTestPlan          % runs all 9 test cases, prints PASS/FAIL summary
-```
-
-| TC | What It Tests | Key Checks |
-|----|---------------|------------|
-| TC-01 | Template usability | User-created config loads + runs end-to-end |
-| TC-02 | Baseline clear weather | All 3 trackers (GNN, JPDA, TOMHT) produce metrics |
-| TC-03 | Rain S-band (16 mm/hr) | S-band PSR degrades minimally, tracking holds |
-| TC-04 | Rain X-band (16 mm/hr) | X-band fewer target detections than S-band (same rain rate) |
-| TC-05 | RCS verification | 20 dBsm airliner detected more than -10 dBsm stealth at 100km |
-| TC-06 | Crossing target swap | JPDA swap count ≤ GNN swap count |
-| TC-07 | Compound stress | TOMHT + rain + mountain + mixed RCS completes without crash |
-| TC-08 | Config error paths | Missing/malformed configs produce clear error messages |
-| TC-09 | Verification suite | `verifySimulation.m` (40+ checks) passes all phases |
-
-Results are saved to `results/test_plan_results_<timestamp>.mat`.
+After the first run, set `"use_cached_detections": true` in the run file. This
+skips detection generation and goes straight to the tracker — much faster when
+tuning gates, thresholds, or comparing algorithms. The auto-tuner uses this
+exclusively.
 
 ## Project Structure
 
 ```
 adeptus-rainyday-tracking/
 ├── config/
-│   ├── runs/                        ← Run files (pass to runSingleScenario)
+│   ├── runs/                        ← Run files (entry points)
 │   │   ├── run_template.json        ← Documented template (copy + edit)
-│   │   ├── my_run.json              ← Your custom run
-│   │   ├── rcs_demo.json            ← Airliner vs stealth RCS comparison
-│   │   ├── crossing_test.json       ← Crossing targets, swap analysis
-│   │   ├── compound_demo.json       ← Multi-degradation demo
-│   │   ├── rain_demo_sband.json     ← S-band rain comparison
-│   │   ├── rain_demo_xband.json     ← X-band rain comparison
-│   │   ├── README.md
-│   │   ├── showcase/                ← Pre-built scenarios
-│   │   └── validation/              ← Test plan run files (do not edit)
-│   │       ├── tc01–tc08e .json     ← 12 test case configs
-│   │       └── README.md
-│   ├── sensors/                     ← Per-type sensor folders
-│   │   ├── PSR/                     ← Primary Search Radar
-│   │   │   ├── default_PSR.json
-│   │   │   ├── xband_PSR.json       ← 9 GHz X-band variant (rain tests)
-│   │   │   ├── PSR_template.json
-│   │   │   └── my_PSR.json
-│   │   ├── SSR/                     ← Secondary Surveillance (IFF)
-│   │   ├── AESA/                    ← Active Electronic Scan Array
-│   │   ├── PAR/                     ← Precision Approach Radar
-│   │   ├── TWS/                     ← Track-While-Scan Phased Array
-│   │   ├── FIRE_CONTROL/            ← Fire Control Radar
-│   │   ├── ARSR/                    ← Air Route Surveillance
-│   │   ├── IRST/                    ← IR Search and Track
-│   │   ├── FLIR/                    ← Forward-Looking Infrared
-│   │   ├── MARITIME/                ← Maritime Surface Search
-│   │   └── WEDGE/                   ← Original wedge radar
+│   │   ├── dasr_baseline.json       ← PSR+SSR, rural, GNN+JPDA
+│   │   ├── demo_first_run.json      ← Boeing demo
+│   │   ├── fighter_intercept.json   ← Airborne AESA+FLIR
+│   │   ├── recorded_flight/         ← NASA flight scenarios (v3.4.0)
+│   │   ├── validation/              ← TC-01..TC-09 test run files (v3.3.0)
+│   │   └── showcase/                ← Pre-built scenarios
+│   ├── sensors/                     ← Per-type sensor folders (19 types)
+│   │   ├── PSR/                     ← default_PSR, sband_PSR, xband_PSR,
+│   │   │                              tc05_PSR_longrange (v3.4.2),
+│   │   │                              dead_zone_*, my_PSR, template
+│   │   ├── SSR/  AESA/  PAR/  TWS/  FIRE_CONTROL/  ARSR/
+│   │   ├── IRST/ FLIR/   MARITIME/  WEDGE/
+│   │   └── ... (19 sensor types total)
 │   ├── targets/                     ← Per-behavior target folders
 │   │   ├── crossing_pair/           ← Two targets crossing
 │   │   ├── gentle_turn/             ← Gradual heading change
 │   │   ├── crossing_5way/           ← 5 targets (Boeing demo)
 │   │   ├── s_maneuver/              ← Evasive S-turn
-│   │   ├── head_on/                 ← Two targets converging
-│   │   ├── approach/                ← Landing approach (descending)
 │   │   ├── orbit/                   ← Circular holding pattern
-│   │   ├── high_density/            ← 5 mixed-behavior targets
-│   │   ├── rcs_demo/               ← Airliner vs stealth at 100km
-│   │   ├── range_rcs_test/         ← 747 vs stealth bomber compound test
-│   │   ├── dead_zone/              ← 6 targets, multi-site radar gap
-│   │   └── (more from catalog...)
-│   ├── terrain/                     ← Per-type terrain folders
-│   │   ├── water/                   ← Flat sea, all effects OFF
-│   │   ├── rural/                   ← Rolling hills, light clutter
-│   │   ├── urban/                   ← Building clusters, moderate clutter
-│   │   ├── mountain/                ← Ridges + peaks, heavy occlusion
-│   │   └── desert/                  ← Gentle dunes, light clutter
-│   └── trackers/                    ← Per-algorithm tracker folders
-│       ├── tracker_globals.json     ← Shared: Pd, filter, max tracks
-│       ├── GNN/                     ← Global Nearest Neighbor
-│       ├── JPDA/                    ← Joint Probabilistic Data Association
-│       └── TOMHT/                   ← Track-Oriented Multi-Hypothesis
+│   │   ├── approach/ head_on/ high_density/ dead_zone/
+│   │   ├── rcs_demo/                ← 20 dBsm vs -10 dBsm (TC-05)
+│   │   └── recorded_flight/         ← Real NASA flight data (v3.4.0)
+│   ├── terrain/                     ← water / rural / urban / mountain / desert
+│   ├── trackers/                    ← GNN / JPDA / TOMHT + tracker_globals
+│   └── weather/                     ← NEW in v3.4.0
+│       ├── rain/   (default, heavy, tropicalStorm, validation, nasa)
+│       ├── snow/   (default, nasa)
+│       ├── fog/    (default)
+│       ├── icing/  (default)
+│       └── weather_template.json
 │
 ├── src/+trackbench/
 │   ├── +config/
-│   │   └── loadRunFile.m            ← Modular run file loader
+│   │   └── loadRunFile.m            ← Modular run-file loader
 │   ├── +detections/
-│   │   └── runDetections.m          ← Detection generator (6 env layers)
+│   │   ├── runDetections.m          ← Detection generator (main pipeline)
+│   │   ├── createDetections.m
+│   │   └── getWeather.m             ← Storm window severity (v3.4.0)
 │   ├── +scenario/
 │   │   ├── addTargetFromDef.m       ← Universal target builder from JSON
-│   │   └── validateScanCoverage.m   ← Pre-flight scan count check
+│   │   └── validateScanCoverage.m
 │   ├── +tracking/
-│   │   ├── buildTracker.m           ← Tracker factory (GNN/TOMHT/JPDA)
+│   │   ├── buildTracker.m           ← GNN/JPDA/TOMHT factory
 │   │   ├── initCVFilter.m           ← Constant Velocity filter
 │   │   ├── initIMMFilter.m          ← IMM filter
-│   │   └── runTracker.m             ← Run tracker + metrics + 3D plots
+│   │   └── runTracker.m             ← Run + metrics + 3D plots
 │   ├── +sensors/
-│   │   └── buildSensor.m            ← Universal sensor factory (19 types)
-│   ├── +reporting/
-│   │   ├── plotInitialScenario.m    ← 3D animated truth + detections + terrain
-│   │   ├── plotPlatformToTrackAssignment.m ← Assignment timeline
-│   │   ├── plotTrackSwapAnalysis.m  ← Swap analysis figure
-│   │   ├── drawSensorCoverage.m     ← Range rings + sector wedges
-│   │   └── tabbedAxes.m            ← Tabbed figure manager
+│   │   ├── buildSensor.m            ← Universal sensor factory (19 types)
+│   │   └── buildIFFSensor.m
 │   ├── +environment/
 │   │   ├── isAboveHorizon.m         ← 4/3 Earth horizon masking
-│   │   ├── generateGroundClutter.m  ← Terrain-dependent clutter model
-│   │   ├── computeVerticalCoverage.m ← radarvcd-based VCP
-│   │   ├── applyVCPMask.m          ← Per-detection VCP range check
-│   │   ├── applyRainDegradation.m  ← ITU-R P.838-3 via rainpl()
-│   │   ├── applyDopplerFade.m      ← MTI clutter notch
-│   │   ├── buildRCSProfile.m       ← Aspect-dependent RCS patterns
-│   │   └── generateTerrain.m       ← Procedural heightmap generator
+│   │   ├── generateGroundClutter.m  ← Frequency-dependent clutter (v3.4.1)
+│   │   ├── generateTerrain.m        ← Procedural heightmap generator
+│   │   ├── applyDopplerFade.m       ← MTI clutter notch (v3.2.0, MDV fix v3.4.1)
+│   │   ├── applyWeatherDegradation.m← 4-type weather (v3.4.0)
+│   │   ├── applyRainDegradation.m   ← ITU-R P.838-3 via rainpl() (v3.2.0)
+│   │   ├── applyRCSFilter.m         ← Probabilistic R⁴ Pd scaling (opt-in, v3.4.2)
+│   │   └── buildRCSProfile.m        ← Aspect-dependent RCS patterns (v3.2.0)
+│   ├── +reporting/
+│   │   ├── plotInitialScenario.m    ← 3D animated truth + detections + terrain
+│   │   ├── plotPlatformToTrackAssignment.m
+│   │   ├── plotTrackSwapAnalysis.m
+│   │   ├── drawSensorCoverage.m     ← Range rings + sector wedges
+│   │   ├── drawBeamEnvelope.m       ← Exact scan-limit cones (v3.4.1)
+│   │   └── tabbedAxes.m
+│   ├── +flightdata/
+│   │   └── loadNASAFlight.m         ← FDR telemetry → NED waypoints (v3.4.0)
 │   ├── +validation/
-│   │   └── validateScenarioConfig.m ← Pre-flight checks (10 categories)
-│   └── +analysis/
-│       └── analyzeTrackSwaps.m      ← Track swap detection
+│   │   └── validateScenarioConfig.m ← 10 pre-flight checks
+│   ├── +analysis/
+│   │   └── analyzeTrackSwaps.m
+│   └── +editor/                     ← Interactive path editor (v3.5.0)
+│       ├── EditorState.m            ← Mutable state (waypoints, undo/redo)
+│       ├── buildUI.m                ← uifigure + side panel + toolbar
+│       ├── drawMap.m                ← 2D/3D axes, grid, waypoint markers
+│       ├── exportToJSON.m           ← Writes config/targets/waypoints/<n>.json
+│       ├── loadFromJSON.m           ← Re-opens an exported path for editing
+│       ├── previewWindow.m          ← Animated preview of the drawn flight
+│       ├── computeScaleBar.m        ← Zoom-aware scale bar
+│       ├── interpPos.m              ← Spline / linear interpolation
+│       └── zoomAroundPoint.m        ← Scroll-wheel zoom target
 │
 ├── scripts/
 │   ├── runSingleScenario.m          ← Main entry point
-│   ├── runTestPlan.m                ← Automated validation (27 checks)
-│   ├── runComparisonDemo.m          ← Clean vs rain, all 3 trackers
-│   ├── verifySimulation.m           ← 40+ checks across 8 phases
-│   ├── buildModularConfig.m         ← One-time setup (creates config folders)
-│   ├── recordDemoVideo.m            ← Record MP4 demo video
-│   └── cleanupLegacy.m             ← Removes V2 legacy files (run once)
+│   ├── runTestPlan.m                ← Validation suite (v3.3.0)
+│   ├── verifySimulation.m           ← 40+ diagnostic checks (v3.3.0)
+│   ├── autoTuneTracker.m            ← 2-pass parameter sweep (v3.4.0)
+│   ├── runNASAFlight.m              ← Real flight demo (v3.4.0)
+│   ├── runNASAFlightGlobe.m         ← Earth-centered view (v3.4.0)
+│   ├── scanNASAFlights.m            ← Flight data profiler (v3.4.0)
+│   ├── viewNASAFlightGlobe.m        ← Globe viewer
+│   ├── compareTrackers.m
+│   ├── compareAllTrackers.m
+│   ├── runComparisonDemo.m
+│   ├── recordDemoVideo.m            ← 1080p MP4 export
+│   ├── buildModularConfig.m         ← One-time setup
+│   ├── runAllPresentationPrep.m
+│   ├── diagBeamLimits.m             ← Beam envelope diagnostic (v3.4.1)
+│   ├── diagnoseBadDetections.m      ← Detection debugging (v3.4.1)
+│   ├── diagVerifyTargetIndex.m      ← TargetIndex audit (v3.4.1)
+│   ├── pathEditor.m                 ← Interactive editor launcher (v3.5.0)
+│   ├── testPathEditor_M1.m          ← Editor M1 (click+export) tests
+│   ├── testPathEditor_M2.m          ← Editor M2 (select/drag/undo) tests
+│   ├── testPathEditor_M3.m          ← Editor M3 (2D/3D, grid, altitude) tests
+│   ├── testPathEditor_M3_preview.m  ← Preview-window tests
+│   ├── testPathEditor_shortcuts.m   ← Keyboard shortcut tests
+│   └── cleanup_showcase.m
 │
+├── _cleanup_backup/                 ← Archived legacy / removed modules
 ├── tests/
-│   └── testBuildSensor.m            ← Sensor factory test
+│   └── testBuildSensor.m
 │
-├── Cheatsheet.txt                   ← Quick-reference command sheet
+├── docs/                            ← Design spec, physics audit, etc.
+├── Cheatsheet.txt
 ├── README.md                        ← This file
-├── .gitignore
 ├── cache/                           ← Saved detection logs (gitignored)
 └── results/                         ← Saved run results (gitignored)
 ```
@@ -272,12 +320,19 @@ adeptus-rainyday-tracking/
 | `orbit` | Circular holding pattern | `orbit_radius_m` (3000–5000) |
 | `approach` | Descending to runway | `end_pos` (near threshold) |
 | `departure` | Climbing away from airport | `end_pos` |
-| `waypoints` | User-defined flight path | `waypoints` array with pos + time_s |
-| `head_on` / `parallel` | Mapped to constant_velocity | `heading_deg` |
+| `waypoints` | Fully user-defined 3D path (v3.2.0) | `waypoints: [{pos, time_s}, …]` |
+| `recorded_flight` | NASA FDR telemetry (v3.4.0) | `source_file`, `ref_lat`, `ref_lon` |
+| `head_on` / `parallel` | Aliased to constant_velocity | `heading_deg` |
 
 All targets require: `speed_kmh`, `start_pos` [x,y,z NED], `altitude_m`.
 
-Optional per-target fields: `rcs_dbsm` (scalar RCS), `rcs_profile` (stealth/fighter/airliner/drone/missile), `dimensions` (for visualization), `class_id`, `label`.
+Optional physical properties (v3.2.0+):
+
+- `rcs_dbsm` — isotropic RCS in dBsm
+- `rcs_profile` — named preset (`stealth`, `fighter`, `airliner`, `drone`,
+  `missile`) for aspect-dependent RCS pattern
+- `dimensions` — `{length_m, width_m, height_m}` cuboid model
+- `class_id` — classification for SSR/IFF
 
 ## Tracker Algorithms
 
@@ -290,23 +345,48 @@ Optional per-target fields: `rcs_dbsm` (scalar RCS), `rcs_profile` (stealth/figh
 | Motion Model | Assumption | Use Case |
 |-------------|-----------|----------|
 | CV | Straight line | Fast targets, baseline |
-| IMM | Switches between straight & turn | Maneuvering aircraft |
+| IMM | Switches between CV + Coordinated Turn | Maneuvering aircraft |
 
 ### Tracker globals vs per-tracker params
-- **`tracker_globals.json`** — shared: max tracks, detection probability (ideal/degraded), filter initialization (speed, IMM transition prob, process noise)
-- **Per-tracker JSON** — algorithm-specific: volume, beta, gate sizes, confirm/delete thresholds, branch limits
 
-Volume and beta live per-tracker because GNN and JPDA use them with opposite effects.
+- **`tracker_globals.json`** — shared: max tracks, detection probability
+  (ideal/degraded), filter init (speed, IMM transition prob, process noise)
+- **Per-tracker JSON** — algorithm-specific: volume, beta, gate sizes,
+  confirm/delete thresholds, branch limits
+
+Volume and beta live per-tracker because GNN and JPDA use them with opposite
+effects.
+
+### Auto-Tune Tracker (v3.4.0)
+
+`autoTuneTracker("run_name", "TRACKER")` sweeps parameters in two passes:
+
+1. **Pass 1 — Tracker params**: gate, volume, beta, confirm/delete thresholds
+   (~60–100 combinations, smart grid varying 2 params at a time + corners).
+2. **Pass 2 — Filter params**: using best tracker params from Pass 1, sweeps
+   IMM process noise (accel H/V, omega dot), transition probability, init
+   speed. Centered on baseline with 0.5x–4x variations.
+
+Composite score: `0.50·posRMS/maxRange + 0.25·swapCount +
+0.15·log(1+falseTracks) + 0.10·breakCount`.
+
+Uses cached detections exclusively (~0.1–0.5s per iteration). Saves best
+config to `config/trackers/<TYPE>/autotuned_<TYPE>_<run>.json`.
 
 ## Environment Modeling
 
-Six layers of physically-motivated effects, each independently toggleable in terrain configs.
+Five independent layers of physically-motivated effects plus a weather
+degradation system. Each layer is toggled separately in the run file's
+`degradation` block.
 
 ### 1. Horizon Masking
-4/3 effective Earth radius model (`isAboveHorizon.m`). Configurable `refraction_factor`. Targets below radar horizon are invisible.
+4/3 effective Earth radius model. Targets below radar horizon are invisible.
+*Ref: Skolnik Ch. 2, MATLAB `horizonrange()`.*
 
-### 2. Ground Clutter
-Terrain-dependent false returns at low elevation angles (`generateGroundClutter.m`).
+### 2. Ground Clutter (frequency-dependent as of v3.4.1)
+Two-component model: surface clutter (Poisson-distributed, inverse-square
+density) + discrete clutter from terrain features. Surface clutter scales as
+**freq²** (Rayleigh); discrete clutter as **freq^0.8**.
 
 | Terrain | Returns/scan | Noise (m) |
 |---------|-------------|-----------|
@@ -315,17 +395,50 @@ Terrain-dependent false returns at low elevation angles (`generateGroundClutter.
 | urban | ~8–15 | 150 |
 | mountain | ~5–10 | 200 |
 
-### 3. Propagation Model (VCP)
-`radarvcd`-based vertical coverage patterns (`computeVerticalCoverage.m`, `applyVCPMask.m`). Multipath ground-bounce creates interference nulls. Configurable: `"propagation_model": "vcp"` or `"propfactor"` or `false`.
+*Ref: Skolnik Ch. 7, Nathanson 2nd ed.*
 
-### 4. Terrain Occlusion
-Procedural heightmaps via `groundSurface` API (`generateTerrain.m`). Line-of-sight checks between every sensor-target pair via `SurfaceManager.occlusion()`.
+### 3. Terrain Occlusion
+Procedural heightmaps (200×200 grid) via MATLAB `groundSurface` API.
+`SurfaceManager.occlusion()` performs LOS checks between every sensor-target
+pair at every timestep.
 
-### 5. Doppler/MTI Fade
-Targets flying tangentially lose detections in the clutter notch (`applyDopplerFade.m`). MDV auto-computed from radar frequency. Configurable: `"doppler_fade": true/false`, `"mdv_ms": 40`.
+### 4. Doppler/MTI Fade (v3.2.0, MDV fix in v3.4.1)
+Radial-velocity check per detection: `v_radial = dot(v_target, unit_radar_to_target)`.
+If `|v_radial| < MDV`, Pd scales linearly from 0 to 1 with a 5% sidelobe floor.
+MDV is auto-computed from radar frequency: **MDV = λ × PRF / 4** (S-band 2.8 GHz
+→ MDV ≈ 27 m/s, X-band 9 GHz → MDV ≈ 8 m/s).
+*Ref: Skolnik Ch. 3 (MTI and Pulse Doppler).*
 
-### 6. Rain Degradation
-ITU-R P.838-3 frequency-dependent attenuation via `rainpl()` (`applyRainDegradation.m`). S-band barely affected; X-band severely degraded. Weather clutter generated in sensor FOV. Noise scales with rain rate + wet radome loss. Configurable: `"degradation": {"enabled": true, "rain_rate_mmhr": 16}`.
+### 5. RCS Signatures (v3.2.0, native sensor path + opt-in filter v3.4.2)
+`fusionRadarSensor` natively reads `platform.Signatures` via the radar equation
+with `ReferenceRange` / `ReferenceRCS`. Five preset profiles in
+`buildRCSProfile.m`: stealth, fighter, airliner, drone, missile.
+
+For validation scenarios that need a strong, observable RCS-vs-range
+differential (which the sensor-native Swerling model doesn't expose at typical
+scan counts), `applyRCSFilter` offers an **opt-in** probabilistic filter:
+`Pd_scale = max(0.05, min(1, (σ/σ_ref)·(R_ref/R)⁴))`. Enable per-run with
+`"rcs_range_filter": true` in the degradation block. TC-05 uses it; user demos
+leave it OFF.
+*Ref: Knott/Shaeffer/Tuley, Radar Cross Section.*
+
+### 6. Weather Degradation (new in v3.4.0)
+Four weather types in `config/weather/<TYPE>/`, each with distinct physics:
+
+- **Rain** — MATLAB `rainpl()` (ITU-R P.838-3). Three effects: range-dependent
+  Pd reduction (two-way), measurement noise inflation (wet radome), and
+  Poisson-distributed weather clutter in the FOV scaling as freq².
+- **Snow** — `rainpl()` at 25% of equivalent precipitation rate (Gunn & East
+  1954). Lower RF attenuation than rain, reduced volume clutter.
+- **Fog** — visibility-based, primarily affects IR/optical. Negligible RF
+  effect below 10 GHz (uses `fogpl()` above X-band). ITU-R P.840 / Koschmieder.
+- **Icing** — antenna-hardware gain loss (2–6 dB), **not** a path effect.
+  Range-independent. Models ice on the radome/antenna.
+
+Each weather config carries a **storm window** with three profile types:
+- `step` — binary on/off at start/end times
+- `ramp` — linear 0→1 over first half of window, then 1→0
+- `pulse` — sharp 20% burst then clear
 
 ### Terrain Presets
 
@@ -337,8 +450,114 @@ ITU-R P.838-3 frequency-dependent attenuation via `rainpl()` (`applyRainDegradat
 | `mountain` | ON | ON | ON | 0.5 | ~1960m |
 | `desert` | ON | ON | ON | 0.2 | ~40m |
 
-### Sensor Coverage Visualization
-Range rings (360° rotators) and sector wedges (PAR, FLIR) drawn on 3D ground plane.
+### Beam Envelope Visualization (v3.4.1)
+`drawBeamEnvelope.m` queries `coverageConfig()` for exact scan limits and
+renders green (included) / red (excluded) cones for any radar or IR sensor.
+Automatically called by `plotInitialScenario`. Provides immediate visual
+feedback on where the sensor can and cannot see.
+
+## Real Flight Data (v3.4.0)
+
+`loadNASAFlight.m` ingests NASA DASHlink Flight Data Recorder (FDR) telemetry
+(ARINC 717 decoded parameters: LATP, LONP, ALT, GS, TRK at 1–16 Hz), extracts
+the airborne portion, converts lat/lon to NED waypoints relative to a
+reference point, and resamples to uniform spacing. The target behavior
+`"recorded_flight"` feeds these waypoints to `waypointTrajectory`, making a
+real flight a scenario target.
+
+Multiple flights can be loaded simultaneously for multi-target scenarios, each
+with different RCS values. `viewNASAFlightGlobe` provides an Earth-centered 3D
+view of real flights against simulated radar sites.
+
+The framework bridges simulation and reality: the radar and trackers are
+simulated (allowing controlled experiments), but the flight path is real
+(stressing trackers with actual turbulence, pilot corrections, and ATC
+maneuvers that synthetic trajectories cannot reproduce).
+
+## Interactive Path Editor (v3.5.0)
+
+`pathEditor` launches a uifigure-based map editor for drawing custom target
+flight paths by clicking on a 2D or 3D view. Exports directly to the
+`waypoints` target behavior that `addTargetFromDef.m` already consumes
+(added in v3.2.0), so drawn paths plug into any run file without code changes.
+
+```matlab
+clear classes; clear all                         % namespace cache reset
+addpath("scripts"); addpath(genpath("src"))
+pathEditor                                       % launch
+```
+
+**Drawing**
+- **Left-click** on map → append waypoint at default altitude + default speed
+- **Drag** a waypoint → move it (undo granular per drag, not per pixel)
+- **Shift+click** on a segment → insert a new waypoint at the click point
+- **Delete / Backspace** → remove selected waypoint
+- **Ctrl+Z / Ctrl+Y** → undo / redo (50 levels)
+- **V** → toggle 2D ↔ 3D view
+- **Middle-click + drag** → pan (2D)
+- **Scroll wheel** → zoom around cursor
+
+**Sidebar controls**
+- Target name, description, RCS (dBsm + preset), default altitude and speed
+- Per-waypoint edit of x / y / altitude / leg speed / time
+- Color-by-altitude toggle, grid spacing, editable radar marker position
+- Spline preview, animation preview window, load-from-JSON to re-edit
+
+**Export**
+Writes `config/targets/waypoints/<target_name>.json` with schema:
+
+```json
+{
+  "description": "...",
+  "duration_s": 780,
+  "targets": [{
+    "name": "my_path", "label": "my_path",
+    "behavior": "waypoints",
+    "rcs_dbsm": 10, "rcs_profile": "airliner",
+    "waypoints": [
+      { "pos": [0, 0, -3000], "time_s": 0, "speed_kmh": 900 },
+      { "pos": [5000, 12000, -3500], "time_s": 70, "speed_kmh": 900 },
+      ...
+    ]
+  }]
+}
+```
+
+Reference the exported file from a run file:
+
+```json
+{ "targets": "waypoints/my_path", ... }
+```
+
+The editor is **fully portable** — resolves its project root from
+`mfilename('fullpath')` so it works from any clone location without
+configuration.
+
+## Validation & Testing
+
+`scripts/runTestPlan.m` executes 9 test cases containing 27 assertions.
+Current status (v3.4.2): **27/27 passing**.
+
+| TC | Name | What It Validates |
+|----|------|-------------------|
+| 01 | Template Usability | User-created config loads and runs end-to-end |
+| 02 | Baseline Clear | All 3 trackers produce valid metrics |
+| 03 | Rain S-band | S-band tracking holds under 16 mm/hr rain |
+| 04 | Rain X-band | X-band fewer target dets than S-band at same rate |
+| 05 | RCS Verification | 20 dBsm vs -10 dBsm detection ratio at 100 km |
+| 06 | Crossing Swap | JPDA swap count ≤ GNN swap count |
+| 07 | Compound Stress | TOMHT + rain + mountain + mixed RCS completes |
+| 08 | Error Paths | 5 malformed configs produce clear error messages |
+| 09 | Verification Suite | `verifySimulation.m` (40+ checks) completes |
+
+Run files for the test cases live in `config/runs/validation/` to keep the
+main runs folder clean for user experiments. `loadRunFile` supports
+subdirectory paths natively. Results are saved to
+`results/test_plan_results_<timestamp>.mat`.
+
+`verifySimulation.m` is a standalone 40+ check diagnostic covering: toolbox
+availability, file system, JSON integrity, sensor build, detection
+generation, tracker build, visualization, and cleanup.
 
 ## Data Flow
 
@@ -350,21 +569,23 @@ runSingleScenario("my_run")
       │   └── trackbench.sensors.buildSensor (per sensor)
       ├── Load config/targets/<PATTERN>/<file>.json
       │   └── trackbench.scenario.addTargetFromDef (per target)
+      │       └── trackbench.flightdata.loadNASAFlight (if recorded_flight)
       ├── Load config/terrain/<TYPE>/<file>.json
       │   └── trackbench.environment.generateTerrain
+      ├── Load config/weather/<TYPE>/<file>.json  (if weather set)
       ├── Load config/trackers/<TYPE>/<file>.json (per tracker)
       ├── trackbench.scenario.validateScanCoverage
       └── trackbench.validation.validateScenarioConfig
             ↓
   trackbench.detections.runDetections
-      ├── Radar sensor step loop
-      ├── trackbench.environment.isAboveHorizon
-      ├── trackbench.environment.computeVerticalCoverage
-      ├── trackbench.environment.applyVCPMask
-      ├── trackbench.environment.generateGroundClutter
-      ├── trackbench.environment.applyDopplerFade
-      ├── trackbench.environment.applyRainDegradation (if enabled)
-      └── SurfaceManager.occlusion (terrain LOS)
+      ├── Radar / IR sensor step loop
+      ├── trackbench.environment.isAboveHorizon       (per target)
+      ├── SurfaceManager.occlusion                    (terrain LOS)
+      ├── trackbench.environment.applyRCSFilter       (opt-in v3.4.2)
+      ├── trackbench.environment.applyDopplerFade     (per detection)
+      ├── trackbench.environment.applyWeatherDegradation
+      │   └── trackbench.detections.getWeather        (storm severity)
+      └── trackbench.environment.generateGroundClutter (per scan)
             ↓
   For each enabled tracker:
     trackbench.tracking.buildTracker
@@ -374,35 +595,42 @@ runSingleScenario("my_run")
       ├── trackbench.analysis.analyzeTrackSwaps
       ├── trackbench.reporting.tabbedAxes
       ├── trackbench.reporting.drawSensorCoverage
+      ├── trackbench.reporting.drawBeamEnvelope       (v3.4.1)
       ├── trackbench.reporting.plotPlatformToTrackAssignment
       └── trackbench.reporting.plotTrackSwapAnalysis
             ↓
   Save results to results/ and detections to cache/
 ```
 
-## Technical Notes
-
-### Frequency vs RCS — How They Affect Detection
-
-**Frequency** (`frequency_hz` in sensor JSON) is **metadata only** at the `fusionRadarSensor` level. It has zero effect on detections under clear weather. The frequency tag is consumed by `applyRainDegradation.m` when rain is enabled — S-band (2.8 GHz) gets ~0.2 dB attenuation at 100km while X-band (9 GHz) gets ~8 dB. To observe the frequency effect, rain degradation must be active.
-
-**RCS** (`rcs_dbsm` in target JSON) is a **first-class sensor property**. It sets `platform.Signatures = rcsSignature(...)` which `fusionRadarSensor` reads natively in its internal radar equation to compute detection probability per scan. A -10 dBsm stealth target genuinely gets fewer raw detections than a 20 dBsm airliner — but only at ranges where the SNR difference matters (typically >80% of the sensor's reference range). At short range, both targets have overwhelming SNR and both get detected every scan.
-
 ## Known Issues
 
-- **Sonar sensors**: Maritime scenario builds sonar sensors but `runDetections` skips them (sonar uses `sonarEmission` step interface). Only maritime radar generates detections.
-- **Terrain visibility at small scale**: Rural terrain (73m peaks) is physically present but visually flat at aircraft altitude. Use mountain terrain to see mesh.
-- **RCS effect at short range**: At ranges <50% of radar reference range, even very low RCS targets (-10 dBsm) have near-100% Pd due to R⁴ radar equation scaling. Place targets at >80km from PSR (111km ref range) to observe meaningful RCS differential.
+- **Sonar sensors**: Maritime scenarios build sonar sensors but `runDetections`
+  skips them (sonar uses `sonarEmission` interface). Only maritime radar
+  generates detections.
+- **Terrain visibility at small scale**: Rural terrain (73m peaks) is
+  physically present but visually flat at aircraft altitude. Use mountain
+  terrain to see the mesh.
+- **MATLAB namespace caching**: `+trackbench` package functions are
+  aggressively cached. After editing any `.m` file, run `clear classes`
+  then `clear all` — `clc` and `close all` alone are insufficient.
 
 ## Required Toolboxes
 
-- **Sensor Fusion and Tracking Toolbox** (R2024a+) — trackers, sensors, theaterPlot, metrics
-- **Radar Toolbox** — `horizonrange`, `radarvcd`, `landroughness`, `earthSurfacePermittivity`, `refractiveidx`, `rainpl`
-- **Mapping Toolbox** — `groundSurface`, `SurfaceManager` for terrain occlusion
+- **Sensor Fusion and Tracking Toolbox** (R2024a+) — trackers, sensors,
+  theaterPlot, metrics
+- **Radar Toolbox** — `horizonrange`, `rainpl`, `fogpl`, `landroughness`,
+  `earthSurfacePermittivity`, `refractiveidx`
+- **Mapping Toolbox** — `groundSurface`, `SurfaceManager` (terrain occlusion)
+- **Phased Array System Toolbox** *(optional fallback)* — alternate path for
+  `rainpl` if Radar Toolbox isn't present
+
+Tested on MATLAB **R2025b**.
 
 ## Team
 
-Boeing-sponsored senior capstone project — Team Adeptus (Daniel Trofimchik, James Gallegos, Kaz Foster, Michael Harding, Olega Obini).
+Team Adeptus — Boeing-sponsored senior capstone project, University of
+Washington.
+Daniel Trofimchik · James Gallegos · Kaz Foster · Michael Harding · Olega Obini
 
 ## License
 
@@ -412,95 +640,171 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v3.3.0 — March 22, 2026 (current)
+### v3.5.0 — April 17, 2026 (current)
 
-**Automated Validation Test Plan** — New `scripts/runTestPlan.m` executes 9 test cases (27 individual checks) with automated pass/fail reporting.
-- TC-01: Template usability — user-created config runs end-to-end
-- TC-02: Baseline clear — all 3 trackers (GNN, JPDA, TOMHT) produce metrics
-- TC-03: Rain S-band — 2.8 GHz at 16 mm/hr, tracking holds
-- TC-04: Rain X-band — 9 GHz at 16 mm/hr (same rate as TC-03), fewer target detections than S-band
-- TC-05: RCS verification — 20 dBsm airliner vs -10 dBsm stealth at 100km, detection ratio >1.15x
-- TC-06: Crossing swap — JPDA swap count ≤ GNN swap count
-- TC-07: Compound stress — TOMHT + 50 mm/hr rain + mountain terrain + mixed RCS
-- TC-08: Config error paths — 5 malformed/missing configs each produce clear error messages
-- TC-09: Verification suite — `verifySimulation.m` completes all 8 phases
-- Results saved to `results/test_plan_results_<timestamp>.mat`
+**Interactive Path Editor.** Merged the `InteractiveSexyMapTry` branch onto
+the v3.4.2 base to produce a single presentation-ready build.
 
-**Test Run Files** — 12 validation-specific run files moved to `config/runs/validation/` to keep the main runs folder clean for user experiments. `runTestPlan` references them via `"validation/tc01_template_user"` etc. — `loadRunFile` supports subdirectory paths natively.
+- **New package `src/+trackbench/+editor/`** (9 files, ~117 KB) — `EditorState`,
+  `buildUI`, `drawMap`, `exportToJSON`, `loadFromJSON`, `previewWindow`,
+  `computeScaleBar`, `interpPos`, `zoomAroundPoint`.
+- **New script `scripts/pathEditor.m`** — one-call launcher. Resolves project
+  root from `mfilename('fullpath')` so the editor runs unchanged on any
+  clone of the repo.
+- **Click-and-drag waypoint drawing** in 2D or 3D, with altitude colormap,
+  zoom-aware hit-testing, grid overlay, editable radar marker, spline
+  preview, and an animated preview window.
+- **50-level undo/redo** with per-drag granularity (not per mouse-move).
+- **JSON round-trip**: exports to `config/targets/waypoints/<name>.json`
+  matching the schema `addTargetFromDef.m` already consumed (the
+  `case "waypoints"` branch added in v3.2.0 required no changes).
+- **Editor test suite** (`testPathEditor_M1.m` … `_M3.m`, `_shortcuts.m`,
+  `_M3_preview.m`) plus milestone docs `TESTING_M{1,2,3}.md` carried over.
+- **No changes** to the core simulation pipeline, validation suite, or any
+  existing run/target/sensor/tracker/weather configs. All v3.4.2 test
+  results (27/27) remain valid.
+- **No hardcoded paths** anywhere in the editor package or merge tooling —
+  verified by grep against `C:\`, `Admin`, branch folder names, and
+  `Documents\` patterns.
 
-**RCS Demo Geometry Fix** — `config/targets/rcs_demo/default_rcs_demo.json` targets moved from 30km to 100km range. At 30km, both 20 dBsm and -10 dBsm targets had overwhelming SNR (Pd ≈ 1.0 for both). At 100km near the PSR reference range, the 30 dB RCS gap produces a measurable Pd differential (confirmed: Airliner=21 dets, Stealth=18 dets, ratio=1.17x).
+### v3.4.2 — April 16, 2026
+
+**Validation pass fixes** — restored 27/27 test plan pass rate after
+regressions from the v3.4.1 session.
+
+- **`applyRCSFilter.m` restored** as an **opt-in probabilistic** filter in
+  `src/+trackbench/+environment/`. Applies `Pd_scale = max(0.05, min(1,
+  (σ/σ_ref)·(R_ref/R)⁴))` per detection. Default OFF to preserve sensor-native
+  Swerling behavior for user demos; TC-05 enables it via
+  `"rcs_range_filter": true` in its degradation block.
+- **`runDetections.m`** reads the new `envConfig.rcs_range_filter` flag and
+  calls `applyRCSFilter` when ON. Diagnostics line added.
+- **`loadRunFile.m`** propagates `rcs_range_filter` from the run file's
+  `degradation` block into `config.environment`.
+- **`sband_PSR.json`** — symmetric S-band counterpart to `xband_PSR.json`
+  (2.8 GHz, 111 km rangeLimits). TC-03/TC-04 now compare S-band vs X-band with
+  identical geometry — the only variable is `CenterFrequency`, isolating
+  ITU-R P.838-3 attenuation cleanly.
+- **`validation_rain.json`** — rain config with storm window (5–50s) aligned
+  to the 50s gentle_turn scenario. The `default_rain` storm window (50–130s)
+  never fired during the validation scenarios, making TC-03/TC-04 effectively
+  clear-sky. TC-03 and TC-04 now reference this file.
+- **TC-05 run file**: disables `doppler_fade` (targets fly tangentially and
+  the fade would confound the RCS test) and turns on `rcs_range_filter`.
+
+**Result:** 27/27 tests pass. TC-05 airliner=24, stealth=7, ratio=3.43x.
+TC-04 X-band=6, S-band=14 target dets at matched 16 mm/hr rain rate.
+
+### v3.4.1 — April 15, 2026
+
+**Physics & geometry fixes, auto-tuner, beam envelope visualization.**
+
+- **`buildSensor.m` elevation limits** fixed. Old formula
+  `[-(fov+2), 2]-tilt` pushed the PSR beam below the horizon. New formula
+  `[-fov/2, fov/2]-tilt` centers the beam on the horizon. PSR now covers
+  −17° to +13° elevation.
+- **Frequency-dependent ground clutter** in `generateGroundClutter.m`:
+  surface clutter scales as freq² (Rayleigh), discrete clutter as freq^0.8
+  relative to S-band baseline.
+- **Doppler fade MDV** corrected to use `λ × PRF / 4` (was hardcoded to 40 m/s).
+  S-band MDV ≈ 27 m/s, X-band ≈ 8 m/s now computed from each sensor's frequency.
+- **RCS range filter removed** (*later restored as opt-in in v3.4.2*) on the
+  assumption that `fusionRadarSensor` handled RCS natively via
+  `platform.Signatures`. Empirically it doesn't produce observable differentials
+  at typical scan counts — see v3.4.2.
+- **VCP propagation model removed** from the detection pipeline.
+- **TargetIndex semantics** clarified: uses `PlatformID` (tower=1, targets
+  start at 2), **not** array index. False alarms use `-1` not `0`.
+- **`drawBeamEnvelope.m`** renders exact green/red scan-limit cones for any
+  radar or IR sensor by querying `coverageConfig()`. Automatically called by
+  `plotInitialScenario`.
+- **`autoTuneTracker.m`** — two-pass parameter sweep (tracker params then
+  filter params) with composite scoring. Saves optimal config to
+  `config/trackers/<TYPE>/autotuned_<TYPE>_<run>.json`.
+- **Diagnostic scripts** added: `diagBadDetections`, `diagVerifyTargetIndex`,
+  `diagBeamLimits` in `scripts/`.
+
+### v3.4.0 — April 13, 2026
+
+**NASA real flight data + 4-type weather system.**
+
+- **NASA flight data integration**: `loadNASAFlight.m`, `runNASAFlight`,
+  `scanNASAFlights`, `viewNASAFlightGlobe`. Target behavior `recorded_flight`
+  feeds FDR waypoints to `waypointTrajectory`.
+- **Weather system**: `config/weather/<TYPE>/` folder. Four types: **rain**
+  (ITU-R P.838-3 via `rainpl`), **snow** (Gunn & East 25% equivalent), **fog**
+  (visibility-based, IR/optical), **icing** (antenna hardware gain loss).
+- **Storm windows**: each weather config specifies `storm_start_s`,
+  `storm_end_s`, and `active_type` (step/ramp/pulse). `getWeather.m` computes
+  severity `w ∈ [0,1]` at each timestep.
+- **`applyWeatherDegradation.m`** unified the four types behind one interface
+  (replaces type-specific functions in the per-detection path).
+- **Consolidated degradation block**: run files now use a single `degradation`
+  block with terrain toggles + `"weather": "rain/default_rain"` reference.
+  Legacy `"degradation": { "enabled": true, "type": "rain" }` still works.
+
+### v3.3.0 — March 22, 2026
+
+**Automated validation test plan.**
+
+- `scripts/runTestPlan.m` — 9 test cases, 27 assertions, pass/fail reporting.
+- `scripts/verifySimulation.m` — 40+ standalone diagnostic checks across 8
+  phases.
+- Test run files moved to `config/runs/validation/` to keep the main folder
+  clean for user experiments. `loadRunFile` supports subdirectory paths
+  natively.
+- RCS demo geometry fix: targets moved from 30 km to 100 km range to expose
+  the R⁴ dependence across the 30 dB RCS gap.
+- IEEE 829-compliant test plan document (v0.8) in `docs/`.
 
 ### v3.2.0 — March 21, 2026
 
-**Rain Attenuation via MATLAB `rainpl()`** — Replaced hand-coded ITU coefficient table with MATLAB's official Phased Array Toolbox `rainpl()` function (ITU-R P.838-3). Falls back gracefully if toolbox unavailable. Full inline citations for Boeing briefing.
+**Rain attenuation via MATLAB `rainpl()` + aspect-dependent RCS + Doppler fade.**
 
-**Aspect-Dependent RCS Profiles** — Targets can now have realistic angle-varying radar cross sections.
-- New `buildRCSProfile.m` in `+environment/`: creates full azimuth×elevation `rcsSignature` pattern matrices
-- 5 preset profiles: `stealth`, `fighter`, `airliner`, `drone`, `missile`
-- Stealth profile: -10 dBsm nose-on, +7 dBsm broadside, -1 dBsm rear
-- `fusionRadarSensor` natively interpolates the pattern at each scan — no custom code needed
-- Target JSON: `"rcs_profile": "stealth"` with `"rcs_dbsm": -10` as base value
+- Replaced hand-coded ITU coefficient table with MATLAB's official
+  `rainpl()` (ITU-R P.838-3). Fallback to Phased Array Toolbox or internal
+  table if Radar Toolbox unavailable.
+- **`buildRCSProfile.m`** creates full azimuth×elevation `rcsSignature`
+  pattern matrices. Five preset profiles: stealth, fighter, airliner, drone,
+  missile. `fusionRadarSensor` natively interpolates at each scan.
+- **`applyDopplerFade.m`** — tangential targets fall into the MTI clutter
+  notch and lose detections. Per-detection radial-velocity check with 5%
+  sidelobe floor.
+- **Custom waypoint trajectories**: new `"behavior": "waypoints"` for
+  user-defined 3D flight paths.
 
-**Doppler/MTI Fade** — Targets flying tangentially (across the radar beam) now lose detections.
-- New `applyDopplerFade.m` in `+environment/`: computes radial velocity per detection
-- Targets with |v_radial| < MDV (Minimum Detectable Velocity) fall into the clutter notch
-- MDV auto-computed from radar frequency and assumed PRF (~40 m/s for S-band)
+### v3.1.x — March 20, 2026
 
-**Custom Waypoint Trajectories** — New `"behavior": "waypoints"` for user-defined flight paths.
-- Define arbitrary [x,y,z] waypoints with arrival times in target JSON
-- Uses MATLAB `waypointTrajectory` directly — any path, any timing, any complexity
-
-**Enhanced Target Definitions** — All target types now support optional fields:
-- `rcs_dbsm`, `rcs_profile`, `dimensions`, `class_id`, `label`
-- New `config/targets/target_template.json` with documented examples
-
-**Vertical Process Noise Fix** — IMM/CV vertical process noise = 400 m/s² (was 1 m/s²).
-
-**Range-Adaptive Performance Metrics** — Track-to-truth assignment threshold = 5% of max truth range. Quality score: posRMS as percentage of scenario range.
-
-**Tracker Improvements** — `ConfirmationThreshold` and `DeletionThreshold` now wired from JSON configs. JPDA probability-based thresholds. Crossing-pair tracker configs with wider gates.
-
-**New Demo Scenarios** — `rain_demo_baseline/sband/xband`, `crossing_test`, `rcs_demo`, `range_rcs_test`.
-
-### v3.1.0 — March 20, 2026
-
-**Physics-Based Rain Degradation Model** — ITU-R P.838-3 rain attenuation with frequency-dependent specific attenuation coefficients. Weather clutter in sensor FOV. Measurement noise scales with rain rate.
-
-**Verification Suite** — `scripts/verifySimulation.m` runs 40+ automated checks across 8 phases.
-
-**showTruth N-Target Fix** — `runTracker.m` loops over actual target count instead of hardcoding 2.
-
-**Legacy Cleanup** — Removed 38 legacy V2 files.
+- Physics validation audit (`docs/physics_validation_audit.md`)
+- Sandbox run templates
+- Auto-terrain environment resolution
 
 ### v3.0.0 — March 15–19, 2026
 
-**Modular Config Architecture** — Complete restructure from monolithic config to individual component files. Run files assemble sensors + targets + terrain + trackers by reference. Detection caching per run file. `tracker_globals.json` separates shared params from per-tracker tuning.
+**Modular Config Architecture** — complete restructure from monolithic
+`default.json` to individual component files.
 
-### v2.6.0 — March 15, 2026
-Auto-terrain environment resolution, pre-flight scenario validator, sandbox templates.
+- Run files (`config/runs/`) assemble sensors + targets + terrain + trackers
+  by reference
+- Per-sensor type folders with default/template/user configs
+- Per-terrain type folders with environment flag presets
+- Per-tracker algorithm folders with algorithm-specific tuning
+- Per-behavior target folders
+- Detection caching per run file for fast tracker tuning
+- `tracker_globals.json` separates shared params from per-tracker volume/beta
+- Legacy catalog system removed (copies preserved in `_cleanup_backup/`)
 
-### v2.5.0 — March 14, 2026
-Demo video recording (`recordDemoVideo.m`).
+### v2.x — February 23 – March 15, 2026
 
-### v2.4.1 — February 24, 2026
-Dedicated sensor configs per scenario, batch runner showcase/my-sensors modes.
-
-### v2.4 — February 24, 2026
-One-command entrypoint, sector scanner fix, terrain occlusion toggle, scan coverage safeguard.
-
-### v2.3 — February 23, 2026
-Terrain occlusion, 3D visualization fixes, sensor coverage visualization.
-
-### v2.2 — February 23, 2026
-Propagation model (VCP), environment modeling, ground clutter.
-
-### v2.1
-JSON-driven scenario loading, 19 sensor types, batch runner, track swap analysis.
-
-### v2.0
-Initial V2: +trackbench namespace, JSON config, DASR sensor model.
+- v2.6: auto-terrain resolution, pre-flight scenario validator
+- v2.5: demo video recording (`recordDemoVideo.m`)
+- v2.4: one-command entrypoint, sector scanner fix, terrain occlusion toggle
+- v2.3: terrain occlusion, 3D visualization fixes, sensor coverage viz
+- v2.2: propagation model (VCP), environment modeling, ground clutter
+- v2.1: JSON-driven scenario loading, 19 sensor types, batch runner
+- v2.0: +trackbench namespace, JSON config, DASR sensor model
 
 ---
 
-**Last Updated:** March 22, 2026
-**Version:** 3.3.0
+**Last Updated:** April 17, 2026
+**Version:** 3.5.0

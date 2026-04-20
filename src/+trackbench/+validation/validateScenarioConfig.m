@@ -51,11 +51,17 @@ fprintf('║              PRE-FLIGHT SCENARIO VALIDATION             ║\n');
 fprintf('╚══════════════════════════════════════════════════════════╝\n');
 
 %% ---- 1. Sensor platforms vs terrain ----
+%  Scope: only sensor-hosting platforms (the first N platforms, where N is
+%  the number of sensor platform groups). Targets are platforms (N+1):end
+%  and are validated separately in Check 2 — checking them here would
+%  produce duplicate "Platform X Underground" + "Target Y Below Terrain"
+%  warnings for the same object.
 if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
     tg = config.terrainGrid;
     allPlats = scenario.Platforms;
-    
-    for pp = 1:numel(allPlats)
+    numSensorPlats = numel(fieldnames(sensors));
+
+    for pp = 1:min(numSensorPlats, numel(allPlats))
         platObj = allPlats{pp};
         try
             if isa(platObj.Trajectory, 'waypointTrajectory')
@@ -66,28 +72,36 @@ if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
         catch
             continue;
         end
-        
+
         % Check if within terrain grid bounds
         if pPos(1) >= tg.boundary(1,1) && pPos(1) <= tg.boundary(1,2) && ...
            pPos(2) >= tg.boundary(2,1) && pPos(2) <= tg.boundary(2,2)
             terrZ = interp2(tg.X, tg.Y, tg.Z, pPos(1), pPos(2), 'linear', 0);
-            clearance = terrZ - pPos(3);  % NED: both negative, clearance>0 means buried
-            
+
             if pPos(3) > terrZ + 5  % platform z MORE positive than terrain z (buried in NED)
                 issues{end+1} = makeIssue('CRITICAL', 'Sensor Platform Underground', ...
-                    sprintf('Platform %d at z=%.0fm is %.0fm BELOW terrain (terrain=%.0fm ASL at [%.0f,%.0f]).', ...
+                    sprintf('Sensor platform %d at z=%.0fm is %.0fm BELOW terrain (terrain=%.0fm ASL at [%.0f,%.0f]).', ...
                         pp, -pPos(3), pPos(3)-terrZ, -terrZ, pPos(1), pPos(2)), ...
-                    'Platform was auto-raised in loadScenario. If this still fires, check MountingLocation or manual position overrides.'); %#ok<AGROW>
+                    'Platform should have been auto-raised in loadRunFile. If this still fires, check MountingLocation or the auto-raise logic for moving sensor platforms (aircraft).'); %#ok<AGROW>
             end
         end
     end
 end
 
 %% ---- 2. Targets vs terrain ----
+%  Skip waypoints within a TAKEOFF/LANDING EXCLUSION ZONE around the
+%  scenario origin. Procedural terrain (rng seed 42) doesn't know where
+%  real airports are — a recorded NASA flight takes off from a real airport
+%  (e.g. White Plains, 134m MSL) and climbs out over several minutes, but
+%  the procedural heightmap at the origin coordinate may be arbitrarily
+%  tall. Within the exclusion zone, terrain conflicts are expected and
+%  not a real scenario bug. Beyond the zone, targets flying through
+%  mountains mid-mission are still flagged.
+ORIGIN_EXCLUSION_M = 10000;  % 10 km radius around origin
 if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
     tg = config.terrainGrid;
     allPlats = scenario.Platforms;
-    
+
     % Targets are platforms after sensor platforms
     numSensorPlats = numel(fieldnames(sensors));
     for pp = (numSensorPlats+1):numel(allPlats)
@@ -102,20 +116,27 @@ if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
         catch
             continue;
         end
-        
+
         for wp = 1:size(waypoints, 1)
             wPos = waypoints(wp,:);
+
+            % Skip waypoints inside the origin exclusion zone (takeoff/landing)
+            if norm(wPos(1:2)) < ORIGIN_EXCLUSION_M
+                continue;
+            end
+
             if wPos(1) >= tg.boundary(1,1) && wPos(1) <= tg.boundary(1,2) && ...
                wPos(2) >= tg.boundary(2,1) && wPos(2) <= tg.boundary(2,2)
                 terrZ = interp2(tg.X, tg.Y, tg.Z, wPos(1), wPos(2), 'linear', 0);
-                
+
                 if wPos(3) > terrZ + 10  % target below terrain surface (NED)
                     altASL = -wPos(3);
                     terrASL = -terrZ;
+                    rangeKm = norm(wPos(1:2)) / 1000;
                     issues{end+1} = makeIssue('CRITICAL', 'Target Below Terrain', ...
-                        sprintf('Target %d waypoint %d at %.0fm ASL is BELOW terrain (%.0fm ASL) at [%.0f,%.0f].', ...
-                            tgtIdx, wp, altASL, terrASL, wPos(1), wPos(2)), ...
-                        sprintf('Increase altitude_m to at least %.0f in the scenario catalog targets.', terrASL + 500)); %#ok<AGROW>
+                        sprintf('Target %d waypoint %d at %.0fm ASL is BELOW terrain (%.0fm ASL) at [%.0f,%.0f] (%.1f km from origin).', ...
+                            tgtIdx, wp, altASL, terrASL, wPos(1), wPos(2), rangeKm), ...
+                        sprintf('Increase altitude_m to at least %.0f, or move the target away from high terrain.', terrASL + 500)); %#ok<AGROW>
                     break;  % one warning per target is enough
                 end
             end

@@ -1,4 +1,4 @@
-function dataLog = runDetections(scenario, enableDegradation, sensorMetas, envConfig)
+function dataLog = runDetections(scenario, enableDegradation, sensorMetas, envConfig, cfg)
 %runDetections  Run scenario and generate a detection log for tracking.
 %
 % GENERALISED MULTI-SENSOR DETECTION GENERATOR
@@ -29,6 +29,13 @@ if nargin < 4 || isempty(envConfig)
                        'clutter_density', 0.5);
 end
 
+% cfg (5th arg): full config struct for getWeather storm window
+if nargin < 5 || isempty(cfg)
+    cfg = struct('degradation', struct('storm_start_s', 5, 'storm_end_s', 45, ...
+                                       'active_type', 'step'), ...
+                 'scenario', struct('duration_s', 50));
+end
+
 % Parse environment config with safe defaults
 enableHorizon  = getOrDefault(envConfig, 'horizon_masking', true);
 refractionK    = getOrDefault(envConfig, 'refraction_factor', 4/3);
@@ -36,23 +43,16 @@ enableClutter  = getOrDefault(envConfig, 'ground_clutter', true);
 terrainType    = getOrDefault(envConfig, 'terrain_type', 'rural');
 clutterDensity = getOrDefault(envConfig, 'clutter_density', 0.5);
 
-% Propagation model: false | true | "vcp" | "propfactor"
-propModelRaw = getOrDefault(envConfig, 'propagation_model', false);
-if islogical(propModelRaw) || isnumeric(propModelRaw)
-    propMode = ternary(propModelRaw, "vcp", "off");
-else
-    propMode = lower(string(propModelRaw));
-    if ~ismember(propMode, ["vcp", "propfactor", "off", "false"])
-        warning('runDetections:unknownPropMode', 'Unknown propagation_model "%s", using "off".', propMode);
-        propMode = "off";
-    end
-    if propMode == "false"; propMode = "off"; end
-end
-enableVCP = (propMode == "vcp");
-enablePropFactor = (propMode == "propfactor");
+% Propagation model (VCP/PropFactor): REMOVED in v3.4.0
+% VCP post-filtering was architecturally flawed — VCP files removed in v3.4.0 cleanup.
+
 
 % Parse rain degradation config
 rainConfig = struct('rain_rate_mmhr', 16);
+weatherType = 'rain';  % default
+if isfield(cfg, 'degradation') && isfield(cfg.degradation, 'type')
+    weatherType = lower(char(cfg.degradation.type));
+end
 if isstruct(envConfig)
     if isfield(envConfig, 'rain_rate_mmhr');     rainConfig.rain_rate_mmhr = envConfig.rain_rate_mmhr; end
     if isfield(envConfig, 'pd_floor');           rainConfig.pd_floor = envConfig.pd_floor; end
@@ -60,6 +60,16 @@ if isstruct(envConfig)
 end
 
 % Detect terrain occlusion capability
+% NOTE (v3.4.2): External RCS range filter RESTORED as OPT-IN. Empirically,
+% fusionRadarSensor's native Swerling detection does not produce an
+% observable RCS-vs-range differential at typical scan counts (20-100 scans)
+% for the reference geometries we use — both high-RCS and low-RCS targets
+% saturate near DetectionProbability. The external filter applies a
+% deterministic R_eff cutoff (R_eff = refRange * (sigma/sigma_ref)^(1/4))
+% that exposes the R^4 dependence cleanly. Enabled per-run via
+% envConfig.rcs_range_filter (default OFF to preserve statistical sensor
+% behavior for user demos; TC-05 validation turns it ON).
+
 enableTerrainOcclusion = false;
 if getOrDefault(envConfig, 'terrain_occlusion', true)
     try
@@ -74,14 +84,18 @@ end
 fprintf('[runDetections] Terrain occlusion: %s\n', ternary(enableTerrainOcclusion, 'ON (SurfaceManager LOS checks)', 'OFF (no terrain attached)'));
 fprintf('[runDetections] Horizon masking: %s\n', ternary(enableHorizon, sprintf('ON (refraction=%.3f)', refractionK), 'OFF'));
 fprintf('[runDetections] Ground clutter: %s\n', ternary(enableClutter, sprintf('ON (terrain=%s, density=%.2f)', terrainType, clutterDensity), 'OFF'));
-if enableVCP
-    fprintf('[runDetections] Propagation model: VCP (pre-computed vertical coverage, terrain=%s)\n', terrainType);
-elseif enablePropFactor
-    fprintf('[runDetections] Propagation model: PROPFACTOR (per-detection multipath, terrain=%s)\n', terrainType);
-else
-    fprintf('[runDetections] Propagation model: OFF (free-space assumption)\n');
+
+fprintf('[runDetections] Rain degradation: %s\n', ternary(enableDegradation, sprintf('ON (%s, rate=%.0f mm/hr)', weatherType, rainConfig.rain_rate_mmhr), 'OFF'));
+if enableDegradation
+    stormType = 'step';
+    if isfield(cfg.degradation, 'active_type'); stormType = cfg.degradation.active_type; end
+    stormStart = 5; stormEnd = 45;
+    if isfield(cfg.degradation, 'storm_start_s'); stormStart = cfg.degradation.storm_start_s; end
+    if isfield(cfg.degradation, 'storm_end_s');   stormEnd   = cfg.degradation.storm_end_s; end
+    fprintf('[runDetections] Storm window: %.0f–%.0fs (%s profile)\n', stormStart, stormEnd, stormType);
 end
-fprintf('[runDetections] Rain degradation: %s\n', ternary(enableDegradation, sprintf('ON (rain_rate=%.0f mm/hr)', rainConfig.rain_rate_mmhr), 'OFF'));
+enableRCSFilter = getOrDefault(envConfig, 'rcs_range_filter', false);
+fprintf('[runDetections] RCS range filter: %s\n', ternary(enableRCSFilter, 'ON (deterministic R_eff cutoff)', 'OFF (sensor-native Swerling)'));
 fprintf('[runDetections] Doppler fade (MTI): %s\n', ternary(getOrDefault(envConfig, 'doppler_fade', true), 'ON (tangential targets fade in clutter notch)', 'OFF'));
 
 %% Discover all sensors across all platforms
@@ -110,7 +124,7 @@ for pIdx = 1:numPlats
         info.isRotator    = false;
         info.isMechanical = false;
         try info.scanMode = string(s.ScanMode); catch; info.scanMode = "unknown"; end
-        
+
         if contains(lower(info.scanMode), 'mechanical') || contains(lower(info.scanMode), 'rotat')
             azSpan = 360;
             try azLim = s.MechanicalAzimuthLimits; azSpan = abs(diff(azLim)); catch; end
@@ -120,12 +134,12 @@ for pIdx = 1:numPlats
         elseif contains(lower(info.scanMode), 'sector')
             info.isMechanical = true;
         end
-        
+
         fprintf('[runDetections]   Sensor %d: %s | ScanMode=%s | isRotator=%d | isMechanical=%d\n', ...
             info.sensorIndex, info.className, info.scanMode, info.isRotator, info.isMechanical);
-        
+
         info.isMSSR = classifyAsMSSR(s, sensorMetas);
-        
+
         info.radarFreq = 2.8e9;
         if ~isempty(sensorMetas) && isstruct(sensorMetas)
             pNames = fieldnames(sensorMetas);
@@ -147,7 +161,7 @@ for pIdx = 1:numPlats
                 end
             end
         end
-        
+
         if sIdx == 1 || isempty(sensorInfos); sensorInfos = info; else; sensorInfos(sIdx) = info; end
     end
 end
@@ -222,6 +236,8 @@ for k = 1:numActive
     try cov.maxRange = s.RangeLimits(2); catch; cov.maxRange = 111120; end
     try cov.mountingYaw = s.MountingAngles(1); catch; cov.mountingYaw = 0; end
     try cov.fov = s.FieldOfView(:)'; catch; cov.fov = [1.4 30]; end
+    try cov.elLimits = s.MechanicalElevationLimits(:)'; catch; cov.elLimits = [-17 13]; end
+    try cc = coverageConfig(s); cov.scanElLimits = cc.ScanLimits(2,:); catch; cov.scanElLimits = cov.elLimits; end
     scanModeStr = ''; try scanModeStr = lower(string(s.ScanMode)); catch; end
     if contains(scanModeStr, 'no scanning') || contains(scanModeStr, 'electronic')
         try elecAz = s.ElectronicAzimuthLimits(:)'; catch; elecAz = [-45 45]; end
@@ -246,19 +262,7 @@ for k = 1:numActive
 end
 dataLog.SensorCoverage = coverage;
 
-%% Pre-compute VCP
-vcpData = [];
-if enableVCP
-    try
-        vcpData = trackbench.environment.computeVerticalCoverage(activeInfos, terrainType, refractionK);
-        dataLog.VCPData = vcpData;
-    catch ME
-        warning('runDetections:vcpFailed', 'VCP failed: %s. Disabled.', ME.message);
-        enableVCP = false;
-    end
-else
-    dataLog.VCPData = [];
-end
+dataLog.VCPData = [];
 
 s_rng = rng; rng(2018);
 disp('Please wait. Generating detections for scenario .....')
@@ -266,26 +270,24 @@ disp('Please wait. Generating detections for scenario .....')
 lastFlushTime = -Inf;
 terrainOcclusionCount = 0;
 horizonMaskCount = 0;
-vcpMaskCount = 0;
-propFactorMaskCount = 0;
 
 %% Main loop
 while advance(scenario)
     simTime = scenario.SimulationTime;
     scanDone = false;
-    
+
     for k = 1:numActive
         si   = activeInfos(k);
         plat = si.platform;
         targets = targetPoses(plat);
         ins     = pose(plat, 'true');
-        
+
         % ---- Visibility masking (terrain + horizon) ----
         if ~isempty(targets)
             sensorPos = ins.Position(:)';
             try sensorPos = sensorPos + si.sensor.MountingLocation(:)'; catch; end
             visible = true(numel(targets), 1);
-            
+
             if enableTerrainOcclusion
                 for tt = 1:numel(targets)
                     try [occ,~] = occlusion(scenario.SurfaceManager, sensorPos, targets(tt).Position(:)');
@@ -294,7 +296,7 @@ while advance(scenario)
                 end
                 terrainOcclusionCount = terrainOcclusionCount + sum(~visible);
             end
-            
+
             if enableHorizon
                 stillVis = find(visible);
                 if ~isempty(stillVis)
@@ -307,44 +309,32 @@ while advance(scenario)
             end
             if any(~visible); targets = targets(visible); end
         end
-        
+
         % Step the sensor
-        try [dets, ~, cfg] = si.sensor(targets, ins, simTime); catch; continue; end
+        try [dets, ~, sensorCfg] = si.sensor(targets, ins, simTime); catch; continue; end
         dets = dets(:);
-        
+
         if hasMechanical && k == masterIdx
-            try if cfg.IsScanDone; scanDone = true; end; catch; end
+            try if sensorCfg.IsScanDone; scanDone = true; end; catch; end
         end
         if isempty(dets); continue; end
-        
+
         % Filter angle-only
         keepDets = true(numel(dets), 1);
         for ii = 1:numel(dets); if numel(dets{ii}.Measurement) < 3; keepDets(ii) = false; end; end
         if any(~keepDets); dets = dets(keepDets); if isempty(dets); continue; end; end
-        
-        % VCP masking
-        if enableVCP && ~si.isMSSR && ~isempty(vcpData)
-            sPos_vcp = ins.Position(:)';
-            try sPos_vcp = sPos_vcp + si.sensor.MountingLocation(:)'; catch; end
-            vcpMask = trackbench.environment.applyVCPMask(dets, sPos_vcp, vcpData(k));
-            nMasked = sum(~vcpMask);
-            if nMasked > 0; vcpMaskCount = vcpMaskCount + nMasked; dets = dets(vcpMask); if isempty(dets); continue; end; end
-        end
 
-        % Per-detection propagation factor
-        if enablePropFactor && si.isRadar && ~si.isMSSR && ~isempty(dets)
-            sPosPF = ins.Position(:)';
-            try sPosPF = sPosPF + si.sensor.MountingLocation(:)'; catch; end
-            keepPF = true(numel(dets), 1);
-            for dd = 1:numel(dets)
-                try
-                    F_dB = trackbench.environment.computePropFactor(sPosPF, dets{dd}.Measurement(1:3)', si.radarFreq, terrainType, refractionK);
-                    pdProp = min(1.0, 10^(F_dB / 12));
-                    if rand() > pdProp; keepPF(dd) = false; end
-                catch; end
-            end
-            nPM = sum(~keepPF);
-            if nPM > 0; propFactorMaskCount = propFactorMaskCount + nPM; dets = dets(keepPF); end
+        % RCS range filter (opt-in via envConfig.rcs_range_filter).
+        % When ON, applies deterministic R_eff = refRange*(sigma/sigma_ref)^(1/4)
+        % cutoff. When OFF, relies on fusionRadarSensor's native Swerling model
+        % which in practice is too subtle to expose RCS differentials at
+        % typical scan counts. See note in header.
+        if enableRCSFilter && si.isRadar && ~si.isMSSR && ~isempty(dets) && ~isempty(targets)
+            sPosRCS = ins.Position(:)';
+            try sPosRCS = sPosRCS + si.sensor.MountingLocation(:)'; catch; end
+            [dets, ~] = trackbench.environment.applyRCSFilter( ...
+                dets, sPosRCS, si.sensor, targets, allPlatforms);
+            if isempty(dets); continue; end
         end
 
         % Doppler fade: targets with low radial velocity fall into the
@@ -371,19 +361,27 @@ while advance(scenario)
         else
             % ── Rain degradation: Pd drop + noise inflation (per detection) ──
             % Weather clutter is generated ONCE per scan at flush time below.
+            % Severity w ∈ [0,1] from getWeather scales the rain rate.
             if enableDegradation && (si.isRadar || si.isIR) && ~si.isMSSR
+                % Compute weather severity at this time step
+                w = computeWeatherSeverity(simTime, cfg);
+                if w > 0
                 sPos_rain = ins.Position(:)';
                 try sPos_rain = sPos_rain + si.sensor.MountingLocation(:)'; catch; end
-                
+
                 sParams_rain = struct();
                 try sParams_rain.rangeLimits = si.sensor.RangeLimits; catch; sParams_rain.rangeLimits = [0 111120]; end
                 try sParams_rain.fov = si.sensor.FieldOfView(:)'; catch; sParams_rain.fov = [1.4 30]; end
-                
+
+                % Scale rain rate by weather severity
+                scaledRainConfig = rainConfig;
+                scaledRainConfig.rain_rate_mmhr = w * rainConfig.rain_rate_mmhr;
+
                 % Get Pd multiplier (function handle) and noise multiplier (scalar)
                 % Third output (weather clutter) is IGNORED here — generated at flush time
-                [pdMult, noiseMult, ~] = trackbench.environment.applyRainDegradation( ...
-                    simTime, rainConfig, si, sPos_rain, sParams_rain);
-                
+                [pdMult, noiseMult, ~] = trackbench.environment.applyWeatherDegradation( ...
+                    simTime, scaledRainConfig, si, sPos_rain, sParams_rain, weatherType);
+
                 % Drop detections using range-dependent Pd
                 if ~isempty(dets)
                     keepRain = true(numel(dets), 1);
@@ -396,34 +394,35 @@ while advance(scenario)
                     end
                     dets = dets(keepRain);
                 end
-                
+
                 % Scale measurement noise
                 for dd = 1:numel(dets)
                     dets{dd}.MeasurementNoise = dets{dd}.MeasurementNoise * noiseMult;
                 end
+                end  % if w > 0
             end
-            
+
             detBuffer = [detBuffer; dets]; %#ok<AGROW>
         end
-        cfgBuffer{end+1} = cfg; %#ok<AGROW>
+        cfgBuffer{end+1} = sensorCfg; %#ok<AGROW>
     end
-    
+
     % ---- Scan complete check ----
     if ~hasMechanical && (simTime - lastFlushTime) >= scanInterval
         scanDone = true;
     end
-    
+
     % ---- Flush scan buffer ----
     if scanDone
         if isempty(detBuffer) && isempty(mssrBuffer); lastFlushTime = simTime; continue; end
-        
+
         if ~isempty(detBuffer)
             times = cellfun(@(d) d.Time, detBuffer);
             fprintf("Scan buffer time span (pre-snap) = %.6f s\n", max(times) - min(times));
         end
-        
+
         nFalse = 0;
-        
+
         % Find primary radar for clutter generation
         clutterSidx = 1;
         clutterSensorInfo = [];
@@ -434,7 +433,7 @@ while advance(scenario)
                 break;
             end
         end
-        
+
         % Ground clutter (terrain-dependent)
         if enableClutter && ~isempty(clutterSensorInfo)
             sPos_gc = pose(clutterSensorInfo.platform, 'true').Position(:)';
@@ -446,43 +445,50 @@ while advance(scenario)
             try sParams.fov         = cSensor.FieldOfView(:)'; catch; sParams.fov = [1.4 30]; end
             try sParams.tilt        = cSensor.ElectronicScanAngle(2); catch; sParams.tilt = 2; end
             try sParams.mountingLoc = cSensor.MountingLocation(:)'; catch; sParams.mountingLoc = [0 0 -15]; end
-            clutterEnv = struct('terrain_type', terrainType, 'clutter_density', clutterDensity);
+            clutterEnv = struct('terrain_type', terrainType, 'clutter_density', clutterDensity, ...
+                'radar_freq', clutterSensorInfo.radarFreq);
             clutterDets = trackbench.environment.generateGroundClutter(simTime, sPos_gc, clutterSidx, sParams, clutterEnv);
             if ~isempty(clutterDets)
                 detBuffer = [detBuffer; clutterDets]; %#ok<AGROW>
                 nFalse = nFalse + numel(clutterDets);
             end
         end
-        
+
         % Weather clutter (rain-driven, ONCE per scan at flush time)
+        % getWeather computes severity w and logs to dataLog.WeatherSeverity
         if enableDegradation && ~isempty(clutterSensorInfo)
+            [wScan, ~, dataLog] = trackbench.detections.getWeather(simTime, cfg, dataLog);
+            if wScan > 0
             sPos_wc = pose(clutterSensorInfo.platform, 'true').Position(:)';
             try sPos_wc = sPos_wc + clutterSensorInfo.sensor.MountingLocation(:)'; catch; end
             sParams_wc = struct();
             try sParams_wc.rangeLimits = clutterSensorInfo.sensor.RangeLimits; catch; sParams_wc.rangeLimits = [0 111120]; end
             try sParams_wc.fov = clutterSensorInfo.sensor.FieldOfView(:)'; catch; sParams_wc.fov = [1.4 30]; end
-            [~, ~, weatherDets] = trackbench.environment.applyRainDegradation( ...
-                simTime, rainConfig, clutterSensorInfo, sPos_wc, sParams_wc);
+            scaledRainCfg = rainConfig;
+            scaledRainCfg.rain_rate_mmhr = wScan * rainConfig.rain_rate_mmhr;
+            [~, ~, weatherDets] = trackbench.environment.applyWeatherDegradation( ...
+                simTime, scaledRainCfg, clutterSensorInfo, sPos_wc, sParams_wc, weatherType);
             if ~isempty(weatherDets)
                 detBuffer = [detBuffer; weatherDets]; %#ok<AGROW>
                 nFalse = nFalse + numel(weatherDets);
             end
+            end  % if wScan > 0
         end
-        
+
         % Snap timestamps
         for kk = 1:numel(detBuffer);  detBuffer{kk}.Time  = simTime; end
         for kk = 1:numel(mssrBuffer); mssrBuffer{kk}.Time = simTime; end
-        
+
         % Get truth
         targets = targetPoses(activeInfos(1).platform);
-        
+
         % Merge
         mergedDets = [mssrBuffer; detBuffer];
         if isempty(mergedDets); lastFlushTime = simTime; detBuffer = {}; mssrBuffer = {}; cfgBuffer = {}; continue; end
-        
+
         fprintf("t=%.2f: PSR=%d, MSSR=%d, total=%d (clutter=%d)\n", ...
             simTime, numel(detBuffer), numel(mssrBuffer), numel(mergedDets), nFalse);
-        
+
         % Log
         dataLog.Time       = [dataLog.Time, simTime];
         dataLog.Truth      = [dataLog.Truth, targets];
@@ -491,7 +497,7 @@ while advance(scenario)
         try scanSensors = unique(cellfun(@(d) d.SensorIndex, mergedDets)); catch; scanSensors = []; end
         dataLog.ScanSensorIndices = [dataLog.ScanSensorIndices(:)', {scanSensors}];
         dataLog.SensorPlatformIDs = [dataLog.SensorPlatformIDs, ternary(~isempty(scanSensors), scanSensors(1), 0)];
-        
+
         detBuffer = {}; mssrBuffer = {}; cfgBuffer = {};
         lastFlushTime = simTime;
     end
@@ -501,8 +507,6 @@ rng(s_rng);
 fprintf('Detections generation complete.');
 if enableTerrainOcclusion; fprintf(' (Terrain occluded %d)', terrainOcclusionCount); end
 if enableHorizon;          fprintf(' (Horizon masked %d)', horizonMaskCount); end
-if enableVCP;              fprintf(' (VCP masked %d)', vcpMaskCount); end
-if enablePropFactor;       fprintf(' (PropFactor masked %d)', propFactorMaskCount); end
 fprintf('\n');
 
 end  % end main function
@@ -556,4 +560,28 @@ end
 
 function val = getOrDefault(s, field, default)
     if isstruct(s) && isfield(s, field); val = s.(field); else; val = default; end
+end
+
+function w = computeWeatherSeverity(t, cfg)
+%computeWeatherSeverity  Lightweight w computation (no logging).
+%  Used in per-detection rain loop. Full getWeather is called at scan flush.
+    d = cfg.degradation;
+    storm_start = 5; storm_end = 45; active_type = 'step';
+    if isfield(d, 'storm_start_s'); storm_start = d.storm_start_s; end
+    if isfield(d, 'storm_end_s');   storm_end   = d.storm_end_s; end
+    if isfield(d, 'active_type');   active_type = d.active_type; end
+    switch lower(active_type)
+        case 'step'
+            w = double(t >= storm_start && t <= storm_end);
+        case 'ramp'
+            dur = storm_end - storm_start;
+            if t < storm_start || t > storm_end; w = 0;
+            elseif t <= storm_start + dur/2; w = (t - storm_start) / (dur/2);
+            else; w = (storm_end - t) / (dur/2); end
+        case 'pulse'
+            w = double(t >= storm_start && t <= storm_start + 0.2*(storm_end - storm_start));
+        otherwise
+            w = double(t >= storm_start && t <= storm_end);
+    end
+    w = max(0, min(1, w));
 end

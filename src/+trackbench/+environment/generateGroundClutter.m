@@ -90,6 +90,23 @@ function clutterDets = generateGroundClutter(simTime, sensorPos, sensorIndex, se
     % Apply density scale
     surfaceLambda  = surfaceLambda  * densityScale;
     discreteLambda = discreteLambda * densityScale;
+    
+    % Frequency-dependent clutter scaling
+    % Higher frequency → more ground return (radar equation for distributed
+    % clutter: sigma_clutter ~ freq^2 via Rayleigh scattering regime).
+    % S-band (2.8 GHz) is baseline. X-band (9 GHz) sees ~10x more surface
+    % clutter and ~3x more discrete clutter.
+    % Ref: Skolnik Ch. 7 (Ground Clutter), Nathanson (1999)
+    radarFreq = 2.8e9;  % S-band default (baseline)
+    if isfield(envConfig, 'radar_freq') && envConfig.radar_freq > 0
+        radarFreq = envConfig.radar_freq;
+    end
+    freqGHz = radarFreq / 1e9;
+    freqRatio = freqGHz / 2.8;  % ratio relative to S-band baseline
+    surfaceFreqScale  = freqRatio^2;   % surface clutter: quadratic with freq
+    discreteFreqScale = freqRatio^0.8; % discrete: weaker dependence (large objects)
+    surfaceLambda  = surfaceLambda  * surfaceFreqScale;
+    discreteLambda = discreteLambda * discreteFreqScale;
 
     % Sensor geometry
     sensorAlt = max(-sensorPos(3), 1);  % NED: -Z = altitude, min 1m

@@ -7,7 +7,13 @@
   "targets": "gentle_turn/default_gentle_turn",
   "terrain": "arctic/default_arctic",
   "trackers": ["GNN/default_GNN"],
-  "degradation": { "enabled": false },
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "weather": "none"
+  },
   "platforms": {},
   "cache": { "use_cached_detections": false, "save_detections": false },
   "output": { "show_visuals": false, "save_results": false }

@@ -2,10 +2,6 @@
   "description": "Gentle dunes 40m, light clutter.",
   "terrain_type": "desert",
   "terrain_scale": 1,
-  "terrain_occlusion": true,
-  "horizon_masking": true,
-  "ground_clutter": true,
-  "propagation_model": false,
   "clutter_density": 0.2,
   "refraction_factor": 1.333
 }

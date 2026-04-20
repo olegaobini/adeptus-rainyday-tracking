@@ -2,6 +2,7 @@
   "name": "PSR 1 - Start (Dead Zone Video)",
   "type": "PSR",
   "platform": "tower",
+  "frequency_hz": 2.8e9,
   "params": {
     "rpm": 12,
     "fov": [1.4, 30],
