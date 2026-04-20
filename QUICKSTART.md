@@ -1,6 +1,6 @@
 # Rainy Day — Quickstart
 
-**For teammates.** All the commands you need, one page.
+All the commands you need, one page.
 Full docs: `README.md` · Long-form reference: `Cheatsheet.txt`
 
 ---
@@ -39,8 +39,6 @@ runSingleScenario("compound_demo")            % all physics + rain
 ## NASA real-flight demos
 
 ```matlab
-runNASAFlight                                 % real flight + simulated PSR
-runNASAFlightGlobe                            % same, on a 3D Earth globe
 viewNASAFlightGlobe("nasa_multi_target")      % replay cached results on globe
 scanNASAFlights                               % profile all .mat files in Tail_687_1/
 ```
