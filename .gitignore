@@ -6,6 +6,7 @@ slprj/
 
 # Runtime outputs — don't commit
 results/
+cache/
 
 # OS junk
 .DS_Store
