@@ -1,7 +1,0 @@
-{
-  "description": "City terrain, building clusters 150m, moderate clutter.",
-  "terrain_type": "urban",
-  "terrain_scale": 1,
-  "clutter_density": 0.6,
-  "refraction_factor": 1.333
-}
