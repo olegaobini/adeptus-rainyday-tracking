@@ -5,7 +5,6 @@
 slprj/
 
 # Runtime outputs — don't commit
-cache/
 results/
 
 # OS junk
