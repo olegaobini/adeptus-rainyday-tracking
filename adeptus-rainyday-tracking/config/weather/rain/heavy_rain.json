@@ -1,0 +1,10 @@
+{
+    "type": "rain",
+    "description": "Heavy rain — 40 mm/hr, ramp profile (gradual onset and clearing)",
+    "rain_rate_mmhr": 40,
+    "storm_start_s": 50,
+    "storm_end_s": 130,
+    "active_type": "ramp",
+    "pd_floor": 0.10,
+    "clutter_multiplier": 1.5
+}

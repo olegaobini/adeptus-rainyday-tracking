@@ -1,0 +1,14 @@
+{
+  "name": "AESA Fighter Radar",
+  "type": "AESA",
+  "platform": "aircraft",
+  "frequency_hz": 9.0e9,
+  "_frequency_hz": "X-band. High resolution but severely affected by rain. If omitted, defaults to 9.0e9 for AESA.",
+  "params": {
+    "sector": [-60, 60],
+    "rangeLimits": [0, 300000],
+    "pd": 0.85,
+    "far": 1e-6,
+    "mountingLoc": [0, 0, 0]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "description": "FULL DEGRADATION: S-band PSR, all terrain + weather effects ON. Shows ground clutter, Doppler fade, and rain — all frequency-dependent.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "rural/default_rural",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA"],
+  "compare_trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA", "GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+  "degradation": { "terrain_occlusion": true, "horizon_masking": true, "ground_clutter": true, "doppler_fade": true, "weather": "rain/default_rain" },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "results_directory": "results" }
+}

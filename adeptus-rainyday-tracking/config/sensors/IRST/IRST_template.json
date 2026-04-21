@@ -1,0 +1,21 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/IRST/my_IRST"
+  ],
+  "PARAM_DOCS": {
+    "frequency_hz": "N/A for IR sensors. IRST operates in infrared wavelengths (~3-12 μm), not RF. Not affected by rain but severely degraded by fog and clouds. This field is ignored for IR sensor types.",
+    "fov": "360deg azimuth. Passive sensor — no RF emission.",
+    "rangeLimits": "100km. Depends on target IR signature.",
+    "pd": "0.7 — depends on thermal contrast. Less affected by rain than radar, but fog is devastating."
+  },
+  "name": "IR Search and Track",
+  "type": "IRST",
+  "platform": "tower",
+  "params": {
+    "fov": [360, 20],
+    "rangeLimits": [0, 100000],
+    "pd": 0.7,
+    "mountingLoc": [0, 0, -10]
+  }
+}

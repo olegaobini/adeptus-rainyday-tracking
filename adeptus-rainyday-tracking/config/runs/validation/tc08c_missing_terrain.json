@@ -1,0 +1,20 @@
+{
+  "_TEST_CASE": "TC-08c: Missing terrain file reference",
+  "_EXPECTED": "loadRunFile should error with clear message naming the missing terrain file.",
+
+  "description": "TC-08c: References a terrain file that does not exist",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "gentle_turn/default_gentle_turn",
+  "terrain": "arctic/default_arctic",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "weather": "none"
+  },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": false },
+  "output": { "show_visuals": false, "save_results": false }
+}

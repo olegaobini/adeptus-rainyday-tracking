@@ -1,0 +1,12 @@
+{
+  "description": "Custom RCS test — DASR ideal targets, all effects OFF.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "dasr_ideal/default_dasr_ideal",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN"],
+  "compare_trackers": ["GNN/crossing_GNN", "GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+  "degradation": { "terrain_occlusion": false, "horizon_masking": false, "ground_clutter": false, "doppler_fade": false, "weather": "none" },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

@@ -16,8 +16,7 @@ desktop.ini
 # IDE / local editor state
 .claude/
 
-# Nested repo artifact from buggy sync (safe to delete)
-adeptus-rainyday-tracking/
+
 
 # NASA DASHlink Tail 687 flight data — 812 MB, publicly re-downloadable.
 # Ignore all .mat files in Tail_687_1/ by default, then whitelist only the

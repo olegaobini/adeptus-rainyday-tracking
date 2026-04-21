@@ -1,0 +1,31 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/PSR/my_PSR"
+  ],
+  "PARAM_DOCS": {
+    "frequency_hz": "Operating frequency in Hz. S-band=2.8e9, C-band=5.6e9, X-band=9e9. Higher freq = better resolution but worse weather performance. If omitted, defaults to 2.8e9 for PSR.",
+    "rpm": "Rotation rate (RPM). DASR=12.5, ASR=15. Determines scan period.",
+    "fov": "[azimuth_deg, elevation_deg]. Wider az = more coverage per step.",
+    "tilt": "Antenna tilt (deg). Positive = up. Adjusts elevation center.",
+    "pd": "Detection probability (0-1). 0.9 typical for PSR.",
+    "far": "False alarm rate. 1e-6 typical. Lower = fewer ghost detections.",
+    "rangeLimits": "[min_m, max_m]. PSR=60nm (111120m). Max detection range.",
+    "rangeRes": "Range resolution (m). 93m typical. Smaller = better discrimination.",
+    "mountingLoc": "[x,y,z] NED offset from platform. z=-15 means 15m above ground."
+  },
+  "name": "Primary Search Radar (DASR)",
+  "type": "PSR",
+  "platform": "tower",
+  "frequency_hz": 2.8e9,
+  "params": {
+    "rpm": 12.5,
+    "fov": [1.4, 30],
+    "tilt": 2,
+    "pd": 0.9,
+    "far": 1e-6,
+    "rangeLimits": [0, 45000],
+    "rangeRes": 93,
+    "mountingLoc": [0, 0, -15]
+  }
+}

@@ -1,0 +1,34 @@
+{
+    "description":"AUTO-TUNED JPDA for freq_compare_xband (score=0.3465, posRMS=3764m)",
+    "tracker_type":"JPDA",
+    "filter_model":"IMM",
+    "volume":1.0E+7,
+    "beta":1E-12,
+    "params":{
+    "gate":200,
+    "gate_jpda":200,
+    "far_gnn":1E-6,
+    "far_jpda":1E-6,
+    "far_mht":1E-6,
+    "beta_jpda":1E-12,
+    "jpda_confirm_prob":0.95,
+    "jpda_delete_prob":0.05,
+    "time_tolerance_jpda":0.05,
+    "num_tracks_jpda":500,
+    "confirm_threshold":20,
+    "delete_threshold":-5,
+    "tomht_threshold_multiplier":[0.2,
+    1,
+    1],
+    "max_branches":5
+},
+    "TUNING_NOTES":{
+    "method":"autoTuneTracker sweep",
+    "run":"freq_compare_xband",
+    "score":0.34652031056153354,
+    "posRMS":3763.9953091150055,
+    "swaps":0,
+    "falseTracks":8,
+    "date":"2026-04-13 22:54"
+}
+}

@@ -1,0 +1,38 @@
+{
+    "_README": "WEATHER CONFIGURATION TEMPLATE — Copy this file into a weather type folder and customize.",
+
+    "type": "rain",
+    "_type_options": "rain | snow | fog | icing",
+    "_type_rain":  "ITU-R P.838-3 via MATLAB rainpl(). Frequency-dependent path loss + volume clutter. S-band mild, X-band severe.",
+    "_type_snow":  "Uses rainpl() at 25% equivalent rate. Snow particles are less dense (Gunn & East, 1954). Reduced clutter.",
+    "_type_fog":   "Visibility-based. Mainly affects IR/optical sensors. Negligible RF below 10 GHz. Uses fogpl() (ITU-R P.840) above 10 GHz. No clutter.",
+    "_type_icing": "Antenna hardware degradation. Flat Pd loss at all ranges (not a path effect). Ice on radome reduces gain 2-6 dB. No clutter.",
+
+    "description": "Describe your weather profile here",
+
+    "rain_rate_mmhr": 16,
+    "_rain_rate_meaning_by_type": {
+        "rain":  "Actual rain rate in mm/hr. 1-4: drizzle | 4-16: moderate | 16-50: heavy | 50+: tropical",
+        "snow":  "Equivalent precipitation rate in mm/hr. Internally scaled to 25% for RF attenuation.",
+        "fog":   "Fog density proxy. 5: light fog (~1km vis) | 15: moderate (~300m) | 30: dense (~100m)",
+        "icing": "Icing severity. 5: light rime (~2dB gain loss) | 15: moderate glaze (~4dB) | 30: severe (~6dB)"
+    },
+
+    "storm_start_s": 50,
+    "_storm_start_s": "Time in seconds when weather begins. Set to 0 for weather from the start.",
+
+    "storm_end_s": 130,
+    "_storm_end_s": "Time in seconds when weather clears. Must be <= scenario duration_s. Set equal to duration for weather throughout.",
+
+    "active_type": "step",
+    "_active_type_options": "step | ramp | pulse",
+    "_active_type_step":  "Binary: severity = 0 outside window, 1 inside. Instant on/off.",
+    "_active_type_ramp":  "Linear: severity ramps from 0 to 1 over first half of window, then back to 0. Gradual onset/clearing.",
+    "_active_type_pulse": "Burst: severity = 1 for first 20% of window, then 0. Sharp initial hit, quick clearing.",
+
+    "pd_floor": 0.15,
+    "_pd_floor": "Minimum detection probability. Even in worst conditions, Pd never drops below this. Range: 0.05 to 0.50.",
+
+    "clutter_multiplier": 1.0,
+    "_clutter_multiplier": "Scales weather clutter density. 1.0 = default. 2.0 = double clutter. Only applies to rain and snow (fog/icing generate no clutter)."
+}

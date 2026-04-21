@@ -1,0 +1,23 @@
+{
+  "description": "JPDA + CV filter — crossing pair config with constant velocity model",
+  "tracker_type": "JPDA",
+  "filter_model": "CV",
+  "volume": 1e9,
+  "beta": 1e-14,
+  "params": {
+    "gate": 80,
+    "far_gnn": 1e-6,
+    "confirm_threshold": 8,
+    "delete_threshold": -3,
+    "gate_jpda": 80,
+    "far_jpda": 1e-6,
+    "far_mht": 1e-6,
+    "beta_jpda": 1e-14,
+    "time_tolerance_jpda": 0.05,
+    "num_tracks_jpda": 500,
+    "tomht_threshold_multiplier": [0.2, 1, 1],
+    "max_branches": 5,
+    "jpda_confirm_prob": 0.90,
+    "jpda_delete_prob": 0.03
+  }
+}

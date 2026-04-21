@@ -1,0 +1,10 @@
+{
+    "type": "rain",
+    "description": "Rain for NASA 600s flight — covers most of the flight (100-500s), ramp profile shows gradual onset/clearing",
+    "rain_rate_mmhr": 16,
+    "storm_start_s": 100,
+    "storm_end_s": 500,
+    "active_type": "ramp",
+    "pd_floor": 0.15,
+    "clutter_multiplier": 1.0
+}

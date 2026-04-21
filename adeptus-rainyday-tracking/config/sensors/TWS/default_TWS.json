@@ -1,0 +1,14 @@
+{
+  "name": "Track-While-Scan Phased Array",
+  "type": "TWS",
+  "platform": "tower",
+  "frequency_hz": 9.0e9,
+  "_frequency_hz": "X-band. High resolution phased array. Severely affected by rain. If omitted, defaults to 9.0e9.",
+  "params": {
+    "sector": [-60, 60],
+    "rangeLimits": [0, 200000],
+    "pd": 0.9,
+    "far": 1e-6,
+    "mountingLoc": [0, 0, -20]
+  }
+}

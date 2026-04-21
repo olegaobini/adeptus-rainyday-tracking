@@ -1,0 +1,12 @@
+{
+  "description": "FULL DEGRADATION: X-band PSR (9 GHz), all terrain + weather effects ON. Compare vs S-band to see frequency impact on clutter, Doppler, and rain.",
+  "sensors": ["PSR/xband_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "rural/default_rural",
+  "trackers": ["JPDA/autotuned_JPDA_freq_compare_xband"],
+  "compare_trackers": ["GNN/autotuned_GNN_freq_compare_xband", "JPDA/autotuned_JPDA_freq_compare_xband", "GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+  "degradation": { "terrain_occlusion": true, "horizon_masking": true, "ground_clutter": true, "doppler_fade": true, "weather": "rain/default_rain" },
+  "platforms": {},
+  "cache": { "use_cached_detections": true, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "results_directory": "results" }
+}

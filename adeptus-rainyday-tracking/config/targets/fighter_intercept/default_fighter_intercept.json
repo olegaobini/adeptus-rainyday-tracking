@@ -1,0 +1,30 @@
+{
+  "description": "AESA + FLIR airborne — fighter tracking bogey, sensor fusion at range",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 1400,
+      "start_pos": [
+        0,
+        -200000,
+        -10000
+      ],
+      "heading_deg": 0,
+      "altitude_m": 10000,
+      "x_note": "Fast inbound bogey — Mach 1.1"
+    },
+    {
+      "behavior": "s_maneuver",
+      "speed_kmh": 1100,
+      "start_pos": [
+        20000,
+        -150000,
+        -8000
+      ],
+      "turn_rate_dps": 5,
+      "altitude_m": 8000,
+      "x_note": "Evasive target — high-G turns"
+    }
+  ]
+}

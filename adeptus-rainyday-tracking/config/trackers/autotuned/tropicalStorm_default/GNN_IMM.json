@@ -1,0 +1,41 @@
+{
+    "description":"AUTO-TUNED GNN+IMM for tropicalStorm_default (score=0.0668,
+     posRMS=7005m)",
+    "tracker_type":"GNN",
+    "filter_model":"IMM",
+    "volume":1.0E+8,
+    "beta":1E-14,
+    "params":{
+    "gate":60,
+    "far_gnn":1E-6,
+    "confirm_threshold":25,
+    "delete_threshold":-5,
+    "gate_jpda":60,
+    "far_jpda":1E-6,
+    "far_mht":1E-6,
+    "beta_jpda":1E-14,
+    "time_tolerance_jpda":0.05,
+    "num_tracks_jpda":500,
+    "tomht_threshold_multiplier":[0.2,
+    1,
+    1],
+    "max_branches":5
+},
+    "filter":{
+    "init_speed_kmh":900,
+    "imm_transition_prob":0.97,
+    "scale_accel_horz":15,
+    "scale_accel_vert":10,
+    "scale_omega_dot":30
+},
+    "TUNING_NOTES":{
+    "method":"autoTuneTracker 2-pass sweep",
+    "filter_model":"IMM",
+    "run":"tropicalStorm_default",
+    "score":0.066818013897066417,
+    "posRMS":7004.8342707408519,
+    "swaps":0,
+    "falseTracks":1,
+    "date":"2026-04-17 10:03"
+}
+}

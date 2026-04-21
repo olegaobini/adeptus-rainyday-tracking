@@ -1,0 +1,9 @@
+{
+    "type": "fog",
+    "description": "My custom fog profile — edit these values",
+    "rain_rate_mmhr": 15,
+    "storm_start_s": 0,
+    "storm_end_s": 180,
+    "active_type": "step",
+    "pd_floor": 0.15
+}

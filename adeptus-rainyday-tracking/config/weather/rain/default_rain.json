@@ -1,0 +1,12 @@
+{
+    "type": "rain",
+    "description": "Moderate rain — 16 mm/hr, step profile",
+    "rain_rate_mmhr": 16,
+    "storm_start_s": 50,
+    "storm_end_s": 130,
+    "active_type": "step",
+    "pd_floor": 0.15,
+    "clutter_multiplier": 1.0,
+    "_physics": "ITU-R P.838-3 via MATLAB rainpl(). Frequency-dependent — S-band (2.8 GHz) barely affected, X-band (9 GHz) severely degraded.",
+    "_rain_rate_guide": "1-4: drizzle | 4-16: moderate | 16-50: heavy | 50+: tropical downpour"
+}

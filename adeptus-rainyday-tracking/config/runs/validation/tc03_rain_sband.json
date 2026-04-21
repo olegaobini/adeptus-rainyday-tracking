@@ -1,0 +1,22 @@
+{
+  "_TEST_CASE": "TC-03: Rain S-band (16 mm/hr)",
+  "_OBJECTIVE": "Verify that S-band PSR (2.8 GHz) shows minimal Pd reduction in moderate rain. Paired with TC-04 (X-band) to isolate frequency-dependent ITU-R P.838-3 attenuation as the only test variable.",
+  "_PASS_CRITERIA": "Pd drop < 5% at 100km vs TC-02 baseline. Quality > 80%. Track continuity > 90%.",
+  "_NOTE": "S-band has low ITU-R P.838-3 attenuation. Uses sband_PSR.json (111 km rangeLimits) -- symmetric to xband_PSR used by TC-04 -- so the ONLY variable between TC-03 and TC-04 is CenterFrequency. Previously used default_PSR (20 km rangeLimits) which put targets at the edge of the range gate and confounded the frequency-vs-rain comparison.",
+
+  "description": "TC-03: S-band PSR (2.8 GHz, symmetric geometry) in moderate rain (16 mm/hr) -- expect minimal degradation",
+  "sensors": ["PSR/sband_PSR"],
+  "targets": "gentle_turn/default_gentle_turn",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/default_GNN"],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": true,
+    "weather": "rain/validation_rain"
+  },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "platforms": {},
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

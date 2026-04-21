@@ -1,0 +1,10 @@
+{
+    "type": "rain",
+    "description": "Heavy rain for NASA 600s flight — 40 mm/hr, ramp profile, covers 100-500s",
+    "rain_rate_mmhr": 40,
+    "storm_start_s": 100,
+    "storm_end_s": 500,
+    "active_type": "ramp",
+    "pd_floor": 0.10,
+    "clutter_multiplier": 1.5
+}

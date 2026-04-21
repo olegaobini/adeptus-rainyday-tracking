@@ -1,0 +1,18 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename, edit.",
+    "Reference in a run file as: terrain/urban/my_urban"
+  ],
+  "PARAM_DOCS": {
+    "terrain_type": "water|rural|urban|mountain|desert — drives heightmap generation.",
+    "terrain_scale": "Elevation multiplier. 2.0=double height, 0.5=half.",
+    "clutter_density": "0-1. 0=none, 1=heavy.",
+    "refraction_factor": "4/3 Earth model. 1.0=optical, >1.33=ducting."
+  },
+  "_SCOPE_NOTE": "Terrain files now own PHYSICAL parameters only (heightmap shape, clutter intensity, atmospheric refraction). Degradation TOGGLES (terrain_occlusion, horizon_masking, ground_clutter, doppler_fade, weather) live in the run file's 'degradation' block — see config/runs/run_template.json. This separation was cleaned up in v3.4.3 to prevent silent overrides.",
+  "description": "City terrain, building clusters 150m, moderate clutter.",
+  "terrain_type": "urban",
+  "terrain_scale": 1.0,
+  "clutter_density": 0.6,
+  "refraction_factor": 1.333
+}

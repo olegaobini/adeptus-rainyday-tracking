@@ -1,0 +1,11 @@
+{
+    "type": "snow",
+    "description": "Snowfall for NASA 600s flight — moderate snow, covers 100-500s, ramp profile",
+    "rain_rate_mmhr": 20,
+    "storm_start_s": 100,
+    "storm_end_s": 500,
+    "active_type": "ramp",
+    "pd_floor": 0.15,
+    "clutter_multiplier": 1.0,
+    "_physics": "Uses rainpl() at 25% equivalent rate. Snow less dense than rain (Gunn & East, 1954)."
+}

@@ -1,0 +1,21 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/FLIR/my_FLIR"
+  ],
+  "PARAM_DOCS": {
+    "frequency_hz": "N/A for IR sensors. FLIR operates in infrared wavelengths (~8-12 μm), not RF. Not affected by rain but severely degraded by fog, clouds, and humidity. This field is ignored for IR sensor types.",
+    "sector": "±30deg forward from aircraft nose.",
+    "rangeLimits": "30km. Short range, bearing-only. Complements AESA.",
+    "pd": "0.75 — passive IR."
+  },
+  "name": "Forward-Looking Infrared",
+  "type": "FLIR",
+  "platform": "aircraft",
+  "params": {
+    "sector": [-30, 30],
+    "rangeLimits": [0, 30000],
+    "pd": 0.75,
+    "mountingLoc": [0, 0, 0]
+  }
+}

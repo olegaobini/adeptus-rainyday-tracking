@@ -1,0 +1,36 @@
+{
+  "description": "Two targets crossing at same altitude — track swap test",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [
+        -20000,
+        -30000,
+        -5000
+      ],
+      "end_pos": [
+        20000,
+        -30000,
+        -5000
+      ],
+      "altitude_m": 5000
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [
+        0,
+        -50000,
+        -5000
+      ],
+      "end_pos": [
+        0,
+        -10000,
+        -5000
+      ],
+      "altitude_m": 5000
+    }
+  ]
+}

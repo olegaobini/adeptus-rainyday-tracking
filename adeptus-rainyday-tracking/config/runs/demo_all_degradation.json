@@ -1,0 +1,12 @@
+{
+  "description": "ALL DEGRADATION DEMO (no weather): 747 vs stealth bomber over mountains. Shows Doppler fade, terrain occlusion, horizon masking, and ground clutter working together.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "mountain/default_mountain",
+  "trackers": ["GNN/autotuned_GNN", "GNN/crossing_GNN_cv", "JPDA/crossing_JPDA", "JPDA/crossing_JPDA_cv", "TOMHT/autotuned_TOMHT_range_rcs_test", "TOMHT/crossing_TOMHT_cv"],
+  "compare_trackers": ["GNN/autotuned_GNN", "GNN/crossing_GNN_cv", "JPDA/crossing_JPDA", "JPDA/crossing_JPDA_cv", "TOMHT/autotuned_TOMHT_range_rcs_test", "TOMHT/crossing_TOMHT_cv"],
+  "degradation": { "terrain_occlusion": true, "horizon_masking": true, "ground_clutter": true, "doppler_fade": true, "weather": "none" },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

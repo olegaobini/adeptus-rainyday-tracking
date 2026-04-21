@@ -1,0 +1,10 @@
+{
+    "type": "rain",
+    "description": "Violent rain for NASA 600s flight — ramp profile, covers 1-600s",
+    "rain_rate_mmhr": 100,
+    "storm_start_s": 1,
+    "storm_end_s": 600,
+    "active_type": "ramp",
+    "pd_floor": 0.10,
+    "clutter_multiplier": 1.5
+}

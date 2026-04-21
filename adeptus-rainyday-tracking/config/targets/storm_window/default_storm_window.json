@@ -1,0 +1,28 @@
+{
+  "description": "Heavy rain — maximum degradation, tests tracker robustness",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 900,
+      "start_pos": [
+        -2000,
+        -20000,
+        -3000
+      ],
+      "heading_deg": 90,
+      "altitude_m": 3000
+    },
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 700,
+      "start_pos": [
+        2000,
+        -19000,
+        -3500
+      ],
+      "heading_deg": 270,
+      "altitude_m": 3500
+    }
+  ]
+}

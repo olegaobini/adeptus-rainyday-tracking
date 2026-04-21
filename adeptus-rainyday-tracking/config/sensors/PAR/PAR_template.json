@@ -1,0 +1,23 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit params.",
+    "Reference in a run file as: sensors/PAR/my_PAR"
+  ],
+  "PARAM_DOCS": {
+    "frequency_hz": "Operating frequency in Hz. Default 9.0e9 (X-band) for PAR. High resolution needed for precision approach guidance, but severely affected by rain.",
+    "sector": "[minAz, maxAz] pointing down runway. 170-190 = ±10deg of south.",
+    "rangeLimits": "20nm. Short range, high accuracy for final approach.",
+    "pd": "0.95 — high rate needed for precision guidance."
+  },
+  "name": "Precision Approach Radar",
+  "type": "PAR",
+  "platform": "tower",
+  "frequency_hz": 9.0e9,
+  "params": {
+    "sector": [170, 190],
+    "rangeLimits": [0, 37040],
+    "pd": 0.95,
+    "far": 1e-7,
+    "mountingLoc": [0, 0, -10]
+  }
+}

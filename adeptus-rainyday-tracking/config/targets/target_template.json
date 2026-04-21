@@ -1,0 +1,123 @@
+{
+  "INSTRUCTIONS": [
+    "TARGET DEFINITION TEMPLATE — Copy and edit for your scenario.",
+    "",
+    "BEHAVIORS (pick one per target):",
+    "  constant_velocity : Straight line at fixed heading.",
+    "  gentle_turn       : Gradual heading change.",
+    "  s_maneuver        : Evasive S-shaped path. Set turn_rate_dps (2-5 typical).",
+    "  crossing          : Straight line from start_pos to end_pos.",
+    "  orbit             : Circular holding pattern. Set orbit_radius_m (3000-5000).",
+    "  approach          : Descending glide path from start_pos to end_pos.",
+    "  departure         : Climbing away from start_pos to end_pos.",
+    "  waypoints         : ★ CUSTOM — define your own [x,y,z] waypoints + times.",
+    "                      This gives you TOTAL control over the flight path.",
+    "",
+    "COORDINATES: NED (North-East-Down). Z is NEGATIVE for altitude above ground.",
+    "  [0, -20000, -5000] = at origin north, 20km south, 5km altitude.",
+    "",
+    "TARGET SIZE (optional — affects detection probability at range):",
+    "  rcs_dbsm: Radar Cross Section in dBsm. Examples:",
+    "    -20 dBsm : small drone / bird",
+    "    -10 dBsm : stealth UAV",
+    "      0 dBsm : cruise missile / small fighter (clean)",
+    "      5 dBsm : fighter jet (typical)",
+    "     10 dBsm : small general aviation",
+    "     20 dBsm : commercial airliner (737/A320)",
+    "     30 dBsm : large transport (747/C-17)",
+    "     40 dBsm : large ship / ground structure",
+    "  If omitted, MATLAB uses its default RCS model.",
+    "",
+    "DIMENSIONS (optional — for cuboid visualization):",
+    "  dimensions: { length_m, width_m, height_m }",
+    "  If omitted, target is rendered as a point.",
+    "",
+    "LABEL (optional — shown in plots and metrics):",
+    "  label: 'Boeing 737' or 'UAV Threat' etc.",
+    "",
+    "CLASS_ID (optional — integer for target classification):",
+    "  0 = unknown (default), 1 = aircraft, 2 = missile, etc.",
+    "  You define the scheme. SSR/IFF sensors use this for identification."
+  ],
+
+  "description": "Target template — demonstrates all available options",
+  "duration_s": 60,
+
+  "targets": [
+    {
+      "_comment": "EXAMPLE 1: Simple constant velocity — minimum required fields",
+      "behavior": "constant_velocity",
+      "speed_kmh": 800,
+      "heading_deg": 90,
+      "start_pos": [-20000, -30000, -5000],
+      "altitude_m": 5000
+    },
+
+    {
+      "_comment": "EXAMPLE 2: Crossing path with custom RCS (small fighter)",
+      "behavior": "crossing",
+      "speed_kmh": 900,
+      "start_pos": [0, -50000, -8000],
+      "end_pos": [0, -10000, -8000],
+      "altitude_m": 8000,
+      "rcs_dbsm": 5,
+      "label": "Fighter Jet",
+      "class_id": 1
+    },
+
+    {
+      "_comment": "EXAMPLE 3: Orbit pattern with physical dimensions (airliner)",
+      "behavior": "orbit",
+      "speed_kmh": 400,
+      "start_pos": [10000, -25000, -10000],
+      "altitude_m": 10000,
+      "orbit_radius_m": 5000,
+      "rcs_dbsm": 20,
+      "dimensions": { "length_m": 38, "width_m": 34, "height_m": 12 },
+      "label": "Boeing 737 (holding)",
+      "class_id": 1
+    },
+
+    {
+      "_comment": "EXAMPLE 4: S-maneuver with stealth RCS (evasive UAV)",
+      "behavior": "s_maneuver",
+      "speed_kmh": 600,
+      "heading_deg": 45,
+      "start_pos": [-15000, -40000, -3000],
+      "altitude_m": 3000,
+      "turn_rate_dps": 4,
+      "rcs_dbsm": -10,
+      "label": "Stealth UAV",
+      "class_id": 2
+    },
+
+    {
+      "_comment": "EXAMPLE 5: ★ CUSTOM WAYPOINTS — full user control over flight path",
+      "behavior": "waypoints",
+      "waypoints": [
+        { "pos": [-30000, -40000, -6000], "time_s": 0 },
+        { "pos": [-20000, -35000, -6000], "time_s": 10 },
+        { "pos": [-10000, -30000, -5000], "time_s": 20 },
+        { "pos": [0,      -28000, -4000], "time_s": 30 },
+        { "pos": [10000,  -30000, -3000], "time_s": 40 },
+        { "pos": [20000,  -35000, -3000], "time_s": 50 },
+        { "pos": [25000,  -40000, -3000], "time_s": 60 }
+      ],
+      "rcs_dbsm": 15,
+      "label": "Custom Waypoint Path",
+      "class_id": 1
+    },
+
+    {
+      "_comment": "EXAMPLE 6: Approach (landing) with small GA aircraft dimensions",
+      "behavior": "approach",
+      "speed_kmh": 250,
+      "start_pos": [-20000, -15000, -2000],
+      "end_pos": [0, -500, -50],
+      "altitude_m": 2000,
+      "rcs_dbsm": 10,
+      "dimensions": { "length_m": 12, "width_m": 11, "height_m": 3 },
+      "label": "Cessna 172 (landing)"
+    }
+  ]
+}
