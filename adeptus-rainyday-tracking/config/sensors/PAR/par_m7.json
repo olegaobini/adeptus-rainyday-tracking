@@ -1,0 +1,35 @@
+{
+  "name": "par_m7",
+  "type": "PAR",
+  "platform": "tower",
+  "frequency_hz": 9.0E+9,
+  "params": {
+    "rpm": 0,
+    "fov": [
+      1,
+      1
+    ],
+    "tilt": -3,
+    "sector": [
+      170,
+      190
+    ],
+    "pd": 0.95,
+    "far": 1E-7,
+    "rangeLimits": [
+      0,
+      37040
+    ],
+    "rangeRes": 15,
+    "mountingLoc": [
+      10000,
+      10000,
+      -15
+    ],
+    "_display_color": [
+      0.85,
+      0.55,
+      0.2
+    ]
+  }
+}

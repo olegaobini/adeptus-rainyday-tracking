@@ -214,6 +214,24 @@ end
 restart(scenario);
 detBuffer = {}; mssrBuffer = {}; cfgBuffer = {};
 
+% ── M5 §3.2 multi-target Truth log shape contract ─────────────────────
+%  Downstream consumers (runTracker, analyzeTrackSwaps, plotters) treat
+%  dataLog.Truth as a [nTargets × nScans] struct array — they index it
+%  as `Truth(:, ss)` (all targets at scan ss) and `Truth(tgt, :)` (one
+%  target's history). To honor that shape we must:
+%    1. Append a COLUMN of length nTargets per scan (not a horizontal
+%       slab — that would corrupt size(Truth,1) once N>1).
+%    2. Hold the per-scan column at a constant nTargets even when a
+%       target's trajectory ends and targetPoses() drops it. We do this
+%       by snapshotting the initial pose set as a "stale" template and
+%       padding missing rows with the last seen pose for that PlatformID.
+%
+%  Single-target M4 scenarios keep working: nTargets==1, target never
+%  drops out, and the column-append degenerates back to a 1×nScans row.
+truthInitPoses = targetPoses(activeInfos(1).platform);
+nExpectedTargets = numel(truthInitPoses);
+truthLastByPlatform = truthInitPoses(:);   % column of last-known poses
+
 dataLog.Time              = [];
 dataLog.Truth             = [];
 dataLog.Detections        = {};
@@ -479,8 +497,24 @@ while advance(scenario)
         for kk = 1:numel(detBuffer);  detBuffer{kk}.Time  = simTime; end
         for kk = 1:numel(mssrBuffer); mssrBuffer{kk}.Time = simTime; end
 
-        % Get truth
-        targets = targetPoses(activeInfos(1).platform);
+        % Get truth — targetPoses may return fewer targets than
+        % nExpectedTargets if a trajectory has ended. Align the new scan
+        % against the initial platform set by PlatformID and carry
+        % forward the last-known pose for any missing target, so the
+        % truth column stays at height nExpectedTargets across all scans.
+        targetsRaw = targetPoses(activeInfos(1).platform);
+        truthCol = truthLastByPlatform;   % start from last-known column
+        if ~isempty(targetsRaw)
+            for tg = 1:numel(targetsRaw)
+                pid = targetsRaw(tg).PlatformID;
+                slot = find([truthLastByPlatform.PlatformID] == pid, 1);
+                if ~isempty(slot)
+                    truthCol(slot) = targetsRaw(tg);
+                end
+            end
+        end
+        truthLastByPlatform = truthCol;   % cache for next scan's fallback
+        targets = truthCol;               % keep name for downstream
 
         % Merge
         mergedDets = [mssrBuffer; detBuffer];
@@ -489,9 +523,10 @@ while advance(scenario)
         fprintf("t=%.2f: PSR=%d, MSSR=%d, total=%d (clutter=%d)\n", ...
             simTime, numel(detBuffer), numel(mssrBuffer), numel(mergedDets), nFalse);
 
-        % Log
+        % Log — append targets as a COLUMN so Truth grows as
+        % [nExpectedTargets × nScans] (see §3.2 shape contract above).
         dataLog.Time       = [dataLog.Time, simTime];
-        dataLog.Truth      = [dataLog.Truth, targets];
+        dataLog.Truth      = [dataLog.Truth, targets(:)];
         dataLog.Detections = [dataLog.Detections(:)', {mergedDets}];
         dataLog.SensorConfig = [dataLog.SensorConfig(:)', {cfgBuffer}];
         try scanSensors = unique(cellfun(@(d) d.SensorIndex, mergedDets)); catch; scanSensors = []; end

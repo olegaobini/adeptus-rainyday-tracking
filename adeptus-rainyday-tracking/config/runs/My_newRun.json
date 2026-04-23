@@ -1,0 +1,34 @@
+{
+  "description": "Auto-generated run from GUI",
+  "sensors": [
+    "PSR/default_PSR"
+  ],
+  "targets": "LAPTOP_TEST",
+  "terrain": "desert/default_desert",
+  "trackers": [
+    "GNN/default_GNN",
+    "JPDA/crossing_JPDA"
+  ],
+  "compare_trackers": [
+    "GNN/default_GNN",
+    "JPDA/crossing_JPDA"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "rcs_range_filter": false,
+    "weather": "fog/default_fog"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true
+  }
+}

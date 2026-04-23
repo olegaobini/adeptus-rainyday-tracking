@@ -54,6 +54,10 @@ if isfield(runDef, 'sensors')
         sensorPaths = {char(runDef.sensors)};
     elseif iscell(runDef.sensors)
         sensorPaths = runDef.sensors;
+    elseif isempty(runDef.sensors)
+        % GUI-generated runs can emit "sensors": [] which jsondecode
+        % returns as numeric [] — guard against cellstr([]) breaking.
+        sensorPaths = {};
     else
         sensorPaths = cellstr(runDef.sensors);
     end
@@ -158,6 +162,10 @@ if isfield(runDef, 'trackers')
         trkPaths = {char(runDef.trackers)};
     elseif iscell(runDef.trackers)
         trkPaths = runDef.trackers;
+    elseif isempty(runDef.trackers)
+        % GUI-generated runs can emit "trackers": [] — guard against
+        % cellstr([]) breaking the load. Mirrors the sensors case above.
+        trkPaths = {};
     else
         trkPaths = cellstr(runDef.trackers);
     end

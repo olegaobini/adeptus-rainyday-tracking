@@ -1,0 +1,30 @@
+{
+  "description": "M7 §3.6 end-to-end: rain-over-mountain demo scenario.",
+  "sensors": [
+    "PSR/psr_m7",
+    "PAR/par_m7"
+  ],
+  "targets": "waypoints/m7_rain_over_mountain_demo",
+  "terrain": "mountain/m7_rain_over_mountain_demo_terrain",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "rain/m7_rain_over_mountain_demo_weather"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}
