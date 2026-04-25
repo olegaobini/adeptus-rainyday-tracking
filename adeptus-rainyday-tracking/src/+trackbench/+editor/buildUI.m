@@ -187,10 +187,22 @@ function buildUI(state)
     %   per-type) + storm start/end pair + profile DD + pd_floor +
     %   clutter_mult (fog/icing disabled) + sparkline (36 px) + Load.
     %   ~12 rows at ~22 px plus 36 px for the sparkline plus panel title.
-    inner.RowHeight   = {85, 110, 378, 110, 378, 220, 340, 240, 157, 60, 115};
+    inner.RowHeight   = {85, 145, 378, 230, 378, 280, 340, 240, 65, 60, 115};
     inner.ColumnWidth = {'1x'};
     inner.RowSpacing  = 4;
     inner.Scrollable  = 'on';
+
+    % v3.5 step 4a — capture handles for mode-specific show/hide.
+    %  applyEditMode rewrites inner.RowHeight on every mode switch,
+    %  zeroing out rows whose panels don't belong to the active mode.
+    %  We snapshot the original row-height cell now because there's no
+    %  way to recover it later — reading inner.RowHeight after a hide
+    %  cycle would yield the rewritten cell with zeros in it. Storing
+    %  the cell directly (not a copy) is fine: cell-array assignment
+    %  in MATLAB copies-on-write, so future mutations of
+    %  inner.RowHeight don't bleed back into our saved snapshot.
+    state.editorInnerGrid              = inner;
+    state.editorInnerOriginalRowHeights = inner.RowHeight;
 
     % ── Mode-toggle sub-panel (M6 §3.2, row 1) ──────────────────────
     buildModeTogglePanel(inner, state);
@@ -371,8 +383,13 @@ function buildSensorsPanel(parent, state)
 %    button (which takes no type argument), so users don't mis-click
 %    expecting the same behavior.
     pnl = uipanel(parent, 'Title', 'Sensors');
-    g = uigridlayout(pnl, [2 1]);
-    g.RowHeight   = {30, 28};
+    state.sensorsPanel = pnl;   % v3.5 step 4a — mode-specific show/hide
+    % v3.5 step 4c — expanded from 2 rows to 3 to host file-I/O.
+    %   Row 1: dropdown                                 30 px
+    %   Row 2: + Add | Duplicate | Delete | Rename      28 px
+    %   Row 3: Load Sensor… | Save Sensor…               28 px
+    g = uigridlayout(pnl, [3 1]);
+    g.RowHeight   = {30, 28, 28};
     g.ColumnWidth = {'1x'};
     g.Padding     = [6 6 6 6];
     g.RowSpacing  = 4;
@@ -383,7 +400,7 @@ function buildSensorsPanel(parent, state)
         'Tooltip', 'Active sensor. Pick another to edit its parameters.', ...
         'ValueChangedFcn', @(src, ~) onSensorsDropdownChanged(src, state));
 
-    % Row 2 — button strip
+    % Row 2 — collection-management button strip
     btns = uigridlayout(g, [1 4]);
     btns.Layout.Row    = 2;
     btns.Layout.Column = 1;
@@ -405,6 +422,28 @@ function buildSensorsPanel(parent, state)
     state.sensorsBtnRename = uibutton(btns, 'push', 'Text', 'Rename', ...
         'Tooltip', 'Rename the active sensor (alphanumeric; must be unique).', ...
         'ButtonPushedFcn', @(~, ~) onSensorsRename(state));
+
+    % Row 3 — file-I/O strip (v3.5 step 4c). Save is bold + blue to
+    % match the styling of Save Target in the Targets panel — makes
+    % the primary commit verb visually consistent across modes.
+    %   onLoadSensors APPENDS to the collection (existing semantic);
+    %   onSaveSensor writes the ACTIVE sensor only via
+    %   exportSingleSensorToJSON.
+    fioRow = uigridlayout(g, [1 2]);
+    fioRow.Layout.Row    = 3;
+    fioRow.Layout.Column = 1;
+    fioRow.RowHeight    = {28};
+    fioRow.ColumnWidth  = {'1x', '1x'};
+    fioRow.Padding      = [0 0 0 0];
+    fioRow.ColumnSpacing = 4;
+    state.sensorsBtnLoad = uibutton(fioRow, 'push', 'Text', 'Load Sensor…', ...
+        'Tooltip', 'Load a sensor JSON file from config/sensors/. Appends to the current collection.', ...
+        'ButtonPushedFcn', @(~, ~) onLoadSensors(state));
+    state.sensorsBtnSave = uibutton(fioRow, 'push', 'Text', 'Save Sensor…', ...
+        'FontWeight', 'bold', ...
+        'BackgroundColor', [0.25 0.55 0.85], 'FontColor', 'white', ...
+        'Tooltip', 'Export the active sensor to a single JSON file in config/sensors/.', ...
+        'ButtonPushedFcn', @(~, ~) onSaveSensor(state));
 end
 
 
@@ -650,11 +689,20 @@ function buildTargetsPanel(parent, state)
 %  in the order Items → ItemsData → Value to avoid transient
 %  inconsistency. See M5 handoff §8 gotcha #3.
     pnl = uipanel(parent, 'Title', 'Targets');
-    % 2 rows × 1 column layout: row 1 is the dropdown (30 px), row 2
-    % is the button strip (28 px). Panel row in `inner` is 110 px →
-    % 6 pad + 30 + 4 spacing + 28 + title chrome ≈ 80 + title ≈ fits.
-    g = uigridlayout(pnl, [2 1]);
-    g.RowHeight   = {30, 28};
+    state.targetsPanel = pnl;   % v3.5 step 4a — mode-specific show/hide
+    % 6 rows × 1 column layout (v3.5 step 4c expanded the panel from 3
+    % rows to 6). Row groups by operation class:
+    %   Row 1: dropdown                     30 px — active-target picker
+    %   Row 2: New|Duplicate|Delete|Rename  28 px — collection mgmt
+    %   Row 3: Load Target | Save Target    28 px — standard file I/O
+    %   Row 4: Import NASA Flight…          28 px — special importer
+    %   Row 5: Load as Reference | Unload   28 px — reference overlay
+    %   Row 6: Clear all waypoints          28 px — destructive (alone)
+    %
+    % Total content: 30 + 5*28 + 5*4 spacings + 12 padding + ~22 title
+    %              = 224 px. Outer slot in inner.RowHeight is 230 px.
+    g = uigridlayout(pnl, [6 1]);
+    g.RowHeight   = {30, 28, 28, 28, 28, 28};
     g.ColumnWidth = {'1x'};
     g.Padding     = [6 6 6 6];
     g.RowSpacing  = 4;
@@ -690,6 +738,62 @@ function buildTargetsPanel(parent, state)
     state.targetsBtnRename = uibutton(btns, 'push', 'Text', 'Rename', ...
         'Tooltip', 'Rename the active target (same rules as Target name).', ...
         'ButtonPushedFcn', @(~, ~) onTargetsRename(state));
+
+    % Row 3: Load + Save target file I/O (v3.5 step 4c). Nested 1×2
+    % grid for clean side-by-side spacing. Save is the highlighted
+    % primary action (blue + bold, mirroring the old File-panel
+    % "Export JSON" emphasis) so it reads as the main commit verb.
+    fioRow = uigridlayout(g, [1 2]);
+    fioRow.Layout.Row    = 3;
+    fioRow.Layout.Column = 1;
+    fioRow.RowHeight    = {28};
+    fioRow.ColumnWidth  = {'1x', '1x'};
+    fioRow.Padding      = [0 0 0 0];
+    fioRow.ColumnSpacing = 4;
+    state.targetsBtnLoad = uibutton(fioRow, 'push', 'Text', 'Load Target…', ...
+        'Tooltip', 'Load a target waypoints JSON file (replaces or appends to current targets).', ...
+        'ButtonPushedFcn', @(~, ~) onLoad(state));
+    state.targetsBtnSave = uibutton(fioRow, 'push', 'Text', 'Save Target…', ...
+        'FontWeight', 'bold', ...
+        'BackgroundColor', [0.25 0.55 0.85], 'FontColor', 'white', ...
+        'Tooltip', 'Export all writable targets to a single waypoints JSON file.', ...
+        'ButtonPushedFcn', @(~, ~) onExport(state));
+
+    % Row 4: NASA Flight importer (v3.5 step 4b). Spans full width —
+    % see step-4b commit message for layout rationale.
+    state.targetsBtnNasaFlight = uibutton(g, 'push', ...
+        'Text', 'Import NASA Flight (.mat)…', ...
+        'Tooltip', 'Load a NASA DASHlink Flight Data Recorder .mat file as a target trajectory.', ...
+        'ButtonPushedFcn', @(~, ~) onTargetsAddNasaFlight(state));
+    state.targetsBtnNasaFlight.Layout.Row    = 4;
+    state.targetsBtnNasaFlight.Layout.Column = 1;
+
+    % Row 5: reference-overlay buttons (v3.5 step 4c). Reference
+    % targets are read-only path overlays loaded for context; users
+    % Duplicate one to get an editable copy.
+    refRow = uigridlayout(g, [1 2]);
+    refRow.Layout.Row    = 5;
+    refRow.Layout.Column = 1;
+    refRow.RowHeight    = {28};
+    refRow.ColumnWidth  = {'1x', '1x'};
+    refRow.Padding      = [0 0 0 0];
+    refRow.ColumnSpacing = 4;
+    state.targetsBtnLoadRef = uibutton(refRow, 'push', 'Text', 'Load as Reference…', ...
+        'Tooltip', 'Load a target file as a read-only reference overlay (display only — not exported).', ...
+        'ButtonPushedFcn', @(~, ~) onLoadReference(state));
+    state.targetsBtnUnloadRefs = uibutton(refRow, 'push', 'Text', 'Unload References', ...
+        'Tooltip', 'Remove all reference targets currently overlaid on the map.', ...
+        'ButtonPushedFcn', @(~, ~) onUnloadReferences(state));
+
+    % Row 6: destructive action (v3.5 step 4c). Kept on its own row
+    % away from the file-I/O cluster so a stray click can't accidentally
+    % land on Clear when aiming for Save. No bold styling — we want it
+    % visually quieter than Save, not louder.
+    state.targetsBtnClear = uibutton(g, 'push', 'Text', 'Clear all waypoints', ...
+        'Tooltip', 'Wipe the active target''s waypoints. Does not affect scenario fields.', ...
+        'ButtonPushedFcn', @(~, ~) onClear(state));
+    state.targetsBtnClear.Layout.Row    = 6;
+    state.targetsBtnClear.Layout.Column = 1;
 end
 
 
@@ -886,11 +990,16 @@ function buildTerrainPanel(parent, state)
     pnl = uipanel(parent, 'Title', 'Terrain');
     state.terrainPanel = pnl;
 
-    g = uigridlayout(pnl, [9 4]);
-    g.RowHeight   = {22, 22, 22, 22, 20, 20, 20, 20, 26};
+    g = uigridlayout(pnl, [10 4]);
+    g.RowHeight   = {22, 22, 22, 22, 20, 20, 20, 20, 26, 26};
     % 4-col: label | value | label | value — gives room for paired
     % fields on rows 3 (Scale/Clutter) and for the degradation
     % checkboxes which span 3 columns so the 4-wide row still reads.
+    %
+    % v3.5 step 4c — row 10 added for the Save Terrain button. The
+    % previous 9-row layout had Load + Overlay paired on row 9; rather
+    % than disrupt that visual pairing the new Save button gets its
+    % own row spanning the full panel width.
     g.ColumnWidth = {80, '1x', 80, '1x'};
     g.Padding     = [6 6 6 6];
     g.RowSpacing  = 2;
@@ -1003,6 +1112,14 @@ function buildTerrainPanel(parent, state)
         'ValueChangedFcn', @(~, ~) onTerrainOverlayToggled(state));
     state.terrainOverlayCB.Layout.Row = 9;
     state.terrainOverlayCB.Layout.Column = [3 4];
+
+    % Row 10 — Save button (v3.5 step 4c). Full-width to match the
+    % weight of "Load from file…" + "Overlay on map" on row 9 above.
+    state.terrainSaveBtn = uibutton(g, 'push', 'Text', 'Save to file…', ...
+        'Tooltip', 'Save the current terrain configuration to a JSON file.', ...
+        'ButtonPushedFcn', @(~, ~) onSaveTerrain(state));
+    state.terrainSaveBtn.Layout.Row = 10;
+    state.terrainSaveBtn.Layout.Column = [1 4];
 end
 
 
@@ -1162,12 +1279,21 @@ function buildWeatherPanel(parent, state)
     state.weatherStormSparkline.HitTest = 'off';
     state.weatherStormSparkline.PickableParts = 'none';
 
-    % Row 8 — Load button
+    % Row 8 — Load + Save buttons (v3.5 step 4c added Save)
     state.weatherLoadBtn = uibutton(g, 'push', 'Text', 'Load from file…', ...
         'Tooltip', 'Load a weather definition from config/weather/. Replaces the current weather.', ...
         'ButtonPushedFcn', @(~, ~) onLoadWeather(state));
     state.weatherLoadBtn.Layout.Row = 8;
     state.weatherLoadBtn.Layout.Column = [1 2];
+
+    % Save weather lives next to Load per v3.5 step 4c "context-aware
+    % Save" (Option A: in-panel save buttons). Disabled while
+    % state.weather is empty (refreshWeatherPanel handles this).
+    state.weatherSaveBtn = uibutton(g, 'push', 'Text', 'Save to file…', ...
+        'Tooltip', 'Save the current weather configuration to a JSON file.', ...
+        'ButtonPushedFcn', @(~, ~) onSaveWeather(state));
+    state.weatherSaveBtn.Layout.Row = 8;
+    state.weatherSaveBtn.Layout.Column = [3 4];
 end
 
 
@@ -1218,69 +1344,43 @@ end
 
 
 function buildFilePanel(parent, state)
-    % M6 §3.4 — File panel grew from 3x2 to 4x2 to host the scenario-
-    % bundle row (sensors + full scenario open/export). Row layout:
-    %   Row 1: [Load JSON…       | Export JSON            ]   targets only
-    %   Row 2: [Load as Ref…     | Unload all references  ]   targets overlay
-    %   Row 3: [Load Sensors…    | Open Scenario…         ]   sensors / full
-    %   Row 4: [Clear waypoints  | Export Scenario        ]   aggregate
-    %
-    % Naming convention:
-    %   "Load JSON…"   — targets only, replace mode (M5)
-    %   "Load Sensors…"— sensors only, APPEND mode (M6 §3.4)
-    %   "Open Scenario" — sensors + targets, replace via run file (M6 §3.4)
-    %   "Export JSON"  — targets only, single-file (M5)
-    %   "Export Scenario" — full bundle: sensors + targets + run file (M6)
+%buildFilePanel  Scenario-level file actions (v3.5 step 4c shrink).
+%
+%  Pre-v3.5 this panel hosted EVERYTHING file-related: target Load/
+%  Export, sensor Load, reference overlay management, target Clear,
+%  AND the full-scenario Open/Export. Step 4c moved each operation
+%  into its respective mode-specific panel (Targets / Sensors /
+%  Terrain / Weather), leaving this panel with just the two scenario-
+%  level commands that genuinely don't belong to a single mode.
+%
+%  Layout:
+%    [ Open Scenario… ] [ Export Scenario ]
+%
+%  WHY KEEP IT AS A PANEL
+%    A two-button strip without a panel border would feel orphaned in
+%    the always-visible bottom row of the sidebar. The "File" title
+%    keeps the operation class explicit and signals "these run
+%    regardless of which edit mode you're in".
     pnl = uipanel(parent, 'Title', 'File');
-    g = uigridlayout(pnl, [4 2]);
-    g.RowHeight   = {28, 28, 28, 28};
+    g = uigridlayout(pnl, [1 2]);
+    g.RowHeight   = {28};
     g.ColumnWidth = {'1x', '1x'};
     g.Padding     = [6 6 6 6];
     g.RowSpacing  = 4;
     g.ColumnSpacing = 4;
 
-    loadBtn = uibutton(g, 'push', 'Text', 'Load JSON…', ...
-        'ButtonPushedFcn', @(~, ~) onLoad(state));
-    loadBtn.Layout.Row    = 1;
-    loadBtn.Layout.Column = 1;
-
-    exportBtn = uibutton(g, 'push', 'Text', 'Export JSON', ...
-        'FontWeight', 'bold', ...
-        'BackgroundColor', [0.25 0.55 0.85], 'FontColor', 'white', ...
-        'ButtonPushedFcn', @(~, ~) onExport(state));
-    exportBtn.Layout.Row    = 1;
-    exportBtn.Layout.Column = 2;
-
-    loadRefBtn = uibutton(g, 'push', 'Text', 'Load as Reference…', ...
-        'ButtonPushedFcn', @(~, ~) onLoadReference(state));
-    loadRefBtn.Layout.Row    = 2;
-    loadRefBtn.Layout.Column = 1;
-
-    unloadRefsBtn = uibutton(g, 'push', 'Text', 'Unload all references', ...
-        'ButtonPushedFcn', @(~, ~) onUnloadReferences(state));
-    unloadRefsBtn.Layout.Row    = 2;
-    unloadRefsBtn.Layout.Column = 2;
-
-    loadSensorsBtn = uibutton(g, 'push', 'Text', 'Load Sensors…', ...
-        'ButtonPushedFcn', @(~, ~) onLoadSensors(state));
-    loadSensorsBtn.Layout.Row    = 3;
-    loadSensorsBtn.Layout.Column = 1;
-
     openScenarioBtn = uibutton(g, 'push', 'Text', 'Open Scenario…', ...
+        'Tooltip', 'Open a full scenario from a run file (replaces sensors + targets + environment).', ...
         'ButtonPushedFcn', @(~, ~) onOpenScenario(state));
-    openScenarioBtn.Layout.Row    = 3;
-    openScenarioBtn.Layout.Column = 2;
-
-    clearBtn = uibutton(g, 'push', 'Text', 'Clear all waypoints', ...
-        'ButtonPushedFcn', @(~, ~) onClear(state));
-    clearBtn.Layout.Row    = 4;
-    clearBtn.Layout.Column = 1;
+    openScenarioBtn.Layout.Row    = 1;
+    openScenarioBtn.Layout.Column = 1;
 
     exportScenarioBtn = uibutton(g, 'push', 'Text', 'Export Scenario', ...
         'FontWeight', 'bold', ...
         'BackgroundColor', [0.20 0.50 0.30], 'FontColor', 'white', ...
+        'Tooltip', 'Save the full scenario bundle: sensors, targets, terrain, weather, and run file.', ...
         'ButtonPushedFcn', @(~, ~) onExportScenario(state));
-    exportScenarioBtn.Layout.Row    = 4;
+    exportScenarioBtn.Layout.Row    = 1;
     exportScenarioBtn.Layout.Column = 2;
 end
 
@@ -2180,6 +2280,67 @@ function onLoadSensors(state)
 end
 
 
+function onSaveSensor(state)
+%onSaveSensor  v3.5 step 4c — single-sensor save (active sensor only).
+%
+%  Counterpart to onLoadSensors. Where Load APPENDS to the collection
+%  (and accepts single-file, bundle, or run-file shapes via the shape
+%  detector), Save writes JUST the active sensor to JUST a single
+%  sensor JSON file. For "save my whole scenario" the user wants
+%  Export Scenario in the File panel — different operation class.
+%
+%  Default folder: config/sensors/<currentType>/ (mirrors
+%  exportSensorsToJSON's bundle layout so the new save lands beside
+%  the type-specific defaults).
+%  Default filename: source-file stem if set (Load → edit → Save
+%  overwrites by default), otherwise <sensorName>.json which matches
+%  the convention exportSensorsToJSON uses for fresh sensors.
+    if ~state.hasActiveSensor()
+        setStatus(state, 'No active sensor to save — add one first.');
+        return;
+    end
+    sr = state.activeSensor();
+    typeStr = char(sr.sensorType);
+    if isempty(typeStr); typeStr = 'UNKNOWN'; end
+
+    % Default directory — config/sensors/<type>/. Falls back to
+    % config/sensors/ if the type-specific folder doesn't exist.
+    defaultDir = pwd;
+    if state.projectRoot ~= ""
+        typeDir = fullfile(state.projectRoot, "config", "sensors", typeStr);
+        rootDir = fullfile(state.projectRoot, "config", "sensors");
+        if isfolder(typeDir)
+            defaultDir = char(typeDir);
+        elseif isfolder(rootDir)
+            defaultDir = char(rootDir);
+        end
+    end
+
+    if sr.sourceFile ~= ""
+        [~, defStem, ~] = fileparts(char(sr.sourceFile));
+        defaultName = [defStem '.json'];
+    else
+        defaultName = [char(sr.sensorName) '.json'];
+    end
+
+    [file, path] = uiputfile({'*.json','JSON sensor files'}, ...
+        'Save sensor', fullfile(defaultDir, defaultName));
+    if isequal(file, 0); return; end
+    full = fullfile(path, file);
+
+    try
+        outPath = trackbench.editor.exportSingleSensorToJSON(state, string(full));
+    catch ME
+        setStatus(state, sprintf('Save sensor failed: %s', ME.message));
+        uialert(state.fig, ME.message, 'Save sensor failed');
+        return;
+    end
+    [~, savedStem, savedExt] = fileparts(char(outPath));
+    setStatus(state, sprintf('Saved sensor "%s" to %s%s', ...
+        char(sr.sensorName), savedStem, savedExt));
+end
+
+
 function onOpenScenario(state)
 %onOpenScenario  M6 §3.4 — REPLACE mode full-scenario load. Reads the
 %                run file's "sensors": [...] and "targets": "..." fields,
@@ -2920,6 +3081,90 @@ function onTargetsNew(state)
 end
 
 
+function onTargetsAddNasaFlight(state)
+%onTargetsAddNasaFlight  Import a NASA DASHlink FDR .mat file as a target.
+%
+%  v3.5 step 4b — "Import NASA Flight (.mat)..." button in the Targets
+%  sub-panel. Workflow:
+%    1. uigetfile dialog rooted at projectRoot (best guess; user can
+%       navigate freely).
+%    2. trackbench.flightdata.loadNASAFlight parses the file.
+%    3. state.addNasaFlightTarget builds a TargetRecord from the
+%       returned struct and makes it active.
+%    4. refreshAfterActiveTargetChange repaints the map + sidebar so
+%       the imported flight shows up immediately.
+%
+%  ERROR HANDLING
+%    Three failure modes are surfaced to the user:
+%      (a) User cancels the file picker  — silent return, no message.
+%      (b) loadNASAFlight throws         — uialert with the parse error
+%                                          (likely "missing field LATP"
+%                                          or "no airborne data").
+%      (c) addNasaFlightTarget throws    — uialert with the validation
+%                                          error (notEnoughWaypoints).
+%
+%  Pre-condition: this callback is wired only in Targets edit mode
+%  (button is hidden via the panel-level mode gate when not in Targets
+%  mode), so we don't re-check editMode here.
+
+    % Default starting directory: try Tail_687_1/ if it exists at the
+    % project root or one level up (matches the user's known data
+    % location), else fall back to projectRoot.
+    candidates = { ...
+        fullfile(char(state.projectRoot), '..', 'Tail_687_1'), ...
+        fullfile(char(state.projectRoot), 'Tail_687_1'), ...
+        char(state.projectRoot)};
+    startDir = '';
+    for k = 1:numel(candidates)
+        if isfolder(candidates{k})
+            startDir = candidates{k};
+            break;
+        end
+    end
+    if isempty(startDir); startDir = pwd; end
+
+    [fileName, pathName] = uigetfile( ...
+        {'*.mat', 'NASA DASHlink FDR data (*.mat)'; ...
+         '*.*',   'All files'}, ...
+        'Select NASA flight data .mat file', startDir);
+    if isequal(fileName, 0)
+        % User cancelled — not an error, just no-op.
+        return;
+    end
+    matPath = fullfile(pathName, fileName);
+
+    % Show "working" status so the user knows the click registered;
+    % loadNASAFlight can take a couple of seconds for large files.
+    setStatus(state, sprintf('Loading NASA flight: %s ...', fileName));
+    drawnow;
+
+    try
+        flightData = trackbench.flightdata.loadNASAFlight(string(matPath));
+    catch ME
+        uialert(state.fig, sprintf( ...
+            'Could not parse NASA flight file:\n%s\n\n%s', ...
+            matPath, ME.message), 'NASA Flight Load Failed', 'Icon', 'error');
+        setStatus(state, 'NASA flight load failed (see dialog).');
+        return;
+    end
+
+    try
+        state.addNasaFlightTarget(flightData);
+    catch ME
+        uialert(state.fig, sprintf( ...
+            'Could not import flight as target:\n\n%s', ME.message), ...
+            'NASA Flight Import Failed', 'Icon', 'error');
+        setStatus(state, 'NASA flight import failed (see dialog).');
+        return;
+    end
+
+    refreshAfterActiveTargetChange(state);
+    setStatus(state, sprintf( ...
+        'Imported NASA flight: %s (%d waypoints, %.0fs duration).', ...
+        state.targetName, size(state.waypoints, 1), state.durationS));
+end
+
+
 function onTargetsDuplicate(state)
 %onTargetsDuplicate  Copy the active target → "<n>_copy", make active.
     if ~state.hasActiveTarget()
@@ -3191,6 +3436,64 @@ function onLoadTerrain(state)
 end
 
 
+function onSaveTerrain(state)
+%onSaveTerrain  uiputfile dialog → exportTerrainToJSON. v3.5 step 4c.
+%
+%  Default folder: config/terrain/<currentType>/  (the natural home
+%  for files of this terrain type — same convention the library files
+%  use, so a saved "my_mountain.json" lands beside the existing
+%  default_mountain.json).
+%
+%  Default filename: stem of state.terrain.sourceFile if set (so a
+%  Load → edit → Save round-trip overwrites the source by default),
+%  otherwise "my_<type>.json" matching the per-type-folder convention.
+%
+%  Errors from exportTerrainToJSON surface as uialert + status. The
+%  function itself flips environmentDirty=false on success.
+    tr = state.terrain;
+    typeStr = char(tr.terrainType);
+    if isempty(typeStr); typeStr = 'unknown'; end
+
+    % Default directory — config/terrain/<currentType>/. Fall back to
+    % config/terrain/ if the type-specific folder doesn't exist (e.g.
+    % UNKNOWN passthrough type), then to pwd as the last resort.
+    defaultDir = pwd;
+    if state.projectRoot ~= ""
+        typeDir = fullfile(state.projectRoot, "config", "terrain", typeStr);
+        rootDir = fullfile(state.projectRoot, "config", "terrain");
+        if isfolder(typeDir)
+            defaultDir = char(typeDir);
+        elseif isfolder(rootDir)
+            defaultDir = char(rootDir);
+        end
+    end
+
+    % Default filename: source-file stem (preserving subfolder match)
+    % or my_<type> for never-saved terrains.
+    if tr.sourceFile ~= ""
+        [~, defStem, ~] = fileparts(char(tr.sourceFile));
+        defaultName = [defStem '.json'];
+    else
+        defaultName = ['my_' typeStr '.json'];
+    end
+
+    [file, path] = uiputfile({'*.json','JSON terrain files'}, ...
+        'Save terrain', fullfile(defaultDir, defaultName));
+    if isequal(file, 0); return; end   % user cancelled
+    full = fullfile(path, file);
+
+    try
+        outPath = trackbench.editor.exportTerrainToJSON(state, string(full));
+    catch ME
+        setStatus(state, sprintf('Save terrain failed: %s', ME.message));
+        uialert(state.fig, ME.message, 'Save terrain failed');
+        return;
+    end
+    [~, savedStem, savedExt] = fileparts(char(outPath));
+    setStatus(state, sprintf('Saved terrain to %s%s', savedStem, savedExt));
+end
+
+
 function onTerrainOverlayToggled(state)
 %onTerrainOverlayToggled  View-only toggle. NO undo step — overlay is a
 %                          view preference, not a data edit (matches
@@ -3338,6 +3641,59 @@ function onLoadWeather(state)
 end
 
 
+function onSaveWeather(state)
+%onSaveWeather  uiputfile dialog → exportWeatherToJSON. v3.5 step 4c.
+%
+%  Mirrors onSaveTerrain. Refuses to launch the picker when state.weather
+%  is empty; the Save button itself is disabled in that state
+%  (refreshWeatherPanel), but the guard here is defense-in-depth in case
+%  a stale Enable lets the click through.
+%
+%  Default folder: config/weather/<currentType>/.
+%  Default filename: source-file stem if set, else my_<type>.json.
+    if isempty(state.weather)
+        setStatus(state, 'Pick a weather type first — nothing to save when (none).');
+        return;
+    end
+    wr = state.weather;
+    typeStr = char(wr.weatherType);
+    if isempty(typeStr); typeStr = 'unknown'; end
+
+    defaultDir = pwd;
+    if state.projectRoot ~= ""
+        typeDir = fullfile(state.projectRoot, "config", "weather", typeStr);
+        rootDir = fullfile(state.projectRoot, "config", "weather");
+        if isfolder(typeDir)
+            defaultDir = char(typeDir);
+        elseif isfolder(rootDir)
+            defaultDir = char(rootDir);
+        end
+    end
+
+    if wr.sourceFile ~= ""
+        [~, defStem, ~] = fileparts(char(wr.sourceFile));
+        defaultName = [defStem '.json'];
+    else
+        defaultName = ['my_' typeStr '.json'];
+    end
+
+    [file, path] = uiputfile({'*.json','JSON weather files'}, ...
+        'Save weather', fullfile(defaultDir, defaultName));
+    if isequal(file, 0); return; end
+    full = fullfile(path, file);
+
+    try
+        outPath = trackbench.editor.exportWeatherToJSON(state, string(full));
+    catch ME
+        setStatus(state, sprintf('Save weather failed: %s', ME.message));
+        uialert(state.fig, ME.message, 'Save weather failed');
+        return;
+    end
+    [~, savedStem, savedExt] = fileparts(char(outPath));
+    setStatus(state, sprintf('Saved weather to %s%s', savedStem, savedExt));
+end
+
+
 function refreshTerrainPanel(state)
 %refreshTerrainPanel  Re-sync Terrain sub-panel widgets from
 %                     state.terrain + state.degradation.
@@ -3404,7 +3760,21 @@ function refreshTerrainPanel(state)
     setPropIfGraphics(state.terrainScaleField,      'Enable', enableState);
     setPropIfGraphics(state.terrainClutterField,    'Enable', enableState);
     setPropIfGraphics(state.terrainRefractionField, 'Enable', enableState);
-    % Degradation checkboxes + Load + Overlay intentionally stay on.
+    % Degradation checkboxes + Load + Save + Overlay are explicitly
+    % enabled here (v3.5 step 4c bugfix). The prior comment claimed
+    % these "intentionally stay on" but applyEditMode's else-branch
+    % had been turning them off whenever the user left Environment
+    % mode, and refreshTerrainPanel wasn't flipping them back on when
+    % returning. Result: Load Terrain stopped working after the first
+    % mode round-trip. Setting them explicitly here fixes that and
+    % also catches the new Save Terrain button.
+    setPropIfGraphics(state.terrainLoadBtn,         'Enable', 'on');
+    setPropIfGraphics(state.terrainSaveBtn,         'Enable', 'on');
+    setPropIfGraphics(state.terrainOverlayCB,       'Enable', 'on');
+    setPropIfGraphics(state.degTerrainOcclusionCB,  'Enable', 'on');
+    setPropIfGraphics(state.degHorizonMaskingCB,    'Enable', 'on');
+    setPropIfGraphics(state.degGroundClutterCB,     'Enable', 'on');
+    setPropIfGraphics(state.degDopplerFadeCB,       'Enable', 'on');
 end
 
 
@@ -3512,6 +3882,14 @@ function refreshWeatherPanel(state)
     % Type DD + Load stay on — the escape hatch.
     setPropIfGraphics(state.weatherTypeDD,  'Enable', 'on');
     setPropIfGraphics(state.weatherLoadBtn, 'Enable', 'on');
+    % Save button (v3.5 step 4c): enabled whenever weather is configured
+    % (even readOnly UNKNOWN — it round-trips via originalDef). Disabled
+    % when state.weather is empty since there's nothing to write.
+    if hasW
+        setPropIfGraphics(state.weatherSaveBtn, 'Enable', 'on');
+    else
+        setPropIfGraphics(state.weatherSaveBtn, 'Enable', 'off');
+    end
 
     % ── Read-only banner ──────────────────────────────────────────────
     if isgraphics(state.weatherPanel)
@@ -4067,14 +4445,15 @@ end
 
 
 function toggleSensorsButtons(state, hasActive)
-%toggleSensorsButtons  Enable Duplicate / Delete / Rename when an active
-%                      sensor exists. Add is always enabled (subject to
-%                      applyEditMode's coarse mode gate). Mirrors
-%                      toggleTargetsButtons.
+%toggleSensorsButtons  Enable Duplicate / Delete / Rename / Save when an
+%                      active sensor exists. Add + Load are always
+%                      enabled (subject to applyEditMode's coarse mode
+%                      gate). v3.5 step 4c added Save to the gated set.
     enable = 'off'; if hasActive; enable = 'on'; end
     if isgraphics(state.sensorsBtnDuplicate); state.sensorsBtnDuplicate.Enable = enable; end
     if isgraphics(state.sensorsBtnDelete);    state.sensorsBtnDelete.Enable    = enable; end
     if isgraphics(state.sensorsBtnRename);    state.sensorsBtnRename.Enable    = enable; end
+    if isgraphics(state.sensorsBtnSave);      state.sensorsBtnSave.Enable      = enable; end
 end
 
 
@@ -4218,20 +4597,42 @@ end
 function applyEditMode(state)
 %applyEditMode  Coarse mode-gate across the sidebar. Three exclusive
 %                modes: Targets, Sensors, Environment. Only the active
-%                mode's panels are fully editable — the other two are
-%                dimmed but still visible so users can see what's
-%                available at a glance.
+%                mode's panels are visible — the other two are hidden
+%                outright (rows collapsed to 0 px in the sidebar grid)
+%                so the panel relevant to the active mode dominates.
+%
+%  v3.5 step 4a CHANGE — hide-rather-than-gray.
+%    Pre-v3.5, non-active panels stayed visible but disabled. Users
+%    found the dimmed-but-present panels confusing: "What am I
+%    supposed to interact with right now?" The new behavior collapses
+%    the parent grid's RowHeight entry for hidden panels to 0 AND
+%    flips Visible='off' on the panel itself (defense in depth). The
+%    Sensors/Targets/Environment buttons act as a true context switch.
 %
 %  M7 CHANGE — three modes, not two. Environment mode (new in M7) gates
 %  the Terrain + Weather sub-panels. The pre-M7 two-mode layout lives on
 %  via targetsOn/sensorsOn; environmentOn is the new axis.
 %
+%  ROW-TO-MODE MAPPING (must match buildUI's inner.RowHeight order):
+%    Row  1: Mode toggle    — always visible
+%    Row  2: Sensors        — sensors mode only
+%    Row  3: Sensor Params  — sensors mode only
+%    Row  4: Targets        — targets mode only
+%    Row  5: Scenario       — targets mode only
+%    Row  6: Terrain        — environment mode only
+%    Row  7: Weather        — environment mode only
+%    Row  8: Selection      — targets mode only
+%    Row  9: File           — always visible
+%    Row 10: Undo           — always visible
+%    Row 11: Help           — always visible
+%
 %  Fine-grained refreshes (refreshScenarioPanel / refreshSelectionPanel /
 %  refreshSensorParamsPanel / refreshTerrainPanel / refreshWeatherPanel)
 %  run at the end to re-assert stricter rules (reference read-only,
-%  has-active, readOnly passthrough). That way this function only needs
-%  to encode the mode-level gate; the finer refreshers layer their own
-%  disables on top.
+%  has-active, readOnly passthrough). They're still useful even though
+%  the panels are hidden — a panel becoming visible again should land
+%  with all its read-only/has-active state already applied, so the user
+%  doesn't see a flash of incorrectly-enabled controls.
 %
 %  ROUTING NOTE
 %    Every touched handle is isgraphics-guarded via setEnableIfGraphics
@@ -4241,6 +4642,44 @@ function applyEditMode(state)
     targetsOn     = (mode == "targets");
     sensorsOn     = (mode == "sensors");
     environmentOn = (mode == "environment");
+
+    % ── Panel-level show/hide (v3.5 step 4a) ───────────────────────
+    %  First flip the panels' Visible flag, then collapse the parent
+    %  grid's row heights. We do both because either one alone would
+    %  leave artifacts:
+    %    - Visible-only: row stays its full height, leaving a blank gap.
+    %    - RowHeight-only: panel can flicker as MATLAB tries to render
+    %      it before the grid resizes; also some uipanel ancestors keep
+    %      reserving space when row is 0 unless Visible is also off.
+    %  Doing both gives a clean instant context switch.
+    setPanelVisibleIfGraphics(state.targetsPanel,      targetsOn);
+    setPanelVisibleIfGraphics(state.scenarioPanel,     targetsOn);
+    setPanelVisibleIfGraphics(state.selectedPanel,     targetsOn);
+    setPanelVisibleIfGraphics(state.sensorsPanel,      sensorsOn);
+    setPanelVisibleIfGraphics(state.sensorParamsPanel, sensorsOn);
+    setPanelVisibleIfGraphics(state.terrainPanel,      environmentOn);
+    setPanelVisibleIfGraphics(state.weatherPanel,      environmentOn);
+
+    % Collapse hidden rows to 0 px in the parent grid so visible panels
+    % shift up to fill the space. Originals are restored from the
+    % snapshot captured at build time.
+    if isgraphics(state.editorInnerGrid) && ~isempty(state.editorInnerOriginalRowHeights)
+        rh = state.editorInnerOriginalRowHeights;
+        if ~sensorsOn
+            rh{2} = 0;  % Sensors
+            rh{3} = 0;  % Sensor Params
+        end
+        if ~targetsOn
+            rh{4} = 0;  % Targets
+            rh{5} = 0;  % Scenario
+            rh{8} = 0;  % Selection
+        end
+        if ~environmentOn
+            rh{6} = 0;  % Terrain
+            rh{7} = 0;  % Weather
+        end
+        state.editorInnerGrid.RowHeight = rh;
+    end
 
     % M6 §3.6C — Leaving sensors mode disarms any pending Place-on-map.
     % Without this, the user can arm Place in Sensors mode, switch to
@@ -4258,14 +4697,16 @@ function applyEditMode(state)
     end
 
     % ── Sensors sub-panel gate ─────────────────────────────────────
-    setEnableIfGraphics(state.sensorsDD,     sensorsOn);
-    setEnableIfGraphics(state.sensorsBtnAdd, sensorsOn);
+    setEnableIfGraphics(state.sensorsDD,      sensorsOn);
+    setEnableIfGraphics(state.sensorsBtnAdd,  sensorsOn);
+    setEnableIfGraphics(state.sensorsBtnLoad, sensorsOn);   % v3.5 step 4c
     if sensorsOn
         toggleSensorsButtons(state, state.hasActiveSensor());
     else
         setEnableIfGraphics(state.sensorsBtnDuplicate, false);
         setEnableIfGraphics(state.sensorsBtnDelete,    false);
         setEnableIfGraphics(state.sensorsBtnRename,    false);
+        setEnableIfGraphics(state.sensorsBtnSave,      false);   % v3.5 step 4c
     end
 
     % ── Sensor-params gate ─────────────────────────────────────────
@@ -4277,14 +4718,20 @@ function applyEditMode(state)
     setEnableIfGraphics(state.sensorPlaceOnMapBtn, placeOn);
 
     % ── Targets sub-panel gate ─────────────────────────────────────
-    setEnableIfGraphics(state.targetsDD,     targetsOn);
-    setEnableIfGraphics(state.targetsBtnNew, targetsOn);
+    setEnableIfGraphics(state.targetsDD,            targetsOn);
+    setEnableIfGraphics(state.targetsBtnNew,        targetsOn);
+    setEnableIfGraphics(state.targetsBtnNasaFlight, targetsOn);   % v3.5 step 4c
+    setEnableIfGraphics(state.targetsBtnLoad,       targetsOn);   % v3.5 step 4c
+    setEnableIfGraphics(state.targetsBtnLoadRef,    targetsOn);   % v3.5 step 4c
+    setEnableIfGraphics(state.targetsBtnUnloadRefs, targetsOn);   % v3.5 step 4c
     if targetsOn
         toggleTargetsButtons(state, state.hasActiveTarget());
     else
         setEnableIfGraphics(state.targetsBtnDuplicate, false);
         setEnableIfGraphics(state.targetsBtnDelete,    false);
         setEnableIfGraphics(state.targetsBtnRename,    false);
+        setEnableIfGraphics(state.targetsBtnSave,      false);   % v3.5 step 4c
+        setEnableIfGraphics(state.targetsBtnClear,     false);   % v3.5 step 4c
     end
 
     % ── Scenario panel gate ────────────────────────────────────────
@@ -4314,14 +4761,14 @@ function applyEditMode(state)
     terrainFields = {state.terrainTypeDD,        state.terrainDescField, ...
                      state.terrainScaleField,    state.terrainClutterField, ...
                      state.terrainRefractionField, state.terrainLoadBtn, ...
-                     state.terrainOverlayCB};
+                     state.terrainSaveBtn,       state.terrainOverlayCB};
     degFields = {state.degTerrainOcclusionCB, state.degHorizonMaskingCB, ...
                  state.degGroundClutterCB,    state.degDopplerFadeCB};
     weatherFields = {state.weatherTypeDD,          state.weatherDescField, ...
                      state.weatherRateField,       state.weatherStormStartField, ...
                      state.weatherStormEndField,   state.weatherProfileDD, ...
                      state.weatherPdFloorField,    state.weatherClutterMultField, ...
-                     state.weatherLoadBtn};
+                     state.weatherLoadBtn,         state.weatherSaveBtn};
     if environmentOn
         % Fine-grained refresh takes over enable logic for these widgets.
         refreshTerrainPanel(state);
@@ -4360,6 +4807,21 @@ function setEnableIfGraphics(h, onoff)
         if onoff; h.Enable = 'on'; else; h.Enable = 'off'; end
     else
         h.Enable = char(onoff);
+    end
+end
+
+
+function setPanelVisibleIfGraphics(h, onoff)
+%setPanelVisibleIfGraphics  Flip Visible on a panel handle if alive.
+%                           Sister to setEnableIfGraphics; used by
+%                           applyEditMode to hide/show entire sub-
+%                           panels for the v3.5 step 4a mode-specific
+%                           layout. Silent no-op on dead handles.
+    if ~isgraphics(h); return; end
+    if islogical(onoff) || isnumeric(onoff)
+        if onoff; h.Visible = 'on'; else; h.Visible = 'off'; end
+    else
+        h.Visible = char(onoff);
     end
 end
 
@@ -4424,13 +4886,17 @@ end
 
 
 function toggleTargetsButtons(state, hasActive)
-%toggleTargetsButtons  Enable / disable Duplicate, Delete, Rename based
-%                      on whether there's an active target. New is
-%                      always enabled.
+%toggleTargetsButtons  Enable / disable Duplicate, Delete, Rename, Save,
+%                      Clear based on whether there's an active target.
+%                      New, Import NASA Flight, Load Target, Load as
+%                      Reference are always enabled. v3.5 step 4c added
+%                      Save and Clear to the gated set.
     enable = 'off'; if hasActive; enable = 'on'; end
     if isgraphics(state.targetsBtnDuplicate); state.targetsBtnDuplicate.Enable = enable; end
     if isgraphics(state.targetsBtnDelete);    state.targetsBtnDelete.Enable    = enable; end
     if isgraphics(state.targetsBtnRename);    state.targetsBtnRename.Enable    = enable; end
+    if isgraphics(state.targetsBtnSave);      state.targetsBtnSave.Enable      = enable; end
+    if isgraphics(state.targetsBtnClear);     state.targetsBtnClear.Enable     = enable; end
 end
 
 

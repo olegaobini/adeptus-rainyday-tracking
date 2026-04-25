@@ -47,7 +47,9 @@ clc; close all;
 
 %% Setup
 root = resolveRootFromThisFile();
-addpath(genpath(fullfile(root, "src")));
+if ~isdeployed
+    addpath(genpath(fullfile(root, "src")));
+end
 
 %% Validate run file exists
 runPath = fullfile(root, "config", "runs", runName + ".json");
@@ -320,8 +322,12 @@ end
 %  HELPERS
 %% ========================================================================
 function root = resolveRootFromThisFile()
-    thisFile = mfilename('fullpath');
-    root = fileparts(fileparts(thisFile));
+    if isdeployed
+        root = pwd;
+    else
+        thisFile = mfilename('fullpath');
+        root = fileparts(fileparts(thisFile));
+    end
 end
 
 function paths = buildPaths(root, config)

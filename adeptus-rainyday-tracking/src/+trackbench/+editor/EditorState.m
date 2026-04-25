@@ -187,6 +187,22 @@ classdef EditorState < handle
         targetsBtnDelete   = gobjects(1)
         targetsBtnRename   = gobjects(1)
 
+        % v3.5 step 4b — NASA Flight import button (full-width row 3 of
+        % the Targets sub-panel). Lives on its own row outside the
+        % 4-button strip; see buildTargetsPanel for layout rationale.
+        targetsBtnNasaFlight = gobjects(1)
+
+        % v3.5 step 4c — file-I/O / overlay / destructive buttons moved
+        % from the now-defunct File panel into the Targets sub-panel.
+        % Each lives in its own panel-row group so the visual hierarchy
+        % matches the operation class (file I/O / reference overlay /
+        % destructive). See buildTargetsPanel for the full layout.
+        targetsBtnLoad        = gobjects(1)   % "Load Target…" — was loadBtn in File panel
+        targetsBtnSave        = gobjects(1)   % "Save Target…" — was exportBtn (the blue one)
+        targetsBtnLoadRef     = gobjects(1)   % "Load as Reference…"
+        targetsBtnUnloadRefs  = gobjects(1)   % "Unload References"
+        targetsBtnClear       = gobjects(1)   % "Clear all waypoints"
+
         % ── M5 §3.2 — Scenario-panel handle ──────────────────────────
         %  buildUI captures the uipanel so refreshScenarioPanel can swap
         %  the Title text between "Scenario" and a read-only banner
@@ -195,6 +211,26 @@ classdef EditorState < handle
         %  inserting a dedicated banner uilabel inside the already-tight
         %  Scenario grid layout.
         scenarioPanel      = gobjects(1)
+
+        % ── v3.5 step 4a: panel handles + grid for mode-specific show/hide ──
+        %  Pre-v3.5, applyEditMode only grayed out non-active panels via
+        %  the Enable property. v3.5 step 4a hides them outright by
+        %  flipping panel.Visible AND collapsing the parent grid's row
+        %  height to 0. That requires capturing both the panel handles
+        %  themselves AND the inner-grid handle (so RowHeight can be
+        %  rewritten dynamically). The original heights are saved on
+        %  load so applyEditMode can restore them when a panel becomes
+        %  visible again — there's no other source of truth for them.
+        %
+        %  scenarioPanel / sensorParamsPanel / terrainPanel /
+        %  weatherPanel / selectedPanel were already captured above for
+        %  unrelated reasons (title swaps, refresh handles); the new
+        %  fields below close the gap so every mode-gated panel has a
+        %  handle.
+        sensorsPanel       = gobjects(1)     % Sensors dropdown panel (row 2)
+        targetsPanel       = gobjects(1)     % Targets dropdown panel (row 4)
+        editorInnerGrid    = gobjects(1)     % parent uigridlayout for sub-panels
+        editorInnerOriginalRowHeights cell = {}   % original RowHeight cell, captured at build time
 
         % ── M6 UI handles (Mode-toggle sub-panel) ────────────────────
         modeTargetsBtn     = gobjects(1)     % uibutton('state') — Targets mode
@@ -206,6 +242,14 @@ classdef EditorState < handle
         sensorsBtnDuplicate= gobjects(1)
         sensorsBtnDelete   = gobjects(1)
         sensorsBtnRename   = gobjects(1)
+
+        % v3.5 step 4c — sensor file-I/O buttons moved from the now-
+        % defunct File panel into the Sensors sub-panel. Load APPENDS
+        % a sensor to the collection (existing onLoadSensors semantics);
+        % Save writes the ACTIVE sensor only (single-sensor counterpart
+        % to the scenario-bundle Export, via exportSingleSensorToJSON).
+        sensorsBtnLoad     = gobjects(1)   % "Load Sensor…"
+        sensorsBtnSave     = gobjects(1)   % "Save Sensor…"
 
         % ── M6 UI handles (Sensor Parameters panel) ──────────────────
         %  These are populated by buildUI's buildSensorParamsPanel. All
@@ -251,6 +295,7 @@ classdef EditorState < handle
         terrainClutterField   = gobjects(1)
         terrainRefractionField= gobjects(1)
         terrainLoadBtn        = gobjects(1)
+        terrainSaveBtn        = gobjects(1)   % v3.5 step 4c
         terrainOverlayCB      = gobjects(1)
         degTerrainOcclusionCB = gobjects(1)
         degHorizonMaskingCB   = gobjects(1)
@@ -276,6 +321,7 @@ classdef EditorState < handle
         weatherClutterMultLabel = gobjects(1)
         weatherStormSparkline = gobjects(1)
         weatherLoadBtn        = gobjects(1)
+        weatherSaveBtn        = gobjects(1)   % v3.5 step 4c
 
         % ── M7 §3.3 — storm-window timeline axes (main map column) ──
         %  A second uiaxes placed below the main map axes and above the
@@ -855,6 +901,120 @@ classdef EditorState < handle
             obj.selectedIndex = 0;
             obj.anyDirty = true;
             newIdx = obj.activeIdx;
+        end
+
+        function newIdx = addNasaFlightTarget(obj, flightData, name)
+            %addNasaFlightTarget  Append a TargetRecord whose waypoints
+            %                     come from a NASA DASHlink FDR .mat file
+            %                     loaded via trackbench.flightdata.loadNASAFlight.
+            %
+            %  v3.5 step 4b — NASA flight as a target type. Mirrors
+            %  addNewTarget's pattern (auto-name, undo, displayColor,
+            %  activate) but populates waypoints from the loaded flight
+            %  data and stamps sourceFile so step 4c's "Save as
+            %  recorded_flight target config" knows the origin.
+            %
+            %  ARGS
+            %    flightData  struct returned by loadNASAFlight (must have
+            %                .waypoints Nx3 [x_N, y_E, z_D in meters],
+            %                .timeOfArrival Nx1 seconds, .velocities Nx3
+            %                m/s, .sourceFile path string).
+            %    name        optional. If omitted, derived from the .mat
+            %                filename (e.g. "Tail_687_1.mat" →
+            %                "nasa_Tail_687_1"). Always uniquified.
+            %
+            %  WAYPOINT FORMAT CONVERSION
+            %    loadNASAFlight returns NED [x_N, y_E, z_D] with z_D
+            %    positive-down (per the NED convention). TargetRecord's
+            %    waypoints are [x_m, y_m, alt_m, time_s, leg_speed_kmh]
+            %    with alt positive-up. Conversion:
+            %      col 1 = flightData.waypoints(:,1)             (north)
+            %      col 2 = flightData.waypoints(:,2)             (east)
+            %      col 3 = -flightData.waypoints(:,3)            (alt = -z_D)
+            %      col 4 = flightData.timeOfArrival
+            %      col 5 = ||flightData.velocities(k,:)|| * 3.6   (km/h)
+            %
+            %  CURVE MODE
+            %    NASA flights are dense (~30 s waypoint interval) and
+            %    already represent a real path; spline interpolation
+            %    would invent maneuvers that didn't happen. Force
+            %    curveMode="straight" so the editor renders straight
+            %    legs between consecutive recorded points. Users can
+            %    flip to spline manually if they want a smoothed curve.
+            arguments
+                obj
+                flightData (1,1) struct
+                name (1,1) string = ""
+            end
+
+            % Validate the flightData struct has the fields we need.
+            % Better to fail loudly here than silently produce a broken
+            % target with NaN waypoints.
+            requiredFields = {'waypoints', 'timeOfArrival', ...
+                              'velocities', 'sourceFile'};
+            for k = 1:numel(requiredFields)
+                if ~isfield(flightData, requiredFields{k})
+                    error('trackbench:editor:EditorState:badFlightData', ...
+                        'flightData struct missing required field "%s". Was it produced by trackbench.flightdata.loadNASAFlight?', ...
+                        requiredFields{k});
+                end
+            end
+            ned = flightData.waypoints;
+            toa = flightData.timeOfArrival;
+            vel = flightData.velocities;
+            n = size(ned, 1);
+            if n < 2
+                error('trackbench:editor:EditorState:notEnoughWaypoints', ...
+                    'Flight data has only %d waypoint(s); need at least 2 to form a path.', n);
+            end
+
+            % Build the Nx5 waypoint matrix.
+            wpMatrix = zeros(n, 5);
+            wpMatrix(:, 1) = ned(:, 1);            % north → x_m
+            wpMatrix(:, 2) = ned(:, 2);            % east  → y_m
+            wpMatrix(:, 3) = -ned(:, 3);           % -z_D  → alt_m
+            wpMatrix(:, 4) = toa(:);               % seconds
+            % Per-leg speed in km/h: norm of NED velocity at the START
+            % of each leg, converted m/s → km/h. Last leg has no "next"
+            % so reuse the previous speed (matches loadNASAFlight's own
+            % vel(end,:) = vel(end-1,:) trailing-edge handling).
+            speedsMs = sqrt(sum(vel .^ 2, 2));
+            wpMatrix(:, 5) = speedsMs * 3.6;
+
+            % Auto-name from filename if caller didn't supply one.
+            if strlength(name) == 0
+                [~, stem] = fileparts(char(flightData.sourceFile));
+                if isempty(stem)
+                    stem = sprintf("flight_%d", numel(obj.targets) + 1);
+                end
+                name = "nasa_" + string(stem);
+            end
+
+            obj.pushUndo();
+            tr = trackbench.editor.TargetRecord();
+            tr.targetName        = uniquifyName(obj, sanitizeName(name));
+            tr.waypoints         = wpMatrix;
+            tr.durationS         = ceil(toa(end) - toa(1));
+            % Cruise speed = mean over middle 80% of legs (trim ends to
+            % avoid takeoff/landing skewing the value). Falls back to
+            % overall mean if there aren't enough waypoints to trim.
+            if n >= 5
+                trim = max(1, round(0.1 * n));
+                tr.defaultSpeedKmh = mean(wpMatrix(trim:end-trim, 5));
+            else
+                tr.defaultSpeedKmh = mean(wpMatrix(:, 5));
+            end
+            tr.defaultAltitudeM  = mean(wpMatrix(:, 3));
+            tr.curveMode         = "straight";   % see header note
+            tr.sourceFile        = string(flightData.sourceFile);
+            tr.readOnly          = false;
+            tr.displayColor      = nextDisplayColor(numel(obj.targets) + 1);
+
+            obj.targets(end+1) = tr;
+            obj.activeIdx     = numel(obj.targets);
+            obj.selectedIndex = 0;
+            obj.anyDirty      = true;
+            newIdx            = obj.activeIdx;
         end
 
         function deleteActiveTarget(obj)

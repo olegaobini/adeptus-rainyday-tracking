@@ -1,10 +1,10 @@
 {
   "type": "rain",
   "description": "Moderate rain — 16 mm/hr, step profile",
-  "rain_rate_mmhr": 16,
-  "storm_start_s": 50,
-  "storm_end_s": 130,
+  "rain_rate_mmhr": 200,
+  "storm_start_s": 0,
+  "storm_end_s": 1000,
   "active_type": "step",
   "pd_floor": 0.15,
-  "clutter_multiplier": 1
+  "clutter_multiplier": 10
 }

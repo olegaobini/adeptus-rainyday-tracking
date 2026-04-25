@@ -32,7 +32,14 @@ function [scenario, config, sensors, metas] = loadRunFile(runName)
 arguments
     runName (1,1) string
 end
-root = pwd;
+
+% Dynamically resolve root for both console and deployed (.exe) environments
+if isdeployed
+    root = pwd;
+else
+    root = fileparts(fileparts(fileparts(fileparts(mfilename('fullpath')))));
+end
+
 configDir = fullfile(root, 'config');
 %% 1. Load run file
 if ~endsWith(runName, ".json")

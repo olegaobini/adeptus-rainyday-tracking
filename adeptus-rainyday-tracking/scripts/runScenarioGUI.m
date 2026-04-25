@@ -1,7 +1,26 @@
-function runScenarioGUI()
+function runScenarioGUI(projectRoot)
     % RUNSCENARIOGUI Launches an interactive app to configure and run a simulation.
     % Scans the config directories, populates dropdowns, builds the run JSON,
     % and immediately executes runSingleScenario.
+    %
+    % USAGE
+    %     runScenarioGUI;                  % standalone — resolves projectRoot
+    %     runScenarioGUI(projectRoot);     % caller (mainMenu) supplies the root
+    %
+    % PROJECT ROOT (priority order, deployed-safe):
+    %   1. Explicit projectRoot argument from caller (most reliable).
+    %   2. isdeployed → pwd (compiled-exe launcher cd's into project dir).
+    %   3. mfilename('fullpath') traversal — for `addpath('scripts');
+    %      runScenarioGUI;` from the MATLAB console.
+
+    if nargin < 1 || isempty(projectRoot)
+        if isdeployed
+            projectRoot = pwd;
+        else
+            projectRoot = fileparts(fileparts(mfilename('fullpath')));
+        end
+    end
+    projectRoot = char(projectRoot);
 
     % Create the main UI figure
     fig = uifigure('Name', 'Rainy Day — Scenario Runner', 'Position', [100 100 800 600]);
@@ -11,7 +30,7 @@ function runScenarioGUI()
 
     % Helper function to scan subdirectories for valid .json configs
     function items = getAvailableConfigs(subDir)
-        basePath = fullfile(pwd, 'config', subDir);
+        basePath = fullfile(projectRoot, 'config', subDir);
         files = dir(fullfile(basePath, '**', '*.json'));
         items = {};
         for i = 1:length(files)
@@ -137,7 +156,10 @@ function runScenarioGUI()
     end
 
     function launchEditor()
-        try pathEditor(); catch ME; uialert(fig, ME.message, 'Error Launching Editor'); end
+        % Pass projectRoot through so the editor never has to guess. In a
+        % compiled exe mfilename('fullpath') in pathEditor.m would resolve
+        % to a CTF-cache path, sending exports to the wrong place.
+        try pathEditor(projectRoot); catch ME; uialert(fig, ME.message, 'Error Launching Editor'); end
     end
 
     function runName = saveRunFile()
@@ -146,7 +168,7 @@ function runScenarioGUI()
         % the message via uialert. Mirrors the fopen-error pattern used
         % across the editor's export helpers (exportSensorsToJSON).
         runName = txtRunName.Value;
-        runFile = fullfile(pwd, 'config', 'runs', [runName, '.json']);
+        runFile = fullfile(projectRoot, 'config', 'runs', [runName, '.json']);
 
         % Save GUI preferences for the next session
         setpref('RainyDayGUI', 'RunName', runName);
@@ -237,7 +259,7 @@ function runScenarioGUI()
             return;
         end
         
-        if ~isfile(fullfile(pwd, 'cache', [runName, '.mat']))
+        if ~isfile(fullfile(projectRoot, 'cache', [runName, '.mat']))
             uialert(fig, 'No cached detections found. Please click "Run Simulation" once to generate the scenario environment before comparing.', 'Cache Required');
             return;
         end
@@ -259,7 +281,7 @@ function runScenarioGUI()
             return;
         end
         
-        if ~isfile(fullfile(pwd, 'cache', [runName, '.mat']))
+        if ~isfile(fullfile(projectRoot, 'cache', [runName, '.mat']))
             uialert(fig, 'No cached detections found. Please click "Run Simulation" once to generate the scenario environment before tuning.', 'Cache Required');
             return;
         end
