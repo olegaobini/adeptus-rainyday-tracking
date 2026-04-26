@@ -1,6 +1,9 @@
 function results = compareAllTrackers(runName, opts)
 %compareAllTrackers  [LEGACY] Runs all 6 tracker×model combos on cached detections.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  NOTE: This is the legacy comparison function. It auto-discovers tracker
 %  configs from config/trackers/autotuned/<run>/ and hardcodes the list of
 %  combinations to 3 trackers × 2 filter models. It also silently uses the

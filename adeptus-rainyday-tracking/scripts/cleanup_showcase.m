@@ -1,6 +1,9 @@
 function cleanup_showcase()
 %cleanup_showcase  Update showcase run files to v3.4 format and remove dead code.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Run once after v3.4.0 changes:
 %    addpath("scripts"); cleanup_showcase
 %

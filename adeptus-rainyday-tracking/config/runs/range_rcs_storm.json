@@ -1,0 +1,12 @@
+{
+  "description": "RANGE vs RCS + STORM: Same 747 vs stealth scenario with rain ramp. Compare against clear-weather range_rcs_test.",
+  "sensors": ["PSR/default_PSR"],
+  "targets": "range_rcs_test/default_range_rcs_test",
+  "terrain": "water/default_water",
+  "trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA", "TOMHT/crossing_TOMHT"],
+  "compare_trackers": ["GNN/crossing_GNN", "JPDA/crossing_JPDA", "TOMHT/crossing_TOMHT", "GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+  "degradation": { "terrain_occlusion": false, "horizon_masking": false, "ground_clutter": false, "doppler_fade": true, "weather": "rain/default_rain" },
+  "platforms": {},
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

@@ -1,5 +1,9 @@
 function pos = interpPos(waypoints, time_s, t)
 %INTERPPOS  Linear interpolation of waypoint position at a query time.
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   POS = interpPos(WAYPOINTS, TIME_S, T) returns the interpolated
 %   position along the waypoint polyline at time T (seconds).
 %

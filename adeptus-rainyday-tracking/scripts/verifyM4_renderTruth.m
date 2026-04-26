@@ -2,6 +2,9 @@ function verifyM4_renderTruth()
 %verifyM4_renderTruth  Render 2D + control-vs-dense views of the exported
 %                      m4_curved_demo target, for the §3.5 check-in.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Reads config/targets/waypoints/m4_curved_demo.json (written by
 %  verifyM4_endToEnd.m) and plots:
 %    Fig A — 2D bird's-eye view: control points + dense curve + linear

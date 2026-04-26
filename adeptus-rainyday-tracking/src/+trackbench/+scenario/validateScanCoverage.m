@@ -1,6 +1,9 @@
 function [isValid, info] = validateScanCoverage(scenario, duration, minScans)
 %validateScanCoverage  Check that scenario duration produces enough scans.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Inspects all sensors attached to the scenario, computes the expected
 % number of complete scans, and warns/errors if insufficient for tracking.
 %

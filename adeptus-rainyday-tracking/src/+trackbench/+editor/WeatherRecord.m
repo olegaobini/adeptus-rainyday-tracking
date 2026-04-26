@@ -1,6 +1,9 @@
 classdef WeatherRecord
 %WeatherRecord  Per-scenario weather state for the editor (M7 §3.1).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  A plain VALUE class. Weather is OPTIONAL — EditorState.weather is
 %  [] when no weather is active, or a single WeatherRecord when one
 %  is. This is the "(none)" vs configured distinction the Weather

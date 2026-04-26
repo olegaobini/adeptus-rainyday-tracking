@@ -1,0 +1,38 @@
+{
+  "description": "Editor-exported scenario \"Aa_newExe\" (2026-04-24)",
+  "sensors": [
+    "PSR/Primary_Search_Radar_(DASR)",
+    "SSR/Secondary_Surveillance_Radar_(MSSR_IFF)"
+  ],
+  "targets": "waypoints/Aa_newExe",
+  "terrain": "rural/Aa_newExe_terrain",
+  "trackers": [
+    "GNN/default_GNN",
+    "GNN/my_GNN",
+    "GNN/my_GNN_cv"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "rain/tropicalStorm",
+    "rcs_range_filter": true
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  },
+  "compare_trackers": [
+    "GNN/default_GNN",
+    "GNN/my_GNN",
+    "GNN/my_GNN_cv"
+  ]
+}

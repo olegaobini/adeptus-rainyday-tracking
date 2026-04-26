@@ -1,6 +1,9 @@
 function testPathEditor_M5()
 %testPathEditor_M5  Programmatic tests for Milestone 5 §3.1-§3.2.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Scope of THIS test file (full M5 check-in):
 %    §3.1 — Targets-collection state refactor:
 %             - EditorState owns a TargetRecord array

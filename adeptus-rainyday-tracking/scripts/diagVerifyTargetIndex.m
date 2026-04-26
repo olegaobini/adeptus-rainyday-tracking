@@ -1,5 +1,8 @@
 %diagVerifyTargetIndex  Quick check: what TargetIndex values do detections actually have?
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  USAGE: clear classes; clear all; addpath("scripts"); diagVerifyTargetIndex
 
 clc; close all;

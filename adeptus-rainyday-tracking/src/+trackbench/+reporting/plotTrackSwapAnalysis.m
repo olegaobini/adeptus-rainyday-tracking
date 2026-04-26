@@ -1,6 +1,9 @@
 function plotTrackSwapAnalysis(swapReport, assignLog, figParent)
 %plotTrackSwapAnalysis  Visualize track swap events and assignment stability.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Creates a multi-panel figure showing:
 %   1. Assignment timeline with swap events highlighted
 %   2. Inter-target separation at swap points (if available)

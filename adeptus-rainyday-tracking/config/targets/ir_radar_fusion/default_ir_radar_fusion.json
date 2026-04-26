@@ -1,0 +1,29 @@
+{
+  "description": "PSR + IRST + Staring IR — radar/IR fusion, tests passive+active complementarity",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 900,
+      "start_pos": [
+        -20000,
+        -50000,
+        -5000
+      ],
+      "heading_deg": 45,
+      "altitude_m": 5000,
+      "x_note": "Mid-range target — within IRST range"
+    },
+    {
+      "behavior": "gentle_turn",
+      "speed_kmh": 700,
+      "start_pos": [
+        15000,
+        -40000,
+        -4000
+      ],
+      "altitude_m": 4000,
+      "x_note": "Turning target — IR provides bearing-only, radar provides range"
+    }
+  ]
+}

@@ -1,5 +1,8 @@
 %diagBeamLimits  Query the sensor's actual coverage config to find real beam limits.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  USAGE: clear classes; clear all; addpath("scripts"); diagBeamLimits
 
 clc; close all;

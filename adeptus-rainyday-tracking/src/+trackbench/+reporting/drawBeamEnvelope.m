@@ -1,6 +1,9 @@
 function drawBeamEnvelope(ax, sensorCoverage, ~)
 %drawBeamEnvelope  Draw 3D beam elevation coverage cones on scenario plot.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Uses the ACTUAL scan limits from coverageConfig() (stored in coverage
 %  metadata as scanElLimits). These are the true beam edges — if a target
 %  is between the cones, it WILL be detected (subject to Pd < 1 misses).

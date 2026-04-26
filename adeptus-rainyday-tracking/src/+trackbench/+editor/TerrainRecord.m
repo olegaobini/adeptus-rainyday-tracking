@@ -1,6 +1,9 @@
 classdef TerrainRecord
 %TerrainRecord  Per-scenario terrain state for the editor (M7 §3.1).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  A plain VALUE class. Every scenario owns exactly one TerrainRecord
 %  at EditorState.terrain — unlike targets and sensors, terrain is
 %  not a collection. Mutators read-mutate-writeback:

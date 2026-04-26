@@ -2,6 +2,9 @@ function [outPath, excludedRefCount] = exportToJSON(state, filename)
 %exportToJSON  Write a waypoints-behavior JSON file consumable by
 %              trackbench.scenario.addTargetFromDef ("waypoints" case).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  M5 §3.2 — MULTI-TARGET WITH REFERENCE FILTERING
 %    Writes EVERY non-reference (writable) target in state.targets to the
 %    same root.targets array. Reference targets (readOnly == true) are

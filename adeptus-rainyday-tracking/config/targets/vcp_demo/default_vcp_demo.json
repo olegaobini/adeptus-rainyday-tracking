@@ -1,0 +1,81 @@
+{
+  "description": "VCP Demo (rural terrain): Three identical airliners. Lobe=3.0 deg, Null=11.4 deg. Duration=300s. Range=5-70km.",
+  "duration_s": 300,
+  "targets": [
+    {
+      "label": "Airliner A (lobe rider, ~3 deg)",
+      "behavior": "waypoints",
+      "rcs_dbsm": 20,
+      "rcs_profile": "airliner",
+      "dimensions": {"length_m": 50, "width_m": 45, "height_m": 14},
+      "class_id": 1,
+      "waypoints": [
+        {"pos": [0, -5000, -500], "time_s": 0},
+        {"pos": [0, -9643, -506], "time_s": 21},
+        {"pos": [0, -14286, -749], "time_s": 43},
+        {"pos": [0, -18929, -992], "time_s": 64},
+        {"pos": [0, -23571, -1236], "time_s": 86},
+        {"pos": [0, -28214, -1479], "time_s": 107},
+        {"pos": [0, -32857, -1723], "time_s": 129},
+        {"pos": [0, -37500, -1966], "time_s": 150},
+        {"pos": [0, -42143, -2209], "time_s": 171},
+        {"pos": [0, -46786, -2453], "time_s": 193},
+        {"pos": [0, -51429, -2696], "time_s": 214},
+        {"pos": [0, -56071, -2940], "time_s": 236},
+        {"pos": [0, -60714, -3183], "time_s": 257},
+        {"pos": [0, -65357, -3426], "time_s": 279},
+        {"pos": [0, -70000, -3670], "time_s": 300}
+      ]
+    },
+    {
+      "label": "Airliner B (null zone, ~11 deg)",
+      "behavior": "waypoints",
+      "rcs_dbsm": 20,
+      "rcs_profile": "airliner",
+      "dimensions": {"length_m": 50, "width_m": 45, "height_m": 14},
+      "class_id": 2,
+      "waypoints": [
+        {"pos": [-5000, -5000, -1006], "time_s": 0},
+        {"pos": [-5000, -9643, -1940], "time_s": 21},
+        {"pos": [-5000, -14286, -2874], "time_s": 43},
+        {"pos": [-5000, -18929, -3808], "time_s": 64},
+        {"pos": [-5000, -23571, -4742], "time_s": 86},
+        {"pos": [-5000, -28214, -5675], "time_s": 107},
+        {"pos": [-5000, -32857, -6609], "time_s": 129},
+        {"pos": [-5000, -37500, -7543], "time_s": 150},
+        {"pos": [-5000, -42143, -8477], "time_s": 171},
+        {"pos": [-5000, -46786, -9411], "time_s": 193},
+        {"pos": [-5000, -51429, -10345], "time_s": 214},
+        {"pos": [-5000, -56071, -11279], "time_s": 236},
+        {"pos": [-5000, -60714, -12000], "time_s": 257},
+        {"pos": [-5000, -65357, -12000], "time_s": 279},
+        {"pos": [-5000, -70000, -12000], "time_s": 300}
+      ]
+    },
+    {
+      "label": "Airliner C (null to lobe climb)",
+      "behavior": "waypoints",
+      "rcs_dbsm": 20,
+      "rcs_profile": "airliner",
+      "dimensions": {"length_m": 50, "width_m": 45, "height_m": 14},
+      "class_id": 3,
+      "waypoints": [
+        {"pos": [5000, -5000, -1006], "time_s": 0},
+        {"pos": [5000, -9643, -1940], "time_s": 21},
+        {"pos": [5000, -14286, -2874], "time_s": 43},
+        {"pos": [5000, -18929, -3808], "time_s": 64},
+        {"pos": [5000, -23571, -4742], "time_s": 86},
+        {"pos": [5000, -28214, -5675], "time_s": 107},
+        {"pos": [5000, -32857, -6609], "time_s": 129},
+        {"pos": [5000, -37500, -7543], "time_s": 150},
+        {"pos": [5000, -42143, -7566], "time_s": 171},
+        {"pos": [5000, -46786, -7395], "time_s": 193},
+        {"pos": [5000, -51429, -7031], "time_s": 214},
+        {"pos": [5000, -56071, -6477], "time_s": 236},
+        {"pos": [5000, -60714, -5732], "time_s": 257},
+        {"pos": [5000, -65357, -4796], "time_s": 279},
+        {"pos": [5000, -70000, -3670], "time_s": 300}
+      ]
+    }
+  ]
+}

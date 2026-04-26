@@ -1,0 +1,41 @@
+{
+    "description":"AUTO-TUNED TOMHT+IMM for range_rcs_test (score=0.0025,
+     posRMS=557m)",
+    "tracker_type":"TOMHT",
+    "filter_model":"IMM",
+    "volume":1.0E+8,
+    "beta":1E-10,
+    "params":{
+    "gate":75,
+    "gate_jpda":75,
+    "far_gnn":1E-6,
+    "far_jpda":1E-6,
+    "far_mht":1E-6,
+    "beta_jpda":1E-10,
+    "time_tolerance_jpda":0.05,
+    "num_tracks_jpda":500,
+    "max_branches":3,
+    "confirm_threshold":15,
+    "delete_threshold":-5,
+    "tomht_threshold_multiplier":[0.2,
+    1,
+    1]
+},
+    "filter":{
+    "init_speed_kmh":900,
+    "imm_transition_prob":0.99,
+    "scale_accel_horz":30,
+    "scale_accel_vert":20,
+    "scale_omega_dot":30
+},
+    "TUNING_NOTES":{
+    "method":"autoTuneTracker 2-pass sweep",
+    "filter_model":"IMM",
+    "run":"range_rcs_test",
+    "score":0.0025040922059503469,
+    "posRMS":556.50945185040507,
+    "swaps":0,
+    "falseTracks":0,
+    "date":"2026-04-14 12:10"
+}
+}

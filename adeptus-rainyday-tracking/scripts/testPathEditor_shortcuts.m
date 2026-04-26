@@ -2,6 +2,9 @@ function testPathEditor_shortcuts()
 %testPathEditor_shortcuts  Programmatic tests for the M3 keyboard + mouse
 %                          shortcuts pass (2026-04-16).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Covers the shortcuts landed between CHECK-IN 1 sign-off and M3.4:
 %     - V key toggles 2D/3D
 %     - Arrow keys nudge selected waypoint (100 m / 1000 m with Shift)

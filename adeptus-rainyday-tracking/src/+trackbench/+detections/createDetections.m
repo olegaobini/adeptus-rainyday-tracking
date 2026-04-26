@@ -1,5 +1,9 @@
 function dataLog = createDetections(scenario, enableDegradation)
 % CREATEDETECTIONS  Backward-compatible wrapper.
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   Main branch expects trackbench.detections.createDetections(scenario, flag).
 %   Real implementation lives in trackbench.detections.runDetections()
 %   which now supports multi-sensor and environment configs.

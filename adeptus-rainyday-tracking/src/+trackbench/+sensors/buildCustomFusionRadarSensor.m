@@ -1,6 +1,9 @@
 function [radar, meta] = buildCustomFusionRadarSensor(sensorIndex, varargin)
 %buildCustomFusionRadarSensor  Configure a fusionRadarSensor with a single, consistent spec.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % This is NOT a new radar model. It is a convenience wrapper around
 % fusionRadarSensor so the project has ONE place to define radar settings.
 %

@@ -1,6 +1,9 @@
 function loadFromJSON(state, jsonPath, mode)
 %loadFromJSON  Hydrate an EditorState from a waypoints-behavior target file.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  M5 §3.2 — MULTI-TARGET LOAD WITH REFERENCE MODE
 %    The loader now reads EVERY waypoints-behavior target in the file and
 %    materializes each one as a TargetRecord. The two operating modes share

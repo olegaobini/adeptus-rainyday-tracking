@@ -1,6 +1,9 @@
 function [sensors, metas, sensorCatalog] = loadSensors(sensorConfigName)
 %loadSensors  Load sensor definitions from a JSON catalog and build enabled sensors.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % PURPOSE
 %   Reads a sensor catalog JSON, builds all enabled sensors via buildSensor(),
 %   and returns them ready to attach to a trackingScenario platform.

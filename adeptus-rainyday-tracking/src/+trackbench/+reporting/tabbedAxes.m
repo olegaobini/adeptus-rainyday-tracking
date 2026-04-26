@@ -1,6 +1,10 @@
 
 function ax = tabbedAxes(tabTitle)
 %tabbedAxes  Get an axes in a persistent, single window with tabbed layout.
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Each call creates (or reuses) a shared figure and creates a new tab with an axes.
 
 persistent hFig hTabs

@@ -1,6 +1,9 @@
 function centerDeg = sectorCenterDeg(sectorDeg)
 %sectorCenterDeg  Wrap-aware azimuth midpoint of a [start end] sector.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  centerDeg = trackbench.editor.sectorCenterDeg([a1 a2])
 %
 %  Returns the angular mean of the two sector edges, handling the case

@@ -1,6 +1,9 @@
 function testPathEditor_M2()
 %testPathEditor_M2  Programmatic tests for Milestone 2 of the path editor.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Covers state-level behavior that does NOT require a live GUI:
 %    1. pushUndo + undo + redo round-trip
 %    2. insertAfter midpoint / beginning / end

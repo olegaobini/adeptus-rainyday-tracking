@@ -1,0 +1,12 @@
+{
+    "description": "DEMO 5 TUNED: Same as demo_multi_5_heavy_rain but with AUTO-TUNED GNN tracker. Shows improvement over default params in degraded conditions.",
+    "sensors": ["PSR/default_PSR"],
+    "targets": "recorded_flight/nasa_multi_target",
+    "terrain": "mountain/default_mountain",
+    "trackers": ["autotuned/demo_multi_5_heavy_rain/GNN_IMM"],
+    "compare_trackers": ["autotuned/demo_multi_5_heavy_rain/GNN_IMM", "GNN/default_GNN", "JPDA/default_JPDA", "TOMHT/default_TOMHT"],
+    "degradation": { "terrain_occlusion": true, "horizon_masking": true, "ground_clutter": true, "doppler_fade": true, "weather": "rain/nasa_heavy_rain" },
+    "cache": { "use_cached_detections": true, "save_detections": true },
+    "platforms": {},
+    "output": { "show_visuals": true, "animate_visuals": false, "save_results": true, "print_diagnostics": true, "results_directory": "results" }
+}

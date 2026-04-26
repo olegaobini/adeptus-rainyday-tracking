@@ -1,6 +1,9 @@
 function testPathEditor_M1()
 %testPathEditor_M1  Programmatic tests for Milestone 1 of the path editor.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Covers everything that does not require a live GUI:
 %    1. EditorState construction + addWaypoint() + recomputeTimes()
 %    2. exportToJSON schema (keys, field names, structure)

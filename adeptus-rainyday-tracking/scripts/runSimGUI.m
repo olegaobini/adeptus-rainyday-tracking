@@ -1,6 +1,9 @@
 function varargout = runSimGUI(projectRoot)
 %runSimGUI  Level 3 of mainMenu — load, edit, and run an existing run file.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Provides a focused interface to:
 %    - Pick an existing config/runs/<runName>.json from a dropdown
 %    - Edit its trackers, degradation toggles, weather, cache flag,

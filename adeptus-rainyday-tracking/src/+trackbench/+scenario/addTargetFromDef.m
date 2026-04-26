@@ -1,6 +1,9 @@
 function addTargetFromDef(scenario, tDef, duration, idx)
 %addTargetFromDef  Add a target platform to a trackingScenario from a JSON definition.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Creates a platform with waypointTrajectory and optional RCS signature,
 %  physical dimensions, class ID, and label.
 %

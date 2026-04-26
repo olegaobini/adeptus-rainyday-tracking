@@ -1,5 +1,8 @@
 %diagnoseBadDetections  Isolate why the 747 gets sparse detections.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  USAGE
 %    clear classes; clear all; addpath("scripts"); diagnoseBadDetections
 

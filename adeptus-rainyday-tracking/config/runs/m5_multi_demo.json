@@ -1,0 +1,27 @@
+{
+  "description": "M5 §3.2 end-to-end test: two-target scenario (NE airliner straight + fighter centripetal-curve crosser) authored in the path editor.",
+  "sensors": [
+    "PSR/default_PSR"
+  ],
+  "targets": "waypoints/m5_multi_demo",
+  "terrain": "rural/default_rural",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "weather": "none"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false
+  }
+}

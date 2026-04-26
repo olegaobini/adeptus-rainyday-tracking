@@ -8,6 +8,24 @@ slprj/
 results/
 cache/
 
+# Build outputs — mostly excluded from git (built locally by
+# build_executable / build_installer; the 1.5 GB offline installer would be
+# rejected by GitHub anyway).
+adeptus-rainyday-tracking/trackbench/
+adeptus-rainyday-tracking/installer/offline/
+*.exe
+
+# EXCEPTION: the ~5 MB web installer is committed to the repo so teammates
+# can grab it directly from GitHub and run it without needing access to
+# GitHub Releases, OneDrive shares, or anything else. This is the file
+# TESTING.md tells them to download.
+!adeptus-rainyday-tracking/installer/web/RainyDayTrackerInstaller_web.exe
+
+# Per-user data dir marker (only ever lives in %LOCALAPPDATA%\RainyDay,
+# but ignore it everywhere just in case someone copies their user data
+# dir into the repo by accident).
+.rainyday_userdata
+
 # OS junk
 .DS_Store
 Thumbs.db

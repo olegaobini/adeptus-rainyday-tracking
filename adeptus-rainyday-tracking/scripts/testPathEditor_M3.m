@@ -1,6 +1,9 @@
 function testPathEditor_M3()
 %testPathEditor_M3  Programmatic tests for Milestone 3 (sub-tasks 3.1 – 3.3).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  M3 is split into five sub-tasks (see PROGRESS_M2_FINAL_M3_START.md §7).
 %  This file covers the first CHECK-IN window: 3.1 altitude colormap,
 %  3.2 scale bar + grid dropdown, 3.3 2D/3D view toggle. Sub-tasks 3.4

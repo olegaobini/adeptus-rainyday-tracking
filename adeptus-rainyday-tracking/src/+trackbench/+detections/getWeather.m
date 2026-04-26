@@ -1,6 +1,9 @@
 function [w, profile, dataLog] = getWeather(t, cfg, dataLog)
 %getWeather  Compute weather severity at time t and log to dataLog.
 %
+%   Author:  Daniel Trofimchik (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Returns w ∈ [0, 1] representing storm intensity at time t.
 %  Supports step (binary), ramp (gradual), and pulse (sharp burst) profiles.
 %

@@ -1,6 +1,9 @@
 function [dets, nFiltered] = applyRCSFilter(dets, sPos, sensorObj, targets, allPlatforms)
 %applyRCSFilter  Probabilistically drop detections based on RCS and range.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Implements a probabilistic form of the radar equation:
 %      SNR_factor = (sigma_target / sigma_ref) * (refRange / R_actual)^4
 %      Pd_scale   = max(pd_floor, min(1, SNR_factor))

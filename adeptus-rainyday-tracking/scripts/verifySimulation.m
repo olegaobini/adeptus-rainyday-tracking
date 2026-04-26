@@ -1,6 +1,9 @@
 function verifySimulation()
 %verifySimulation  Comprehensive diagnostic verification of the Rainy Day pipeline.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Runs six phases of tests against the live codebase to verify that
 %  terrain, occlusion, propagation, sensors, detections, degradation,
 %  and trackers are all working as intended.

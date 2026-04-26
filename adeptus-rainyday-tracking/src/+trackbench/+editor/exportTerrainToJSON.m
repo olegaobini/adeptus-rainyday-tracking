@@ -2,6 +2,9 @@ function outPath = exportTerrainToJSON(state, fullPath)
 %exportTerrainToJSON  Write state.terrain to a single terrain config
 %                     JSON file (v3.5 step 4c).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Pure function — takes a complete output path. The caller (buildUI's
 %  onTerrainSave callback) is responsible for showing the uiputfile
 %  dialog and resolving the user's chosen path. This separation keeps

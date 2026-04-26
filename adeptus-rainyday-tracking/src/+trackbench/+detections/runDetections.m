@@ -1,6 +1,9 @@
 function dataLog = runDetections(scenario, enableDegradation, sensorMetas, envConfig, cfg)
 %runDetections  Run scenario and generate a detection log for tracking.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % GENERALISED MULTI-SENSOR DETECTION GENERATOR
 %   Supports any combination of radar, IR, and sonar sensors across
 %   multiple platforms. Handles rotating sensors (IsScanDone flush),
@@ -43,6 +46,35 @@ enableClutter  = getOrDefault(envConfig, 'ground_clutter', true);
 terrainType    = getOrDefault(envConfig, 'terrain_type', 'rural');
 clutterDensity = getOrDefault(envConfig, 'clutter_density', 0.5);
 
+% v3.5 §5b — multi-region collections from loadRunFile.
+%   terrainRegions     cell array of {.config_path, .name, .polygon_xy, .def}
+%                      (empty for legacy single-terrain runs)
+%   weatherRegions     same shape
+%   hasFallbackWeather whether the run file's degradation.weather had a
+%                      non-"none" fallback. Distinguishes "weather everywhere"
+%                      from "regions-only, clear elsewhere".
+%
+% Both empty + hasFallbackWeather=true → legacy single-terrain/single-
+% weather behavior. Empty regions in either pass below short-circuit
+% to the existing code path bit-for-bit.
+terrainRegions = {};
+weatherRegions = {};
+hasFallbackWeather = false;
+if isfield(cfg, 'environmentRegions') && ~isempty(cfg.environmentRegions)
+    terrainRegions = cfg.environmentRegions;
+end
+if isfield(cfg, 'degradationRegions') && ~isempty(cfg.degradationRegions)
+    weatherRegions = cfg.degradationRegions;
+end
+if isfield(cfg, 'degradation') && isfield(cfg.degradation, 'has_fallback')
+    hasFallbackWeather = cfg.degradation.has_fallback;
+elseif isfield(cfg, 'degradation') && isfield(cfg.degradation, 'enabled')
+    % Pre-5b run files don't carry has_fallback. Infer: if degradation
+    % is enabled and there are no regions, the run necessarily has a
+    % fallback (that's the only way enabled would be true pre-5b).
+    hasFallbackWeather = cfg.degradation.enabled && isempty(weatherRegions);
+end
+
 % Propagation model (VCP/PropFactor): REMOVED in v3.4.0
 % VCP post-filtering was architecturally flawed — VCP files removed in v3.4.0 cleanup.
 
@@ -84,8 +116,17 @@ end
 fprintf('[runDetections] Terrain occlusion: %s\n', ternary(enableTerrainOcclusion, 'ON (SurfaceManager LOS checks)', 'OFF (no terrain attached)'));
 fprintf('[runDetections] Horizon masking: %s\n', ternary(enableHorizon, sprintf('ON (refraction=%.3f)', refractionK), 'OFF'));
 fprintf('[runDetections] Ground clutter: %s\n', ternary(enableClutter, sprintf('ON (terrain=%s, density=%.2f)', terrainType, clutterDensity), 'OFF'));
+if enableClutter && ~isempty(terrainRegions)
+    fprintf('[runDetections]   + %d terrain region(s) (per-region clutter density)\n', numel(terrainRegions));
+end
 
 fprintf('[runDetections] Rain degradation: %s\n', ternary(enableDegradation, sprintf('ON (%s, rate=%.0f mm/hr)', weatherType, rainConfig.rain_rate_mmhr), 'OFF'));
+if enableDegradation && ~hasFallbackWeather
+    fprintf('[runDetections]   (no global fallback — clear sky outside regions)\n');
+end
+if enableDegradation && ~isempty(weatherRegions)
+    fprintf('[runDetections]   + %d weather region(s)\n', numel(weatherRegions));
+end
 if enableDegradation
     stormType = 'step';
     if isfield(cfg.degradation, 'active_type'); stormType = cfg.degradation.active_type; end
@@ -391,31 +432,57 @@ while advance(scenario)
                 try sParams_rain.rangeLimits = si.sensor.RangeLimits; catch; sParams_rain.rangeLimits = [0 111120]; end
                 try sParams_rain.fov = si.sensor.FieldOfView(:)'; catch; sParams_rain.fov = [1.4 30]; end
 
-                % Scale rain rate by weather severity
-                scaledRainConfig = rainConfig;
-                scaledRainConfig.rain_rate_mmhr = w * rainConfig.rain_rate_mmhr;
+                % v3.5 §5b: pre-compute (pdMult, noiseMult) per region+fallback
+                % ONCE per sensor per scan, then resolve per-detection. Indexed
+                % by [resolveRegionIdx + 1]: cell{1} = fallback, cell{ri+1} =
+                % region ri. .present=false → no weather here (e.g. fallback
+                % is "none" and the detection sits outside all regions).
+                weatherEffects = cell(1, numel(weatherRegions) + 1);
+                if hasFallbackWeather
+                    scaledFallback = rainConfig;
+                    scaledFallback.rain_rate_mmhr = w * rainConfig.rain_rate_mmhr;
+                    [fpd, fns, ~] = trackbench.environment.applyWeatherDegradation( ...
+                        simTime, scaledFallback, si, sPos_rain, sParams_rain, weatherType);
+                    weatherEffects{1} = struct('pdMult', fpd, 'noiseMult', fns, 'present', true);
+                else
+                    weatherEffects{1} = struct('pdMult', [], 'noiseMult', 1, 'present', false);
+                end
+                for ri = 1:numel(weatherRegions)
+                    rDef = weatherRegions{ri}.def;
+                    rType = char(getOrDefault(rDef, 'type', 'rain'));
+                    rCfg = struct('rain_rate_mmhr', w * getOrDefault(rDef, 'rain_rate_mmhr', 16));
+                    if isfield(rDef, 'pd_floor');           rCfg.pd_floor = rDef.pd_floor; end
+                    if isfield(rDef, 'clutter_multiplier'); rCfg.clutter_multiplier = rDef.clutter_multiplier; end
+                    [pd, ns, ~] = trackbench.environment.applyWeatherDegradation( ...
+                        simTime, rCfg, si, sPos_rain, sParams_rain, rType);
+                    weatherEffects{ri + 1} = struct('pdMult', pd, 'noiseMult', ns, 'present', true);
+                end
 
-                % Get Pd multiplier (function handle) and noise multiplier (scalar)
-                % Third output (weather clutter) is IGNORED here — generated at flush time
-                [pdMult, noiseMult, ~] = trackbench.environment.applyWeatherDegradation( ...
-                    simTime, scaledRainConfig, si, sPos_rain, sParams_rain, weatherType);
-
-                % Drop detections using range-dependent Pd
+                % Drop detections using range-dependent Pd (resolve per-(x,y))
                 if ~isempty(dets)
                     keepRain = true(numel(dets), 1);
                     for dd = 1:numel(dets)
                         detPos = dets{dd}.Measurement(1:3);
+                        rIdx = trackbench.environment.resolveRegionIdx( ...
+                            detPos(1), detPos(2), weatherRegions);
+                        we = weatherEffects{rIdx + 1};
+                        if ~we.present; continue; end
                         slantRange = norm(detPos(:) - sPos_rain(:));
-                        if rand() > pdMult(slantRange)
+                        if rand() > we.pdMult(slantRange)
                             keepRain(dd) = false;
                         end
                     end
                     dets = dets(keepRain);
                 end
 
-                % Scale measurement noise
+                % Scale measurement noise (re-resolve since dets may have shrunk)
                 for dd = 1:numel(dets)
-                    dets{dd}.MeasurementNoise = dets{dd}.MeasurementNoise * noiseMult;
+                    detPos = dets{dd}.Measurement(1:3);
+                    rIdx = trackbench.environment.resolveRegionIdx( ...
+                        detPos(1), detPos(2), weatherRegions);
+                    we = weatherEffects{rIdx + 1};
+                    if ~we.present; continue; end
+                    dets{dd}.MeasurementNoise = dets{dd}.MeasurementNoise * we.noiseMult;
                 end
                 end  % if w > 0
             end
@@ -453,6 +520,12 @@ while advance(scenario)
         end
 
         % Ground clutter (terrain-dependent)
+        % v3.5 §5b: per-region clutter generation. Each region produces clutter
+        % at its own density+terrain, then we mask by polygon (first-wins via
+        % resolveRegionIdx). Fallback fills points outside all regions. For
+        % legacy single-terrain runs (terrainRegions empty), Pass 1 is a no-op
+        % loop and Pass 2 generates the full fallback clutter — bit-for-bit
+        % identical to pre-5b behavior.
         if enableClutter && ~isempty(clutterSensorInfo)
             sPos_gc = pose(clutterSensorInfo.platform, 'true').Position(:)';
             try sPos_gc = sPos_gc + clutterSensorInfo.sensor.MountingLocation(:)'; catch; end
@@ -463,17 +536,59 @@ while advance(scenario)
             try sParams.fov         = cSensor.FieldOfView(:)'; catch; sParams.fov = [1.4 30]; end
             try sParams.tilt        = cSensor.ElectronicScanAngle(2); catch; sParams.tilt = 2; end
             try sParams.mountingLoc = cSensor.MountingLocation(:)'; catch; sParams.mountingLoc = [0 0 -15]; end
-            clutterEnv = struct('terrain_type', terrainType, 'clutter_density', clutterDensity, ...
+
+            allClutter = {};
+
+            % Pass 1: each terrain region with its own terrain config
+            for ri = 1:numel(terrainRegions)
+                rDef = terrainRegions{ri}.def;
+                rEnv = struct( ...
+                    'terrain_type',    char(getOrDefault(rDef, 'terrain_type', 'rural')), ...
+                    'clutter_density', getOrDefault(rDef, 'clutter_density', 0.5), ...
+                    'radar_freq',      clutterSensorInfo.radarFreq);
+                rClut = trackbench.environment.generateGroundClutter( ...
+                    simTime, sPos_gc, clutterSidx, sParams, rEnv);
+                if isempty(rClut); continue; end
+                keep = false(numel(rClut), 1);
+                for kk = 1:numel(rClut)
+                    xy = rClut{kk}.Measurement(1:2);
+                    keep(kk) = (trackbench.environment.resolveRegionIdx( ...
+                        xy(1), xy(2), terrainRegions) == ri);
+                end
+                allClutter = [allClutter; rClut(keep)]; %#ok<AGROW>
+            end
+
+            % Pass 2: fallback clutter for points outside all regions
+            fEnv = struct('terrain_type', terrainType, 'clutter_density', clutterDensity, ...
                 'radar_freq', clutterSensorInfo.radarFreq);
-            clutterDets = trackbench.environment.generateGroundClutter(simTime, sPos_gc, clutterSidx, sParams, clutterEnv);
-            if ~isempty(clutterDets)
-                detBuffer = [detBuffer; clutterDets]; %#ok<AGROW>
-                nFalse = nFalse + numel(clutterDets);
+            fClut = trackbench.environment.generateGroundClutter( ...
+                simTime, sPos_gc, clutterSidx, sParams, fEnv);
+            if ~isempty(fClut)
+                if isempty(terrainRegions)
+                    keep = true(numel(fClut), 1);   % legacy fast path
+                else
+                    keep = false(numel(fClut), 1);
+                    for kk = 1:numel(fClut)
+                        xy = fClut{kk}.Measurement(1:2);
+                        keep(kk) = (trackbench.environment.resolveRegionIdx( ...
+                            xy(1), xy(2), terrainRegions) == 0);
+                    end
+                end
+                allClutter = [allClutter; fClut(keep)]; %#ok<AGROW>
+            end
+
+            if ~isempty(allClutter)
+                detBuffer = [detBuffer; allClutter]; %#ok<AGROW>
+                nFalse = nFalse + numel(allClutter);
             end
         end
 
         % Weather clutter (rain-driven, ONCE per scan at flush time)
-        % getWeather computes severity w and logs to dataLog.WeatherSeverity
+        % v3.5 §5b: per-region weather clutter, same first-wins masking as
+        % ground clutter above. getWeather computes severity wScan and logs
+        % to dataLog.WeatherSeverity. For legacy single-weather runs
+        % (weatherRegions empty + hasFallbackWeather true), Pass 1 is a
+        % no-op and Pass 2 produces the full fallback weather clutter.
         if enableDegradation && ~isempty(clutterSensorInfo)
             [wScan, ~, dataLog] = trackbench.detections.getWeather(simTime, cfg, dataLog);
             if wScan > 0
@@ -482,13 +597,52 @@ while advance(scenario)
             sParams_wc = struct();
             try sParams_wc.rangeLimits = clutterSensorInfo.sensor.RangeLimits; catch; sParams_wc.rangeLimits = [0 111120]; end
             try sParams_wc.fov = clutterSensorInfo.sensor.FieldOfView(:)'; catch; sParams_wc.fov = [1.4 30]; end
-            scaledRainCfg = rainConfig;
-            scaledRainCfg.rain_rate_mmhr = wScan * rainConfig.rain_rate_mmhr;
-            [~, ~, weatherDets] = trackbench.environment.applyWeatherDegradation( ...
-                simTime, scaledRainCfg, clutterSensorInfo, sPos_wc, sParams_wc, weatherType);
-            if ~isempty(weatherDets)
-                detBuffer = [detBuffer; weatherDets]; %#ok<AGROW>
-                nFalse = nFalse + numel(weatherDets);
+
+            allWeatherClut = {};
+
+            % Pass 1: each weather region (using its own type + rate)
+            for ri = 1:numel(weatherRegions)
+                rDef = weatherRegions{ri}.def;
+                rType = char(getOrDefault(rDef, 'type', 'rain'));
+                rCfg = struct('rain_rate_mmhr', wScan * getOrDefault(rDef, 'rain_rate_mmhr', 16));
+                if isfield(rDef, 'pd_floor');           rCfg.pd_floor = rDef.pd_floor; end
+                if isfield(rDef, 'clutter_multiplier'); rCfg.clutter_multiplier = rDef.clutter_multiplier; end
+                [~, ~, rWClut] = trackbench.environment.applyWeatherDegradation( ...
+                    simTime, rCfg, clutterSensorInfo, sPos_wc, sParams_wc, rType);
+                if isempty(rWClut); continue; end
+                keep = false(numel(rWClut), 1);
+                for kk = 1:numel(rWClut)
+                    xy = rWClut{kk}.Measurement(1:2);
+                    keep(kk) = (trackbench.environment.resolveRegionIdx( ...
+                        xy(1), xy(2), weatherRegions) == ri);
+                end
+                allWeatherClut = [allWeatherClut; rWClut(keep)]; %#ok<AGROW>
+            end
+
+            % Pass 2: fallback weather clutter (only when fallback exists)
+            if hasFallbackWeather
+                scaledRainCfg = rainConfig;
+                scaledRainCfg.rain_rate_mmhr = wScan * rainConfig.rain_rate_mmhr;
+                [~, ~, fWClut] = trackbench.environment.applyWeatherDegradation( ...
+                    simTime, scaledRainCfg, clutterSensorInfo, sPos_wc, sParams_wc, weatherType);
+                if ~isempty(fWClut)
+                    if isempty(weatherRegions)
+                        keep = true(numel(fWClut), 1);   % legacy fast path
+                    else
+                        keep = false(numel(fWClut), 1);
+                        for kk = 1:numel(fWClut)
+                            xy = fWClut{kk}.Measurement(1:2);
+                            keep(kk) = (trackbench.environment.resolveRegionIdx( ...
+                                xy(1), xy(2), weatherRegions) == 0);
+                        end
+                    end
+                    allWeatherClut = [allWeatherClut; fWClut(keep)]; %#ok<AGROW>
+                end
+            end
+
+            if ~isempty(allWeatherClut)
+                detBuffer = [detBuffer; allWeatherClut]; %#ok<AGROW>
+                nFalse = nFalse + numel(allWeatherClut);
             end
             end  % if wScan > 0
         end

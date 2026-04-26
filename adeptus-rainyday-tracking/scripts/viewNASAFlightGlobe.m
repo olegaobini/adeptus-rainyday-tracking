@@ -1,5 +1,8 @@
 %% viewNASAFlightGlobe — Visualize saved NASA flight results on globe
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Loads cached detections and results from a previous runSingleScenario
 %  run and displays them on a trackingGlobeViewer. No simulation needed.
 %

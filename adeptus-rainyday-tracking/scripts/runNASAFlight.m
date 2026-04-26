@@ -1,5 +1,8 @@
 %% runNASAFlight — Track real aircraft using simulated radar
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  NASA DASHlink provides Flight Data Recorder (FDR) telemetry: the
 %  aircraft's own GPS/INS position, speed, altitude, heading, etc.
 %  This is TRUTH data — the real path the plane actually flew.

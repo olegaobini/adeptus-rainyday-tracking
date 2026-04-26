@@ -1,6 +1,9 @@
 function [densePts, denseT, denseSeg] = catmullRomCurve(waypoints, N, alpha)
 %catmullRomCurve  Dense 3D Catmull-Rom interpolation through control waypoints.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Implements a single-segment-at-a-time parametric Catmull-Rom spline
 %  that interpolates every control waypoint exactly. Tension parameter
 %  ``alpha`` controls the family:

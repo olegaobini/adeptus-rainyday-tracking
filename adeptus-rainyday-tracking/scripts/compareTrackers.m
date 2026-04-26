@@ -1,6 +1,9 @@
 function results = compareTrackers(runName, opts)
 %compareTrackers  Compare an explicit list of tracker configs head-to-head.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Reads the run file's "compare_trackers" array — each entry pointing to a
 %  tracker JSON config under config/trackers/ — and runs each one against
 %  the cached detections from that run. Prints a ranked comparison table

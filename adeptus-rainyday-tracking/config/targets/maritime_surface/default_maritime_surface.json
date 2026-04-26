@@ -1,0 +1,41 @@
+{
+  "description": "Maritime radar + active/passive sonar + towed array — surface+subsurface tracking",
+  "duration_s": 120,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 55,
+      "start_pos": [
+        -10000,
+        -30000,
+        0
+      ],
+      "heading_deg": 45,
+      "altitude_m": 0,
+      "x_note": "Surface vessel — 30 knots"
+    },
+    {
+      "behavior": "gentle_turn",
+      "speed_kmh": 35,
+      "start_pos": [
+        8000,
+        -25000,
+        0
+      ],
+      "altitude_m": 0,
+      "x_note": "Slow surface vessel — 19 knots, maneuvering"
+    },
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 45,
+      "start_pos": [
+        0,
+        -40000,
+        50
+      ],
+      "heading_deg": 350,
+      "altitude_m": -50,
+      "x_note": "Subsurface contact — 24 knots, 50m depth"
+    }
+  ]
+}

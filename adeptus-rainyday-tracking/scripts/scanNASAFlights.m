@@ -1,5 +1,8 @@
 %% scanNASAFlights — Profile all DASHlink .mat files and find multi-target combos
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Scans every .mat file in a folder, extracts airborne lat/lon/alt/speed,
 %  and reports which flights overlap geographically (good for multi-target).
 

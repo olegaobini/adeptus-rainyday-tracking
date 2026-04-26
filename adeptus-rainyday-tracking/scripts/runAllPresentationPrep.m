@@ -1,4 +1,8 @@
 %% runAllPresentationPrep.m — Run everything needed for Boeing presentation
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Run with: addpath("scripts"); runAllPresentationPrep
 % Leave MATLAB open and let it finish — saves results to docs/presentation_data.mat
 

@@ -1,0 +1,51 @@
+{
+    "_README": "RUN FILE TEMPLATE — Copy, rename, and customize. All degradation in one place.",
+
+    "description": "Describe your scenario here",
+
+    "sensors": ["PSR/default_PSR"],
+    "_sensors": "Array of sensor configs from config/sensors/<TYPE>/<file>",
+
+    "targets": "crossing_pair/default_crossing_pair",
+    "_targets": "Target config from config/targets/<PATTERN>/<file>",
+
+    "terrain": "rural/default_rural",
+    "_terrain": "Terrain config from config/terrain/<TYPE>/<file>. Sets terrain_type, scale, density.",
+
+    "trackers": ["GNN/default_GNN", "JPDA/default_JPDA"],
+    "_trackers": "Array of tracker configs from config/trackers/<TYPE>/<file>",
+
+    "compare_trackers": [],
+    "_compare_trackers": "Optional. Explicit list of tracker configs (paths under config/trackers/) to compare via compareTrackers('<run>'). Same path convention as 'trackers'. Leave [] to skip. Use to rank auto-tuned variants head-to-head: e.g. ['autotuned/<run>/GNN_IMM','autotuned/<run>/GNN_CV','autotuned/<run>/JPDA_IMM','GNN/default_GNN']",
+
+    "degradation": {
+        "_README": "ALL degradation toggles in one place. Terrain toggles override terrain file defaults.",
+
+        "terrain_occlusion": true,
+        "_terrain_occlusion": "LOS checks against terrain heightmap. Targets behind ridges are invisible.",
+
+        "horizon_masking": true,
+        "_horizon_masking": "4/3 Earth radius model. Targets below radar horizon are removed.",
+
+        "ground_clutter": true,
+        "_ground_clutter": "Terrain-dependent false returns at low elevation angles.",
+
+        "doppler_fade": true,
+        "_doppler_fade": "Tangential targets fade in clutter notch (MTI effect).",
+
+        "weather": "none",
+        "_weather": "Weather config from config/weather/<TYPE>/<file>, or 'none' for clear skies.",
+        "_weather_examples": "rain/default_rain | rain/heavy_rain | snow/default_snow | fog/default_fog | icing/default_icing | none"
+    },
+
+    "_REMOVED_FIELDS": "rcs_range_filter removed in v3.4.1 — fusionRadarSensor handles RCS natively via platform.Signatures per R2025b; external filter caused R^4 double-counting.",
+
+    "cache": { "use_cached_detections": false, "save_detections": true },
+    "platforms": {},
+    "output": {
+        "show_visuals": true,
+        "animate_visuals": true,
+        "save_results": true,
+        "globe_view": false
+    }
+}

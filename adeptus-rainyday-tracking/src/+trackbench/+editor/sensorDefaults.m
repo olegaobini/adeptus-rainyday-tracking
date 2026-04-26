@@ -2,6 +2,9 @@ function sr = sensorDefaults(typeStr)
 %sensorDefaults  Fresh SensorRecord seeded with buildSensor-canonical
 %                 defaults for the given type.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  This is the ONE place the 8 editor-supported sensor-type defaults
 %  live. Both EditorState.addNewSensor (cold-add path) and
 %  buildUI.onSensorTypeChanged (user changes type on an existing

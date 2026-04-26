@@ -1,0 +1,77 @@
+{
+  "description": "5 targets: 2 crossing pairs + 1 S-maneuver (Boeing demo)",
+  "duration_s": 90,
+  "targets": [
+    {
+      "behavior": "crossing",
+      "speed_kmh": 850,
+      "start_pos": [
+        -30000,
+        -35000,
+        -6000
+      ],
+      "end_pos": [
+        30000,
+        -35000,
+        -6000
+      ],
+      "altitude_m": 6000
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [
+        0,
+        -55000,
+        -6000
+      ],
+      "end_pos": [
+        0,
+        -15000,
+        -6000
+      ],
+      "altitude_m": 6000
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 750,
+      "start_pos": [
+        -20000,
+        -25000,
+        -6000
+      ],
+      "end_pos": [
+        20000,
+        -45000,
+        -6000
+      ],
+      "altitude_m": 6000
+    },
+    {
+      "behavior": "crossing",
+      "speed_kmh": 780,
+      "start_pos": [
+        15000,
+        -25000,
+        -6000
+      ],
+      "end_pos": [
+        -15000,
+        -45000,
+        -6000
+      ],
+      "altitude_m": 6000
+    },
+    {
+      "behavior": "s_maneuver",
+      "speed_kmh": 800,
+      "start_pos": [
+        -8000,
+        -30000,
+        -6000
+      ],
+      "turn_rate_dps": 2,
+      "altitude_m": 6000
+    }
+  ]
+}

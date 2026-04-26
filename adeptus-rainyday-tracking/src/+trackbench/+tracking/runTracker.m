@@ -1,6 +1,9 @@
 function [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLog, swapReport] = runTracker(dataLog,tracker,showTruth, showVisuals, animateVisuals)
 %runTracker  Run a tracker on a logged detection sequence and compute metrics.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  METRICS MODEL
 %    Uses MATLAB's built-in trackAssignmentMetrics and trackErrorMetrics
 %    with NEES-based (Normalized Estimation Error Squared) distance for

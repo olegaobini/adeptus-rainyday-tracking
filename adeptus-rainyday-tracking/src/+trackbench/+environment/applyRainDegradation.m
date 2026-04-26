@@ -2,6 +2,9 @@ function [pdMultiplier, noiseMultiplier, weatherClutter] = applyRainDegradation(
     simTime, rainConfig, sensorInfo, sensorPos, sensorParams)
 %applyRainDegradation  Physics-based rain degradation for radar detections.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Computes three effects of rain on radar performance:
 %    1. Detection probability reduction (range-dependent, frequency-dependent)
 %    2. Measurement noise increase

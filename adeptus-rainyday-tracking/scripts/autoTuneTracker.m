@@ -1,6 +1,9 @@
 function results = autoTuneTracker(runName, trackerType, filterModel, opts)
 %autoTuneTracker  Sweep tracker parameters against cached detections.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Loads cached detections from a previous run, then sweeps key tracker
 %  parameters to find the combination that minimizes tracking error.
 %  Detection generation is skipped entirely — only the tracker algorithm

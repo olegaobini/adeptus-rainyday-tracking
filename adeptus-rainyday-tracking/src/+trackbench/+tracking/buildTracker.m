@@ -1,6 +1,9 @@
 function tracker = buildTracker(trackerType, filterModel, params, globalParams, filterParams, pd, numSensors)
 % BUILDTRACKER Factory function to create configured tracker objects.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Maps JSON parameters to the specific property names required by
 %  trackerGNN, trackerTOMHT, and trackerJPDA.
 %

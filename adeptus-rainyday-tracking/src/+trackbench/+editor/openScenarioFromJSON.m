@@ -1,6 +1,9 @@
 function [nSensors, nTargets] = openScenarioFromJSON(state, runPath)
 %openScenarioFromJSON  Load a full scenario run file into EditorState (M6 §3.4).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Replaces BOTH state.sensors and state.targets with the content the run
 %  file references. Matches the loadRunFile.m convention used by the
 %  simulator side:

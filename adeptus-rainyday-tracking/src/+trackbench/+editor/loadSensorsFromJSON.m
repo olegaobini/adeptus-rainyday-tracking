@@ -1,6 +1,9 @@
 function nLoaded = loadSensorsFromJSON(state, jsonPath, mode)
 %loadSensorsFromJSON  Hydrate EditorState.sensors from a JSON file (M6 §3.4).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Auto-detects three file shapes:
 %    1. Single-sensor file — has top-level "type" and "params" fields.
 %         { "name": "...", "type": "PSR", "platform": "tower",

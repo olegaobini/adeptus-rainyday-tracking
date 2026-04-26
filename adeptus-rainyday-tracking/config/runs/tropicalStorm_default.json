@@ -1,0 +1,36 @@
+{
+    "_DEMO_ROLE": "Demo baseline — DEFAULT GNN+IMM tracker in tropical storm. First of the auto-tune demo pair. Designed to visibly struggle under 100 mm/hr tropical rain + mountain clutter, showing the performance floor before auto-tuning.",
+    "_DEMO_WORKFLOW": "1) runSingleScenario('tropicalStorm_default') -- generates fresh detections & baseline GNN+IMM track result | 2) autoTuneTracker('tropicalStorm_default', 'GNN') -- sweeps gate/volume/beta + IMM filter params on cached detections, writes config/trackers/autotuned/tropicalStorm_default/GNN_IMM.json | 3) runSingleScenario('tropicalStorm_autotuned') -- reuses cached detections, applies the freshly tuned params | 4) compareTrackers to show numerical delta.",
+
+    "description": "TROPICAL STORM (baseline): 3 real NASA flights + mountain terrain + 100 mm/hr tropical rain. Default GNN+IMM tracker, no tuning. Expect heavy clutter, track swaps, elevated posRMS.",
+
+    "sensors":  ["PSR/PSR_demo_multi", "SSR/SSR_demo_multi"],
+    "targets":  "recorded_flight/nasa_multi_target",
+    "terrain":  "mountain/default_mountain",
+    "trackers": ["GNN/default_GNN"],
+
+    "compare_trackers": [
+        "GNN/default_GNN",
+        "autotuned/tropicalStorm_default/GNN_IMM",
+        "JPDA/default_JPDA",
+        "TOMHT/default_TOMHT"
+    ],
+
+    "degradation": {
+        "terrain_occlusion": true,
+        "horizon_masking":   true,
+        "ground_clutter":    true,
+        "doppler_fade":      true,
+        "weather":           "rain/tropicalStorm"
+    },
+
+    "cache":    { "use_cached_detections": true, "save_detections": true },
+    "platforms": {},
+    "output":   {
+        "show_visuals":      true,
+        "animate_visuals":   false,
+        "save_results":      true,
+        "print_diagnostics": true,
+        "results_directory": "results"
+    }
+}

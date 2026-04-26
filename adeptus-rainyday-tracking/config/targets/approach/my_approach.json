@@ -1,0 +1,36 @@
+{
+  "description": "Two aircraft on landing approach — descending to runway",
+  "duration_s": 90,
+  "targets": [
+    {
+      "behavior": "approach",
+      "speed_kmh": 280,
+      "start_pos": [
+        0,
+        -30000,
+        -3000
+      ],
+      "end_pos": [
+        0,
+        -500,
+        -50
+      ],
+      "altitude_m": 3000
+    },
+    {
+      "behavior": "approach",
+      "speed_kmh": 260,
+      "start_pos": [
+        3000,
+        -25000,
+        -2500
+      ],
+      "end_pos": [
+        0,
+        -500,
+        -80
+      ],
+      "altitude_m": 2500
+    }
+  ]
+}

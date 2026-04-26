@@ -1,6 +1,9 @@
 function filter = initIMMFilter(detection, filterParams)
 %initIMMFilter  Initialize an IMM filter with constant velocity and constant turn models.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  PROCESS NOISE
 %    scale_accel_horz : horizontal acceleration (X,Y). 30 m/s² default.
 %    scale_accel_vert : vertical acceleration (Z). 20 m/s² default.

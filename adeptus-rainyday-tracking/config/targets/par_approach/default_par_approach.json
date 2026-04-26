@@ -1,0 +1,38 @@
+{
+  "description": "Precision Approach Radar — PSR+SSR+PAR, two aircraft on final, narrow beam tracking",
+  "duration_s": 90,
+  "targets": [
+    {
+      "behavior": "approach",
+      "speed_kmh": 280,
+      "start_pos": [
+        0,
+        -30000,
+        -3000
+      ],
+      "end_pos": [
+        0,
+        -500,
+        -50
+      ],
+      "altitude_m": 3000,
+      "x_note": "Straight-in ILS approach, descending to runway"
+    },
+    {
+      "behavior": "approach",
+      "speed_kmh": 260,
+      "start_pos": [
+        3000,
+        -25000,
+        -2500
+      ],
+      "end_pos": [
+        0,
+        -500,
+        -80
+      ],
+      "altitude_m": 2500,
+      "x_note": "Offset approach converging to same final"
+    }
+  ]
+}

@@ -1,6 +1,9 @@
 function swapReport = analyzeTrackSwaps(assignLog, truthData, scanTimes)
 %analyzeTrackSwaps  Detect and characterize track-to-truth identity swaps.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % WHAT IS A TRACK SWAP?
 %   A track swap occurs when a tracker reassigns a track from one truth
 %   target to another. In a friend-or-foe context, this means a "friend"

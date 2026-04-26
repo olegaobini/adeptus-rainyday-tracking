@@ -1,0 +1,32 @@
+{
+  "description": "Auto-generated run from GUI",
+  "sensors": [
+    "PSR/PSR_1"
+  ],
+  "targets": "crossing_pair/my_crossing_pair",
+  "terrain": "desert/my_desert",
+  "trackers": [
+    "GNN/my_GNN"
+  ],
+  "compare_trackers": [
+    "GNN/my_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "rcs_range_filter": false,
+    "weather": "fog/my_fog"
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true
+  }
+}

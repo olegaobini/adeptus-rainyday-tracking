@@ -1,6 +1,9 @@
 function filter = initCVFilter(detection, filterParams)
 %initCVFilter  Initialize a constant velocity EKF from a detection.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Creates a 6-state [x vx y vy z vz] constant velocity Extended Kalman
 %  Filter using MATLAB's initcvekf, then overrides the process noise and
 %  initial covariance with values from the JSON tracker config.

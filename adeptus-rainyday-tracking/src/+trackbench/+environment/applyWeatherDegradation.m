@@ -2,6 +2,9 @@ function [pdMultiplier, noiseMultiplier, weatherClutter] = applyWeatherDegradati
     simTime, weatherConfig, sensorInfo, sensorPos, sensorParams, weatherType)
 %applyWeatherDegradation  Dispatch weather degradation by type.
 %
+%   Author:  James Gallegos (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Unified interface for all weather effects. Routes to the appropriate
 %  physics model based on weatherType, returning the same 3 outputs.
 %

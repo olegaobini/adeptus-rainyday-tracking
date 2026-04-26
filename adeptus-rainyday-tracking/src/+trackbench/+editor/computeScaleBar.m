@@ -1,6 +1,9 @@
 function [lengthM, labelStr] = computeScaleBar(xSpanM)
 %computeScaleBar  Pick a "nice round" scale-bar length for a given axes span.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  INPUT
 %    xSpanM   Visible axes width in world meters (positive, finite).
 %

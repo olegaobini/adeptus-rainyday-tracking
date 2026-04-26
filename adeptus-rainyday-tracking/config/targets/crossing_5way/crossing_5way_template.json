@@ -1,0 +1,28 @@
+{
+  "INSTRUCTIONS": [
+    "Copy this file, rename it, edit the targets array.",
+    "Reference in a run file as: targets/<folder>/my_<name>",
+    "Each target needs: behavior, speed_kmh, start_pos, altitude_m.",
+    "Extra fields depend on behavior (see PARAM_DOCS)."
+  ],
+  "PARAM_DOCS": {
+    "behavior": "crossing+s_maneuver  — Boeing demo scenario. 5 targets at same altitude create multiple swap opportunities.",
+    "speed_kmh": "Target speed in km/h. 200-2000 for aircraft, 20-60 for ships.",
+    "start_pos": "[x, y, z] NED meters. z is negative (altitude above ground).",
+    "altitude_m": "Altitude ASL in meters. Overrides start_pos(3).",
+    "heading_deg": "(constant_velocity/head_on) 0=N, 90=E, 180=S, 270=W.",
+    "end_pos": "(crossing/approach) [x,y,z] destination point.",
+    "turn_rate_dps": "(s_maneuver) Turn rate deg/s. 2-5 typical.",
+    "orbit_radius_m": "(orbit) Circle radius meters. 3000-5000 typical."
+  },
+  "description": "YOUR DESCRIPTION",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "crossing+s_maneuver",
+      "speed_kmh": 900,
+      "start_pos": [-5000, -20000, -3000],
+      "altitude_m": 3000
+    }
+  ]
+}

@@ -1,0 +1,30 @@
+{
+  "description": "Editor-exported scenario \"MEGATEST\" (2026-04-25)",
+  "sensors": [
+    "PSR/sensor_1"
+  ],
+  "targets": "waypoints/MEGATEST",
+  "terrain": "urban/MEGATEST_terrain",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "rain/MEGATEST_weather",
+    "rcs_range_filter": true
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

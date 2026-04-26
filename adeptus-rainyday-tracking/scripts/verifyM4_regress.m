@@ -2,6 +2,9 @@ function verifyM4_regress()
 %verifyM4_regress  Post-M5 sanity check: prove the runDetections truth-shape
 %                  fix didn't regress single-target behavior.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Runs runSingleScenario("m4_curved_demo") under -batch and saves the
 %  3D scenario plot as
 %    ../PROGRESS_M5_screenshots/m4_regress_01_Scenario_Truth_and_Detections_3D.png

@@ -2,6 +2,9 @@ function verifyM7_endToEnd()
 %verifyM7_endToEnd  End-to-end sanity run for Milestone 7 (Environment
 %                    authoring in the path editor).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Mirrors verifyM5_endToEnd / verifyM4_endToEnd but exercises the new
 %  M7 surface area:
 %

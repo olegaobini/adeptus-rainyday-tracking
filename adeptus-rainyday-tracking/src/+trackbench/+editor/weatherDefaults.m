@@ -3,6 +3,9 @@ function wr = weatherDefaults(typeStr)
 %                 config/weather/<TYPE>/default_<TYPE>.json values
 %                 for the given type.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Mirrors the sensorDefaults / terrainDefaults pattern. Single source
 %  of truth for the four editor-supported weather-type seed values.
 %  Used by:

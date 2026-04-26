@@ -1,6 +1,9 @@
 function [mssr, meta] = buildIFFSensor(sensorIndex, varargin)
 %buildIFFSensor  Simulate the DASR Monopulse Secondary Surveillance Radar (MSSR).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % DASR ARCHITECTURE (ASR-11 / AN/GPN-30)
 %   The real DASR has two co-mounted, co-rotating antennas on the same tower:
 %     PSR  - Primary Search Radar:      60 nm, S-band, passive reflection

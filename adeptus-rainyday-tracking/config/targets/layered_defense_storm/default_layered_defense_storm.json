@@ -1,0 +1,38 @@
+{
+  "description": "Full layered defense in heavy rain — shows which sensors degrade and which don't",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 900,
+      "start_pos": [
+        -30000,
+        -80000,
+        -6000
+      ],
+      "heading_deg": 50,
+      "altitude_m": 6000
+    },
+    {
+      "behavior": "gentle_turn",
+      "speed_kmh": 700,
+      "start_pos": [
+        20000,
+        -60000,
+        -4000
+      ],
+      "altitude_m": 4000
+    },
+    {
+      "behavior": "s_maneuver",
+      "speed_kmh": 800,
+      "start_pos": [
+        0,
+        -70000,
+        -5000
+      ],
+      "turn_rate_dps": 2,
+      "altitude_m": 5000
+    }
+  ]
+}

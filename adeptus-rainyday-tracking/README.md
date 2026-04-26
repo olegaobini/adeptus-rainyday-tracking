@@ -1,6 +1,8 @@
 # Rainy Day: Advanced Radar Tracking in Degraded Weather
 
-**Version 3.5.0** — Boeing-sponsored senior capstone project, University of Washington.
+**Version 3.5.1** — Boeing-sponsored senior capstone project, University of Washington.
+
+> **Just here to test the app?** See **`TESTING.md`** in the repo root. It's a one-page guide for installing the .exe and trying it out as an end user — no MATLAB required.
 
 A modular MATLAB framework for evaluating radar target tracking performance under
 real-world degraded conditions. Users compose custom scenarios by combining
@@ -549,7 +551,30 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v3.5.0 — April 2026 (current)
+### v3.5.1 — April 25, 2026 (current)
+
+**Per-user data directory for installed builds.** Fixes a Windows permissions trap where standard users (no admin elevation) could not save anything when the app was installed to `C:\Program Files\` via the Web/Offline installer.
+
+- On first launch in deployed mode, `mainMenu` resolves a writable per-user
+  data dir at `%LOCALAPPDATA%\RainyDay\` and seeds it from the read-only
+  install dir. Items copied: `config/`, `docs/`, `README.md`,
+  `CHECKPOINT.md`. Items always created: `cache/`, `results/`.
+- `mainMenu` then `cd`s into that user data dir and uses it as `projectRoot`,
+  so all sub-windows (`pathEditor`, `runSimGUI`, `validationDocsGUI`) and
+  `runSingleScenario` write to a place the standard user actually owns.
+- Subsequent launches preserve any user edits — the seed step is idempotent
+  (only copies items that don't already exist).
+- A `.rainyday_userdata` marker file documents the seed time and source.
+- Reset to factory defaults: delete `%LOCALAPPDATA%\RainyDay\` and relaunch.
+- Dev mode (running `mainMenu` from MATLAB) is unchanged — the source tree
+  is still the working tree.
+- Installer version bumped to 3.5.1.0.
+
+No changes outside `scripts/mainMenu.m` and the installer version field.
+Three new local helpers live at the bottom of `mainMenu.m`:
+`findDeployedInstallRoot`, `resolveUserDataRoot`, `seedUserDataRoot`.
+
+### v3.5.0 — April 2026
 
 **3-button main menu + GUI rebuild + EXE entry point.**
 
@@ -660,4 +685,4 @@ to per-component JSON files.
 ---
 
 **Last Updated:** April 25, 2026
-**Version:** 3.5.0
+**Version:** 3.5.1

@@ -1,6 +1,9 @@
 function sig = buildRCSProfile(profileName, baseRCS_dBsm)
 %buildRCSProfile  Create an rcsSignature with a realistic aspect-dependent pattern.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Instead of a single isotropic RCS value, this creates a full azimuth ×
 %  elevation pattern that varies with viewing angle — just like real aircraft.
 %

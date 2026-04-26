@@ -1,0 +1,7 @@
+{
+  "description": "Mountain ridges and peaks 2000m, heavy occlusion.",
+  "terrain_type": "mountain",
+  "terrain_scale": 1,
+  "clutter_density": 0.5,
+  "refraction_factor": 1.333
+}

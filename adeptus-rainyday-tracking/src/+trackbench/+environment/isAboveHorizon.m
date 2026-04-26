@@ -1,6 +1,9 @@
 function visible = isAboveHorizon(sensorPos, targetPos, refractionFactor)
 %isAboveHorizon  Check if a target is above the radar horizon.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Uses the standard 4/3 effective Earth radius model for atmospheric
 % refraction. A target is visible if the ground-range between sensor and
 % target is less than the sum of both horizon distances.

@@ -1,6 +1,9 @@
 function drawSensorCoverage(ax, sensorCoverage, scaleKm)
 %drawSensorCoverage  Draw sensor coverage areas on a 3D plot.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Draws range rings (360° sensors) or wedge arcs (sector sensors) on the
 % ground plane (Z=0) to show each sensor's coverage area.
 %

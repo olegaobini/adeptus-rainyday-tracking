@@ -1,5 +1,9 @@
 function previewFig = previewWindow(waypoints, time_s, radar_xy, parentFig)
 %PREVIEWWINDOW  Animated preview of the current waypoint path (M3.4).
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   previewFig = previewWindow(WAYPOINTS, TIME_S, RADAR_XY, PARENTFIG)
 %   opens a secondary uifigure that animates a moving marker along the
 %   waypoint polyline using the provided auto-computed TIME_S timeline.

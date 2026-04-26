@@ -1,6 +1,9 @@
 function buildUI(state)
 %buildUI  Create the uifigure + controls for the interactive path editor.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Lays out:
 %    [  map axes (uiaxes)            |  sidebar  ]
 %    [  status bar                                ]

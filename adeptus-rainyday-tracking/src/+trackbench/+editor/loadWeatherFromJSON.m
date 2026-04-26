@@ -2,6 +2,9 @@ function wr = loadWeatherFromJSON(projectRoot, relPath)
 %loadWeatherFromJSON  Parse a weather JSON file into a WeatherRecord
 %                     (M7 §3.4). Mirrors loadTerrainFromJSON.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Pure function — no state writes. EditorState.loadWeatherFromFile
 %  calls this and assigns the returned record into state.weather.
 %  Always returns a 1x1 WeatherRecord (never empty — callers wanting

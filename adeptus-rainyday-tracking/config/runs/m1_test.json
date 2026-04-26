@@ -1,0 +1,29 @@
+{
+  "description": "Editor-exported scenario \"m1_test\" (2026-04-25)",
+  "sensors": [
+    "PSR/sensor_1"
+  ],
+  "targets": "waypoints/m1_test",
+  "terrain": "mountain/m1_test_terrain",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "none"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

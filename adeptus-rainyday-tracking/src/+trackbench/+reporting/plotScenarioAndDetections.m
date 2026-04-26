@@ -1,6 +1,9 @@
 function plotScenarioAndDetections(dataLog, showVisuals)
 %plotScenarioAndDetections Plot truth trajectories and detections from dataLog
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % This version is robust when dataLog.Detections is a cell array where each
 % element is a cell array of objectDetection objects (as produced by the
 % modified helperRunDetections).

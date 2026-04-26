@@ -1,6 +1,9 @@
 classdef TargetRecord
 %TargetRecord  Per-target state for the multi-target path editor (M5 §3.1).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  A plain VALUE class. Owning EditorState keeps a 1xN array of these in
 %  state.targets and the active one at state.targets(state.activeIdx).
 %  Mutators read-mutate-writeback:

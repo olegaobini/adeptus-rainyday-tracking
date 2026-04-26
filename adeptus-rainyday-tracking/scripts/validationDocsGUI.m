@@ -1,6 +1,9 @@
 function varargout = validationDocsGUI(projectRoot)
 %validationDocsGUI  Level 3 of mainMenu — validation suite + documentation hub.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Three panels in one window:
 %    1. Validation Test Plan — runs runTestPlan, shows inline pass/fail
 %       table grouped by test case. Console output is captured and

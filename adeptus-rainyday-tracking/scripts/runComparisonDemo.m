@@ -1,6 +1,9 @@
 function runComparisonDemo()
 %runComparisonDemo  Run clean vs rain scenarios side-by-side for Boeing briefing.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Runs two identical scenarios:
 %    1. range_rcs_test  — clean weather (range + RCS + Doppler only)
 %    2. compound_demo   — same targets + 50 mm/hr rain

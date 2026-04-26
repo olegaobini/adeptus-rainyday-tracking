@@ -1,6 +1,9 @@
 function runTestPlan()
 %runTestPlan  Execute the Validation Test Plan (v0.8) — all 9 test cases.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Runs TC-01 through TC-09 in sequence, collects pass/fail results,
 %  and prints a final summary report.
 %

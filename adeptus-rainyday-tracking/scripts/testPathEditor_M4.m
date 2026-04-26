@@ -1,6 +1,9 @@
 function testPathEditor_M4()
 %testPathEditor_M4  Programmatic tests for Milestone 4 sections 3.1-3.5.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Scope of THIS test file (full M4 check-in):
 %    §3.1 — Centripetal Catmull-Rom math (interpolation, endpoints,
 %           densification size, tension family, 3D behavior, time axis).

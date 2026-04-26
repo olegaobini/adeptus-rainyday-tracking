@@ -1,6 +1,9 @@
 function results = testPathEditor_M3_preview()
 %TESTPATHEDITOR_M3_PREVIEW  Automated tests for the M3.4 animation preview.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   Run from the project root:
 %       >> cd adeptus-rainyday-tracking
 %       >> addpath(genpath('src'));

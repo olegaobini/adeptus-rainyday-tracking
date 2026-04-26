@@ -1,6 +1,9 @@
 function fig = pathEditor(projectRoot)
 %pathEditor  Launch the interactive target-path editor.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Draw a target flight path by left-clicking on a map, set a few scenario
 %  defaults, and export to a waypoints-behavior JSON that
 %  trackbench.scenario.addTargetFromDef can consume directly.

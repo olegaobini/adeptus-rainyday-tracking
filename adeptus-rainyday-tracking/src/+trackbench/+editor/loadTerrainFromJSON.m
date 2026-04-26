@@ -2,6 +2,9 @@ function tr = loadTerrainFromJSON(projectRoot, relPath)
 %loadTerrainFromJSON  Parse a terrain JSON file into a TerrainRecord
 %                     (M7 §3.4).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Pure function — no state writes. EditorState.loadTerrainFromFile
 %  calls this and assigns the returned record into state.terrain.
 %

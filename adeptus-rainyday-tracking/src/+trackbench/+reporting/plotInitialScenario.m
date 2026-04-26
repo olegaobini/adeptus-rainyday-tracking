@@ -1,6 +1,9 @@
 function plotInitialScenario(dataLog, animateFlag)
 % PLOTINITIALSCENARIO Visualize Truth and Detections (3D Animated)
 %
+%   Author:  Daniel Trofimchik (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % NED CONVENTION: In the scenario, Z-negative = altitude above ground.
 % For display, we NEGATE Z so altitude plots UPWARD (intuitive).
 % The Z-axis label reads "Altitude (km)" instead of "Z (km)".

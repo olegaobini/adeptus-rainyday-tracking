@@ -3,6 +3,9 @@ function tr = terrainDefaults(typeStr)
 %                 config/terrain/<TYPE>/default_<TYPE>.json values
 %                 for the given type.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Mirrors the sensorDefaults pattern. Single source of truth for
 %  the five editor-supported terrain-type seed values. Used by:
 %    * EditorState.setTerrainType (cascade reset on UI type change)

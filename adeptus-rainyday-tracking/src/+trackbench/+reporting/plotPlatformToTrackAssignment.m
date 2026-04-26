@@ -1,6 +1,9 @@
 function plotPlatformToTrackAssignment(ax, assignLog, plotTitle, swapReport)
 %plotPlatformToTrackAssignment  Timeline view of track-to-truth assignments.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % Shows each confirmed track as a colored line over time. Each line is
 % labeled with both the Track ID and the Truth ID it's assigned to, so
 % you can immediately see which track is following which truth and when

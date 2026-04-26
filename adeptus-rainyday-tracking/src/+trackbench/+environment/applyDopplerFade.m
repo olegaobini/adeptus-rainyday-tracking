@@ -1,6 +1,9 @@
 function [keptDets, diagInfo] = applyDopplerFade(dets, sensorPos, targets, sensorInfo, dopplerConfig)
 %applyDopplerFade  Reduce detection probability for targets with low radial velocity.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Real pulse-Doppler radars use MTI (Moving Target Indication) or Doppler
 %  processing to separate targets from ground clutter. Targets moving
 %  tangentially (across the beam) have near-zero radial velocity and fall

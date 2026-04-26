@@ -1,6 +1,9 @@
 function [scenario, config, sensors, metas] = loadRunFile(runName)
 %loadRunFile  Load a modular run file and build everything.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Reads a run file from config/runs/<runName>.json, which references
 %  individual sensor, target, terrain, and tracker configs. Builds the
 %  complete trackingScenario with all components assembled.
@@ -147,19 +150,19 @@ if isfield(runDef, 'targets') && ~isempty(runDef.targets)
     targetDef = jsondecode(fileread(fullPath));
     fprintf('[RUN] Targets: %s\n', fullPath);
 end
-%% 4. Load terrain config
+%% 4. Load terrain config — supports legacy string OR new multi-region struct
+%   v3.5 §5a:
+%     Legacy:  "terrain": "mountain/default_mountain"
+%     New:     "terrain": {"fallback": "...", "regions": [{...}]}
+%   parseTerrainField handles both. For a legacy string it returns a
+%   single-fallback / empty-regions tuple, preserving exact pre-5a
+%   behavior for every existing run file.
 terrainDef = struct('terrain_type','water','terrain_scale',1.0, ...
     'terrain_occlusion',false,'horizon_masking',false, ...
     'clutter_density',0,'refraction_factor',1.333);
+terrainRegions = {};   % populated below in the multi-region branch
 if isfield(runDef, 'terrain') && ~isempty(runDef.terrain)
-    tPath = char(runDef.terrain);
-    if ~endsWith(tPath, '.json'); tPath = [tPath '.json']; end
-    fullPath = fullfile(configDir, 'terrain', tPath);
-    if ~isfile(fullPath)
-        error('loadRunFile:terrainNotFound', 'Terrain config not found: %s', fullPath);
-    end
-    terrainDef = jsondecode(fileread(fullPath));
-    fprintf('[RUN] Terrain: %s (%s)\n', fullPath, terrainDef.terrain_type);
+    [terrainDef, terrainRegions] = parseTerrainField(runDef.terrain, configDir);
 end
 %% 5. Load tracker configs
 trackerConfigs = {};
@@ -209,17 +212,28 @@ end
 config.degradation.enabled = false;
 config.degradation.type = 'rain';
 config.degradation.rain_rate_mmhr = 16;
+% v3.5 §5b — has_fallback flag tells runDetections whether the fallback
+% weather record exists. Distinguishes "weather everywhere" from
+% "region-only weather, clear elsewhere" so the per-detection resolver
+% can skip fallback effects in the latter case.
+config.degradation.has_fallback = false;
+weatherRegions = {};   % v3.5 §5a — populated below if runDef has weather regions
 if isfield(runDef, 'degradation')
     deg = runDef.degradation;
     
-    % --- Weather config (NEW: load from config/weather/) ---
-    if isfield(deg, 'weather') && ~strcmpi(char(deg.weather), 'none') && ~isempty(deg.weather)
-        wPath = char(deg.weather);
-        if ~endsWith(wPath, '.json'); wPath = [wPath '.json']; end
-        weatherFile = fullfile(configDir, 'weather', wPath);
-        if isfile(weatherFile)
-            weatherDef = jsondecode(fileread(weatherFile));
+    % --- Weather config — supports legacy string OR new multi-region struct ---
+    %   v3.5 §5a:
+    %     Legacy:  "weather": "rain/default_rain"  (or "none")
+    %     New:     "weather": {"fallback": "...", "regions": [{...}]}
+    %   parseWeatherField handles both. The fallback may be "none"
+    %   (or omitted) when only regions matter; in that case we still
+    %   flag degradation enabled so 5b's per-detection resolver runs.
+    if isfield(deg, 'weather') && ~isempty(deg.weather)
+        [weatherFallbackDef, weatherRegions] = parseWeatherField(deg.weather, configDir);
+        if ~isempty(fieldnames(weatherFallbackDef))
+            weatherDef = weatherFallbackDef;
             config.degradation.enabled = true;
+            config.degradation.has_fallback = true;
             if isfield(weatherDef, 'type');              config.degradation.type = char(weatherDef.type); end
             if isfield(weatherDef, 'rain_rate_mmhr');    config.degradation.rain_rate_mmhr = weatherDef.rain_rate_mmhr; end
             if isfield(weatherDef, 'pd_floor');          config.degradation.pd_floor = weatherDef.pd_floor; end
@@ -227,9 +241,17 @@ if isfield(runDef, 'degradation')
             if isfield(weatherDef, 'storm_start_s');     config.degradation.storm_start_s = weatherDef.storm_start_s; end
             if isfield(weatherDef, 'storm_end_s');       config.degradation.storm_end_s = weatherDef.storm_end_s; end
             if isfield(weatherDef, 'active_type');       config.degradation.active_type = char(weatherDef.active_type); end
-            fprintf('[RUN] Weather: %s (%s)\n', weatherFile, config.degradation.type);
-        else
-            warning('loadRunFile:weatherNotFound', 'Weather config not found: %s', weatherFile);
+            fprintf('[RUN] Weather (fallback): %s\n', config.degradation.type);
+        elseif ~isempty(weatherRegions)
+            % Region-only weather (fallback="none" + non-empty regions).
+            % Flag degradation enabled so 5b's resolver runs; has_fallback
+            % stays FALSE so the resolver knows to leave outside-of-region
+            % detections alone. legacy config.degradation.* fields keep
+            % their no-op defaults.
+            config.degradation.enabled = true;
+            config.degradation.has_fallback = false;
+            fprintf('[RUN] Weather: %d region(s), no fallback (clear outside regions)\n', ...
+                numel(weatherRegions));
         end
     end
     
@@ -254,6 +276,12 @@ if ~isfield(config.degradation, 'storm_end_s');   config.degradation.storm_end_s
 if ~isfield(config.degradation, 'active_type');   config.degradation.active_type = 'step'; end
 % Environment from terrain file, then override with run file degradation toggles
 config.environment = terrainDef;
+% v3.5 §5a — multi-region collections. Both are empty cells in legacy
+% runs (single-terrain / single-weather), so runDetections's per-detection
+% resolver in 5b takes the fallback every time — bit-for-bit identical
+% behavior to pre-5a for every existing run file.
+config.environmentRegions = terrainRegions;
+config.degradationRegions = weatherRegions;
 if isfield(runDef, 'degradation')
     deg = runDef.degradation;
     % Run file degradation block overrides terrain file defaults
@@ -468,6 +496,14 @@ try
     scenBounds = computeScenarioBounds(scenario);
     [Zterrain, boundary, Xg, Yg] = trackbench.environment.generateTerrain( ...
         terrainType, scenBounds, elevScale);
+    % v3.5 §5b — stamp region heightmaps over the fallback layer so
+    % MATLAB's groundSurface/SurfaceManager sees a single composite
+    % grid. Empty terrainRegions → composeHeightmap returns Zterrain
+    % unchanged (legacy bit-for-bit behavior).
+    if ~isempty(terrainRegions)
+        Zterrain = trackbench.environment.composeHeightmap( ...
+            Zterrain, terrainRegions, Xg, Yg, scenBounds);
+    end
     groundSurface(scenario, 'Terrain', Zterrain, 'Boundary', boundary);
     % Raise stationary platforms to terrain
     allPlats = scenario.Platforms;
@@ -535,4 +571,182 @@ function freq = getFreqForType(sType)
         case 'MARITIME';                  freq = 9.4e9;
         otherwise;                        freq = 2.8e9;
     end
+end
+
+%% ========================================================================
+%  v3.5 §5a — multi-region terrain & weather parsers
+%  parseTerrainField / parseWeatherField each accept either:
+%    - a string  (legacy single-component shape)
+%    - a struct  (new {fallback, regions[]} shape)
+%  and return (fallbackDef, regions) where regions is a cell array of
+%  region structs {.config_path, .name, .polygon_xy, .def}. The .def
+%  field caches the loaded inner config so 5b's resolver doesn't have
+%  to re-read referenced files per detection.
+%% ========================================================================
+function [fallbackDef, regions] = parseTerrainField(field, configDir)
+%parseTerrainField  Parse a runDef.terrain value (legacy string or
+%                   v3.5 multi-region struct). Returns:
+%    fallbackDef  struct from the fallback terrain config file. Always
+%                 populated when input is non-empty — terrain has no
+%                 "none" sentinel; every scenario must resolve to some
+%                 terrain to drive the heightmap.
+%    regions      cell array of {config_path, name, polygon_xy, def}
+%                 structs. Empty for legacy single-terrain runs.
+    fallbackDef = struct();
+    regions = {};
+
+    if ischar(field) || isstring(field)
+        % Legacy string shape — single terrain, no regions.
+        fbStr = char(field);
+        if ~isempty(fbStr)
+            fallbackDef = loadTerrainFile(fbStr, configDir);
+            fprintf('[RUN] Terrain: %s (%s)\n', fbStr, fallbackDef.terrain_type);
+        end
+        return;
+    end
+
+    if isstruct(field)
+        % v3.5 §5a multi-region shape: {fallback, regions: [...]}
+        if isfield(field, 'fallback') && ~isempty(field.fallback)
+            fbStr = char(field.fallback);
+            fallbackDef = loadTerrainFile(fbStr, configDir);
+            fprintf('[RUN] Terrain (fallback): %s (%s)\n', ...
+                fbStr, fallbackDef.terrain_type);
+        else
+            error('loadRunFile:noFallbackTerrain', ...
+                'terrain.fallback is required (terrain has no "none" option).');
+        end
+        if isfield(field, 'regions') && ~isempty(field.regions)
+            regs = field.regions;
+            % jsondecode returns a struct array for homogeneous JSON
+            % object arrays, or a cell array if shapes vary. Normalize.
+            if isstruct(regs); regs = num2cell(regs); end
+            for i = 1:numel(regs)
+                rec = parseRegion(regs{i});
+                rec.def = loadTerrainFile(char(rec.config_path), configDir);
+                regions{end+1} = rec; %#ok<AGROW>
+                fprintf('[RUN] Terrain region %d: "%s" -> %s (%d pts)\n', ...
+                    i, rec.name, rec.config_path, size(rec.polygon_xy, 1));
+            end
+        end
+        return;
+    end
+
+    warning('loadRunFile:badTerrainField', ...
+        'Unrecognized terrain field type "%s" — using built-in defaults.', ...
+        class(field));
+end
+
+function [fallbackDef, regions] = parseWeatherField(field, configDir)
+%parseWeatherField  Parse a runDef.degradation.weather value (legacy
+%                   string or v3.5 multi-region struct). Returns:
+%    fallbackDef  struct from the fallback weather config file. Empty
+%                 struct() (numel(fieldnames)==0) when fallback is
+%                 "none" or omitted — the "no global weather" case.
+%    regions      cell array of region structs (see parseRegion).
+%                 Empty for legacy single-weather runs.
+    fallbackDef = struct();
+    regions = {};
+
+    if ischar(field) || isstring(field)
+        % Legacy string shape.
+        fbStr = char(field);
+        if isempty(fbStr) || strcmpi(fbStr, 'none')
+            return;   % weather disabled
+        end
+        fallbackDef = loadWeatherFile(fbStr, configDir);
+        return;
+    end
+
+    if isstruct(field)
+        % v3.5 §5a multi-region shape.
+        if isfield(field, 'fallback') && ~isempty(field.fallback)
+            fbStr = char(field.fallback);
+            if ~strcmpi(fbStr, 'none')
+                fallbackDef = loadWeatherFile(fbStr, configDir);
+            end
+        end
+        if isfield(field, 'regions') && ~isempty(field.regions)
+            regs = field.regions;
+            if isstruct(regs); regs = num2cell(regs); end
+            for i = 1:numel(regs)
+                rec = parseRegion(regs{i});
+                rec.def = loadWeatherFile(char(rec.config_path), configDir);
+                regions{end+1} = rec; %#ok<AGROW>
+                fprintf('[RUN] Weather region %d: "%s" -> %s (%d pts)\n', ...
+                    i, rec.name, rec.config_path, size(rec.polygon_xy, 1));
+            end
+        end
+        return;
+    end
+
+    warning('loadRunFile:badWeatherField', ...
+        'Unrecognized degradation.weather field type "%s" — treating as "none".', ...
+        class(field));
+end
+
+function rec = parseRegion(rDef)
+%parseRegion  Common region-struct parser shared by terrain & weather.
+%             Extracts name, config path, and polygon_xy. Validates the
+%             polygon shape (Nx2 double, ≥3 distinct points). Sets the
+%             .def field to an empty struct — caller fills it via
+%             loadTerrainFile/loadWeatherFile so this function stays
+%             agnostic to the inner-record kind.
+    if ~isstruct(rDef)
+        error('loadRunFile:badRegion', ...
+            'Region entry must be a JSON object, got %s.', class(rDef));
+    end
+    rec = struct('config_path', "", 'name', "", ...
+                 'polygon_xy', zeros(0, 2), 'def', struct());
+    if isfield(rDef, 'config'); rec.config_path = string(char(rDef.config)); end
+    if isfield(rDef, 'name');   rec.name        = string(char(rDef.name));   end
+    if isfield(rDef, 'polygon_xy')
+        pxy = rDef.polygon_xy;
+        if ~isnumeric(pxy)
+            error('loadRunFile:badPolygon', ...
+                'Region "%s" polygon_xy must be numeric, got %s.', ...
+                rec.name, class(pxy));
+        end
+        % jsondecode of an Nx2 array of [x,y] pairs comes back as Nx2.
+        % If somehow transposed (2xN), flip to Nx2 — a polygon of
+        % exactly 2 points is degenerate either way (caught below).
+        if size(pxy, 2) == 2
+            rec.polygon_xy = pxy;
+        elseif size(pxy, 1) == 2 && size(pxy, 2) >= 3
+            rec.polygon_xy = pxy';
+        else
+            rec.polygon_xy = pxy;   % let validation below catch it
+        end
+    end
+    if size(rec.polygon_xy, 1) < 3 || size(rec.polygon_xy, 2) ~= 2
+        warning('loadRunFile:degeneratePolygon', ...
+            'Region "%s" has degenerate polygon (%dx%d) — will be skipped at resolve time.', ...
+            rec.name, size(rec.polygon_xy, 1), size(rec.polygon_xy, 2));
+    end
+    if strlength(rec.config_path) == 0
+        error('loadRunFile:missingRegionConfig', ...
+            'Region "%s" missing required "config" field.', rec.name);
+    end
+end
+
+function def = loadTerrainFile(relPath, configDir)
+%loadTerrainFile  Read a config/terrain/<TYPE>/<file>.json into a struct.
+    if ~endsWith(relPath, '.json'); relPath = [relPath '.json']; end
+    fullPath = fullfile(configDir, 'terrain', relPath);
+    if ~isfile(fullPath)
+        error('loadRunFile:terrainNotFound', ...
+            'Terrain config not found: %s', fullPath);
+    end
+    def = jsondecode(fileread(fullPath));
+end
+
+function def = loadWeatherFile(relPath, configDir)
+%loadWeatherFile  Read a config/weather/<TYPE>/<file>.json into a struct.
+    if ~endsWith(relPath, '.json'); relPath = [relPath '.json']; end
+    fullPath = fullfile(configDir, 'weather', relPath);
+    if ~isfile(fullPath)
+        error('loadRunFile:weatherNotFound', ...
+            'Weather config not found: %s', fullPath);
+    end
+    def = jsondecode(fileread(fullPath));
 end

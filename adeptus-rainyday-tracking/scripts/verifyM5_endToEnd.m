@@ -2,6 +2,9 @@ function verifyM5_endToEnd()
 %verifyM5_endToEnd  End-to-end sanity run for Milestone 5 (multi-target +
 %                   reference targets in the path editor).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Mirrors the structure of verifyM4_endToEnd but exercises the new M5
 %  surface area:
 %

@@ -3,6 +3,9 @@ function outPath = exportSingleSensorToJSON(state, fullPath)
 %                          to a single sensor config JSON file (v3.5
 %                          step 4c).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Pure function — takes a complete output path. The caller (buildUI's
 %  onSensorsSave callback) shows the uiputfile dialog and resolves the
 %  user's chosen path. Same separation pattern as exportTerrainToJSON.

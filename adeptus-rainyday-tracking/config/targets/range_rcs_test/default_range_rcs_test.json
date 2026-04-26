@@ -1,0 +1,51 @@
+{
+  "description": "Range vs RCS + Aspect + Doppler: 747 takeoff (airliner, 30 dBsm) vs stealth bomber evasive egress (stealth, -28 dBsm). Targets start further from radar so elevation angles stay within beam during climb.",
+  "duration_s": 180,
+  "targets": [
+    {
+      "label": "Boeing 747 (takeoff + cruise)",
+      "behavior": "waypoints",
+      "rcs_dbsm": 30,
+      "rcs_profile": "airliner",
+      "dimensions": { "length_m": 70, "width_m": 64, "height_m": 19 },
+      "class_id": 1,
+      "waypoints": [
+        { "pos": [0,    -10000,  -500],   "time_s": 0 },
+        { "pos": [0,    -16000,  -2000],  "time_s": 20 },
+        { "pos": [0,    -24000,  -5000],  "time_s": 45 },
+        { "pos": [0,    -34000,  -8000],  "time_s": 70 },
+        { "pos": [0,    -44000,  -10000], "time_s": 90 },
+        { "pos": [0,    -54000,  -10000], "time_s": 115 },
+        { "pos": [0,    -66000,  -10000], "time_s": 140 },
+        { "pos": [0,    -78000,  -10000], "time_s": 165 },
+        { "pos": [0,    -90000,  -10000], "time_s": 180 }
+      ]
+    },
+    {
+      "label": "Stealth Bomber (evasive egress)",
+      "behavior": "waypoints",
+      "rcs_dbsm": -28,
+      "rcs_profile": "stealth",
+      "class_id": 2,
+      "_notes": "Starts at 15km range. At -28 dBsm frontal: R_eff~22km. Broadside flashes during S-turns create intermittent reacquisition windows.",
+      "waypoints": [
+        { "pos": [-3000,  -15000, -5000], "time_s": 0 },
+        { "pos": [-5000,  -18000, -4500], "time_s": 12 },
+        { "pos": [-7000,  -21000, -5500], "time_s": 24 },
+        { "pos": [-5500,  -24000, -6000], "time_s": 36 },
+        { "pos": [-3000,  -27000, -5000], "time_s": 48 },
+        { "pos": [0,      -29000, -4500], "time_s": 60 },
+        { "pos": [2500,   -32000, -5500], "time_s": 72 },
+        { "pos": [1000,   -35000, -6500], "time_s": 84 },
+        { "pos": [-2000,  -38000, -5000], "time_s": 96 },
+        { "pos": [-5000,  -41000, -4000], "time_s": 108 },
+        { "pos": [-3000,  -44000, -5500], "time_s": 120 },
+        { "pos": [0,      -47000, -6000], "time_s": 132 },
+        { "pos": [2000,   -50000, -5000], "time_s": 144 },
+        { "pos": [0,      -53000, -4500], "time_s": 156 },
+        { "pos": [-2000,  -57000, -5000], "time_s": 168 },
+        { "pos": [-1000,  -60000, -5000], "time_s": 180 }
+      ]
+    }
+  ]
+}

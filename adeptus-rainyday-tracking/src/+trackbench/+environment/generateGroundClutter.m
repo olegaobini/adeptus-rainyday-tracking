@@ -1,6 +1,9 @@
 function clutterDets = generateGroundClutter(simTime, sensorPos, sensorIndex, sensorParams, envConfig)
 %generateGroundClutter  Generate realistic ground clutter returns.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % TWO-COMPONENT CLUTTER MODEL
 %   1. Surface clutter: beam-ground intersection at short-medium range.
 %      Governed by grazing angle geometry — concentrated near the radar.

@@ -1,6 +1,9 @@
 classdef EditorState < handle
 %EditorState  Mutable state container for the multi-target path editor (M5).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  M5 §3.1 RESHAPE
 %    Pre-M5 (M1-M4): EditorState held one target. All scenario fields
 %    (waypoints, targetName, rcs*, defaultSpeed*, defaultAltitude*,
@@ -90,6 +93,26 @@ classdef EditorState < handle
             'doppler_fade',      true)
         degradationExtras (1,1) struct = struct()
         environmentDirty  (1,1) logical = false
+
+        % ── v3.5 §5a — Multi-region terrain & weather collections ──
+        %  Parallel to terrain/weather (the fallback records). Empty
+        %  by default — a legacy scenario with one global terrain and
+        %  no weather regions has both collections .empty. The 5c/5d
+        %  polygon-drawing UX appends to these; runDetections (5b)
+        %  consults them via trackbench.environment.resolveTerrainAt /
+        %  resolveWeatherAt to pick the per-detection record.
+        %
+        %  RESOLVER SEMANTICS (recap, see §5a in CHECKPOINT.md):
+        %    First-listed wins on overlap. Outside all regions →
+        %    falls back to state.terrain / state.weather.
+        %
+        %  Both collections participate in undo/redo via snapshot/
+        %  restore — region adds, polygon drags, and config swaps
+        %  are all recoverable Ctrl+Z steps.
+        terrainRegions (1,:) trackbench.editor.TerrainRegionRecord = ...
+                       trackbench.editor.TerrainRegionRecord.empty
+        weatherRegions (1,:) trackbench.editor.WeatherRegionRecord = ...
+                       trackbench.editor.WeatherRegionRecord.empty
 
         % ── File-level / editor-wide scenario fields ─────────────────
         description      (1,1) string = ""
@@ -1358,6 +1381,11 @@ classdef EditorState < handle
             snap.weather           = obj.weather;
             snap.degradation       = obj.degradation;
             snap.degradationExtras = obj.degradationExtras;
+            % v3.5 §5a — multi-region collections. Value-class arrays
+            % copy by assignment, so the snap holds an independent
+            % copy (same contract as targets/sensors).
+            snap.terrainRegions    = obj.terrainRegions;
+            snap.weatherRegions    = obj.weatherRegions;
         end
 
         function restore(obj, snap)
@@ -1438,6 +1466,19 @@ classdef EditorState < handle
                 obj.degradationExtras = snap.degradationExtras;
             else
                 obj.degradationExtras = struct();
+            end
+            % v3.5 §5a — backward compatible with pre-5a snapshots
+            % (missing fields → empty region collections, identical
+            % to legacy single-terrain/weather behavior).
+            if isfield(snap, 'terrainRegions')
+                obj.terrainRegions = snap.terrainRegions;
+            else
+                obj.terrainRegions = trackbench.editor.TerrainRegionRecord.empty;
+            end
+            if isfield(snap, 'weatherRegions')
+                obj.weatherRegions = snap.weatherRegions;
+            else
+                obj.weatherRegions = trackbench.editor.WeatherRegionRecord.empty;
             end
             obj.anyDirty = true;
         end

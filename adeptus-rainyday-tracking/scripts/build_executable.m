@@ -1,6 +1,9 @@
 function build_executable()
 % BUILD_EXECUTABLE Automates the compilation of the Rainy Day Tracker.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   Compiles scripts/mainMenu.m into trackbench/mainMenu.exe via mcc.
 %   The launcher (trackbench.bat) prefers this exe when it exists and
 %   falls back to a MATLAB session otherwise.

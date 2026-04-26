@@ -1,6 +1,9 @@
 function build_installer(flavor, opts)
 %BUILD_INSTALLER  Wrap mainMenu.exe in a self-installing Windows package.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   build_installer()                 % default: 'web' (small, downloads MCR)
 %   build_installer('offline')        % bundle MCR into the installer (~4.5 GB)
 %   build_installer('web')            % installer fetches MCR at install time (~3 MB)
@@ -54,7 +57,7 @@ function build_installer(flavor, opts)
     arguments
         flavor (1,:) char {mustBeMember(flavor, {'web', 'offline', 'both'})} = 'web'
         opts.AppName       (1,:) char = 'Rainy Day Tracker'
-        opts.Version       (1,:) char = '3.5.0.0'
+        opts.Version       (1,:) char = '3.5.1.0'
         opts.AuthorCompany (1,:) char = 'Team Adeptus, University of Washington'
         opts.AuthorName    (1,:) char = 'Team Adeptus'
         opts.Summary       (1,:) char = ...

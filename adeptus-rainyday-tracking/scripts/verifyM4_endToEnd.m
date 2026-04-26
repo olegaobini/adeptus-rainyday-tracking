@@ -1,6 +1,9 @@
 function verifyM4_endToEnd()
 %verifyM4_endToEnd  End-to-end sanity run for Milestone 4 (path editor curves).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Runs the COMPLETE path from editor state → exported JSON → loaded by
 %  trackbench.config.loadRunFile → runSingleScenario consumes the dense
 %  curve as the simulated target trajectory. Produces screenshots into

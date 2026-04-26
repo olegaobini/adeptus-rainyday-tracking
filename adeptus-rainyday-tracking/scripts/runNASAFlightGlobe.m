@@ -1,5 +1,8 @@
 %% runNASAFlightGlobe — Track real aircraft on an Earth-centered globe
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Earth-centered version of runNASAFlight. Uses geoTrajectory and
 %  trackingGlobeViewer to visualize real flight recorder data on a globe,
 %  with simulated ARSR-4 long-range surveillance radars along the route.

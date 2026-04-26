@@ -1,6 +1,9 @@
 function report = validateScenarioConfig(config, scenario, sensors, metas)
 %validateScenarioConfig  Pre-flight check for simulation-breaking parameters.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Checks the built scenario for red flags before running detections.
 %  Issues are categorized as CRITICAL (will break sim), WARNING (may cause
 %  bad results), or INFO (worth knowing). Each issue includes a suggested fix.

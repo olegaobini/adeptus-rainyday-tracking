@@ -2,6 +2,9 @@ function [sensorPaths, runPath, targetsPath, excludedRefCount, envPaths] = ...
         exportSensorsToJSON(state, scenarioName)
 %exportSensorsToJSON  Write the full multi-sensor scenario bundle (M6 §3.4).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Emits THREE groups of files in one operation:
 %    1. One JSON per writable sensor  → config/sensors/<TYPE>/<sensorName>.json
 %    2. One multi-target waypoints JSON (delegated to exportToJSON)

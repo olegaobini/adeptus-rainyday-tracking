@@ -1,6 +1,9 @@
 function flightData = loadNASAFlight(matFilePath, opts)
 % loadNASAFlight  Load a NASA DASHlink FDR .mat file and produce NED waypoints.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %   flightData = loadNASAFlight(matFilePath)
 %   flightData = loadNASAFlight(matFilePath, opts)
 %

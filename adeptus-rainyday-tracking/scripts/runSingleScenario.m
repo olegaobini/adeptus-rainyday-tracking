@@ -1,6 +1,9 @@
 function runSingleScenario(runName)
 % runSingleScenario  Run a modular simulation from a run file.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % USAGE
 %   addpath("scripts");
 %   runSingleScenario("my_run")              % your custom run file

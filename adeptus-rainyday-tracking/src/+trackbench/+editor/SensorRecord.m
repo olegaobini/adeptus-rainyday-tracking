@@ -1,6 +1,9 @@
 classdef SensorRecord
 %SensorRecord  Per-sensor state for the multi-sensor editor (M6 §3.1).
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  A plain VALUE class. Owning EditorState keeps a 1xN array of these in
 %  state.sensors and the active one at state.sensors(state.activeSensorIdx).
 %  Mutators read-mutate-writeback:

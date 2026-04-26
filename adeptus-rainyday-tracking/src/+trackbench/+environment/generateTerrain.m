@@ -1,6 +1,9 @@
 function [Zterrain, boundary, Xg, Yg] = generateTerrain(terrainType, scenarioBounds, elevScale)
 %generateTerrain  Procedural terrain heightmap for occlusion modelling.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Generates a terrain elevation grid in NED coordinates (z-negative = up)
 %  based on terrain type. The heightmap is attached to a trackingScenario
 %  via groundSurface() to enable SurfaceManager.occlusion() line-of-sight

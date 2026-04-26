@@ -1,6 +1,9 @@
 function drawMap(state)
 %drawMap  Re-render the editor axes from the current EditorState.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  Called after every state mutation (add/move/remove/select/undo) and
 %  after every view-option change (colormap toggle, grid spacing, 2D/3D).
 %  Dispatches to drawMap2D or drawMap3D based on state.viewMode.

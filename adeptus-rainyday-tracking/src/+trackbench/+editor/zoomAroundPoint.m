@@ -2,6 +2,9 @@ function [newXLim, newYLim] = zoomAroundPoint(xLim, yLim, cx, cy, scrollCount, f
 %zoomAroundPoint  Compute new axis limits for a mousewheel zoom that keeps
 %                 the world point (cx, cy) stationary under the cursor.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 %  INPUT
 %    xLim           [xMin xMax] current axes X limits
 %    yLim           [yMin yMax] current axes Y limits

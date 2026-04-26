@@ -2,6 +2,9 @@ classdef customSensorTemplate < matlab.System
 %customSensorTemplate  Template for creating a custom sensor compatible
 %                      with trackingScenario and the V2 simulation.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % HOW TO USE THIS TEMPLATE
 %   1. Copy this file and rename the class to match your sensor
 %   2. Modify the properties to match your sensor's physical parameters

@@ -1,6 +1,9 @@
 function [sensor, meta] = buildSensor(sensorIndex, sensorType, varargin)
 %buildSensor  Universal sensor factory for the tracking simulation.
 %
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
 % PURPOSE
 %   Single entry point to create ANY sensor supported by the MATLAB Sensor
 %   Fusion and Tracking Toolbox (R2025b). Returns a configured sensor object
