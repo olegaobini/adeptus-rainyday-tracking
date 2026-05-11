@@ -1,0 +1,59 @@
+{
+  "description": "Editor-exported scenario \"Step_5e_verification\" (2026-05-10)",
+  "sensors": [
+    "PSR/Primary_Search_Radar_(DASR)"
+  ],
+  "targets": "waypoints/Step_5e_verification",
+  "terrain": {
+    "fallback": "water/Step_5e_verification_terrain",
+    "regions": [
+      {
+        "name": "region_1",
+        "config": "mountain\\default_mountain",
+        "polygon_xy": [
+          [
+            -54728.6,
+            99900.8
+          ],
+          [
+            -58559.6,
+            -36101.2
+          ],
+          [
+            75952.5,
+            -38655.2
+          ],
+          [
+            68290.4,
+            97985.3
+          ],
+          [
+            -55154.2,
+            99900.8
+          ]
+        ]
+      }
+    ]
+  },
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "none"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

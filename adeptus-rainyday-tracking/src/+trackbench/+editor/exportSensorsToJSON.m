@@ -309,7 +309,11 @@ function outPath = writeRunFile(root, scenarioName, sensorRefs, targetsPath, ter
     runFile.targets = sprintf('waypoints/%s', tStem);
 
     % M7 §3.4 — real terrain reference from state.
-    runFile.terrain  = char(terrainRef);
+    % v3.5 §5c.5 — polymorphic shape: legacy string scalar when no
+    % regions are configured, {fallback, regions[]} struct when at least
+    % one terrain region exists. Backward-compat path keeps existing
+    % no-region scenarios byte-identical-ish on round-trip.
+    runFile.terrain  = buildTerrainField(terrainRef, state);
     runFile.trackers = {'GNN/default_GNN'};
 
     % M7 §3.4 — authored degradation block (four booleans + derived
@@ -319,7 +323,10 @@ function outPath = writeRunFile(root, scenarioName, sensorRefs, targetsPath, ter
     deg.horizon_masking   = logical(state.degradation.horizon_masking);
     deg.ground_clutter    = logical(state.degradation.ground_clutter);
     deg.doppler_fade      = logical(state.degradation.doppler_fade);
-    deg.weather           = char(weatherRef);
+    % v3.5 §5c.5 — polymorphic weather field; see buildTerrainField above.
+    %   Fallback may be the literal string "none" when state.weather is
+    %   empty but state.weatherRegions has entries (regions-only case).
+    deg.weather           = buildWeatherField(weatherRef, state);
     % Merge in verbatim extras (e.g. rcs_range_filter) captured by
     % openScenarioFromJSON into degradationExtras. We skip any keys we
     % already set above so the UI-authored values win.
@@ -506,4 +513,104 @@ function stem = sanitizeStem(name)
     s = regexprep(s, '[\\/:*?"<>|]', '_');
     s = regexprep(s, '\s+', '_');
     stem = string(s);
+end
+
+
+%% ========================================================================
+%  v3.5 §5c.5 — Multi-region run-file emitters
+%% ========================================================================
+%  Emit terrain / weather as either a legacy string scalar (when no
+%  regions are configured) or the v3.5 {fallback, regions[]} struct
+%  shape (when at least one region exists). The legacy-shape default
+%  keeps existing scenarios byte-identical-ish on round-trip — only
+%  files with regions actually deviate from the v3.4 layout.
+%
+%  Region serialization uses the on-disk schema enforced by the sim
+%  engine's loadRunFile.parseRegion: {name, config, polygon_xy} where
+%  polygon_xy is a 2D array of [x, y] pairs in NED meters. Polygon
+%  coordinates are rounded to 0.1 m precision for clean JSON output —
+%  sub-decimeter precision is well below any realistic radar polygon
+%  use case (the map click handler resolves at world-meters-per-pixel
+%  which sits in the meter range at typical zooms). Lossless precision
+%  was the alternative; rejected because full IEEE-754 doubles bloat
+%  the file with ugly trailing digits and round-trips through the
+%  editor never need finer than the click resolution.
+
+function out = buildTerrainField(fallbackRef, state)
+%buildTerrainField  Choose between legacy string scalar and v3.5 multi-
+%                    region struct shape based on state.terrainRegions.
+    if isprop(state, 'terrainRegions') && ~isempty(state.terrainRegions)
+        out = struct();
+        out.fallback = char(fallbackRef);
+        out.regions  = buildRegionsArray(state.terrainRegions);
+    else
+        out = char(fallbackRef);
+    end
+end
+
+
+function out = buildWeatherField(fallbackRef, state)
+%buildWeatherField  Same logic as buildTerrainField. Note the fallback
+%                    string may be the literal "none" (no global
+%                    weather, only storm-cell regions) — the sim
+%                    engine accepts both "none" and a real
+%                    "<type>/<stem>" inside the struct shape, so no
+%                    special casing here.
+    if isprop(state, 'weatherRegions') && ~isempty(state.weatherRegions)
+        out = struct();
+        out.fallback = char(fallbackRef);
+        out.regions  = buildRegionsArray(state.weatherRegions);
+    else
+        out = char(fallbackRef);
+    end
+end
+
+
+function regionsCell = buildRegionsArray(regions)
+%buildRegionsArray  Convert a TerrainRegionRecord / WeatherRegionRecord
+%                    array into a cell-of-structs suitable for
+%                    jsonencode. Cell wrap (rather than direct struct
+%                    array) keeps each region as a JSON object even
+%                    when there's only one — matches the sensors-array
+%                    idiom used elsewhere in this file.
+%
+%  Both record kinds expose .name / .configPath / .polygonXY —
+%  buildRegionStruct is shared.
+    n = numel(regions);
+    regionsCell = cell(1, n);
+    for k = 1:n
+        regionsCell{k} = buildRegionStruct(regions(k));
+    end
+end
+
+
+function s = buildRegionStruct(rec)
+%buildRegionStruct  Single region serializer. Field names match the
+%                    on-disk schema enforced by the sim engine's
+%                    loadRunFile.parseRegion: name, config (REQUIRED),
+%                    polygon_xy (Nx2 numeric).
+%
+%  Polygon emitted as a CELL OF ROW VECTORS so jsonencode produces
+%  [[x,y],[x,y],...] consistently. Direct emission of an Nx2 matrix
+%  works for N>=2 but degenerates for N=1 (jsonencode produces [x,y]
+%  without the outer-array wrap, breaking the schema). The cell wrap
+%  costs nothing at runtime and avoids the edge case entirely.
+%
+%  Coordinates rounded to 0.1 m precision (see section header for
+%  rationale).
+    s = struct();
+    s.name   = char(rec.name);
+    s.config = char(rec.configPath);
+    poly     = rec.polygonXY;
+    n        = size(poly, 1);
+    if n == 0
+        s.polygon_xy = {};   % jsonencode → []
+    else
+        rounded = round(poly * 10) / 10;
+        polyCell = cell(1, n);
+        for i = 1:n
+            polyCell{i} = rounded(i, :);
+        end
+        s.polygon_xy = polyCell;
+    end
 end

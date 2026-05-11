@@ -1,0 +1,179 @@
+{
+  "description": "Editor-exported scenario \"Test_M_5.Cb\" (2026-04-26)",
+  "sensors": [
+    "PSR/sensor_1"
+  ],
+  "targets": "waypoints/Test_M_5.Cb",
+  "terrain": {
+    "fallback": "rural/Test_M_5.Cb_terrain",
+    "regions": [
+      {
+        "name": "region_1",
+        "config": "rural/default_rural",
+        "polygon_xy": [
+          [
+            -8919.4,
+            8998
+          ],
+          [
+            7269.2,
+            9705.3
+          ],
+          [
+            10884.1,
+            -5618.9
+          ],
+          [
+            -9548.1,
+            -9469.5
+          ],
+          [
+            -9391,
+            8919.4
+          ]
+        ]
+      },
+      {
+        "name": "region_2_Mount",
+        "config": "mountain\\default_mountain",
+        "polygon_xy": [
+          [
+            -19278.9,
+            14733.3
+          ],
+          [
+            -21007.8,
+            3888.5
+          ],
+          [
+            10740.7,
+            6796.1
+          ],
+          [
+            10809.1,
+            21717.2
+          ],
+          [
+            -18726.4,
+            21377.7
+          ],
+          [
+            -32306,
+            21830.3
+          ],
+          [
+            -36153.6,
+            13569.4
+          ],
+          [
+            -19631.7,
+            15153.7
+          ]
+        ]
+      },
+      {
+        "name": "region_3",
+        "config": "desert\\default_desert",
+        "polygon_xy": [
+          [
+            -203975.5,
+            204695.9
+          ],
+          [
+            199936.6,
+            199610.7
+          ],
+          [
+            198483.7,
+            -195584
+          ],
+          [
+            -201069.7,
+            -195584
+          ],
+          [
+            -205428.4,
+            204695.9
+          ]
+        ]
+      }
+    ]
+  },
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": {
+      "fallback": "none",
+      "regions": [
+        {
+          "name": "region_1",
+          "config": "rain\\default_rain",
+          "polygon_xy": [
+            [
+              -39542.2,
+              28962.8
+            ],
+            [
+              -37641.1,
+              -13677.1
+            ],
+            [
+              21158.5,
+              -9331.6
+            ],
+            [
+              18578.4,
+              29981.2
+            ],
+            [
+              -40017.5,
+              29370.1
+            ]
+          ]
+        },
+        {
+          "name": "region_2",
+          "config": "icing\\default_icing",
+          "polygon_xy": [
+            [
+              -44358.5,
+              -24316.6
+            ],
+            [
+              33452.4,
+              -23338.9
+            ],
+            [
+              26247.2,
+              41819
+            ],
+            [
+              -43497.5,
+              41493.1
+            ],
+            [
+              -44964.1,
+              -25155.4
+            ]
+          ]
+        }
+      ]
+    }
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

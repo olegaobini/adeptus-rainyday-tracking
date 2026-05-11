@@ -130,12 +130,37 @@ function varargout = runSimGUI(projectRoot)
     glRow3.Padding       = [0 0 0 0];
 
     % --- Left: Trackers panel ---
+    %  v3.5 §Step2 — layout extended from [1 1] (list-only) to [2 1] so a
+    %  button strip can live below the list. The list is the growing
+    %  row; the button strip is fixed height.
     pnlTrackers = uipanel(glRow3, 'Title', 'Trackers (multi-select)', ...
         'FontWeight', 'bold');
-    glTrack = uigridlayout(pnlTrackers, [1 1]);
+    glTrack = uigridlayout(pnlTrackers, [2 1]);
+    glTrack.RowHeight  = {'1x', 32};
+    glTrack.RowSpacing = 6;
     listTrackers = uilistbox(glTrack, 'Multiselect', 'on', ...
         'Items', {'(no run loaded)'}, ...
-        'ValueChangedFcn', @(~,~) updateDirty());
+        'ValueChangedFcn', @(~,~) onTrackerSelectionChanged());
+
+    % Button strip: "Edit Tracker Params..." + "Globals...". Edit is
+    % disabled until exactly one tracker is selected (the dropdown
+    % below uses Multiselect so we need single-selection for editing).
+    glTrackBtns = uigridlayout(glTrack, [1 2]);
+    glTrackBtns.Layout.Row = 2;
+    glTrackBtns.ColumnWidth = {'1x', '1x'};
+    glTrackBtns.ColumnSpacing = 6;
+    glTrackBtns.Padding = [0 0 0 0];
+    btnEditTracker = uibutton(glTrackBtns, ...
+        'Text', 'Edit Tracker Params…', ...
+        'Enable', 'off', ...
+        'Tooltip', ['Edit the selected tracker''s parameters. ' ...
+                    'Disabled when zero or multiple trackers are selected.'], ...
+        'ButtonPushedFcn', @(~,~) onEditTracker());
+    btnEditGlobals = uibutton(glTrackBtns, ...
+        'Text', 'Globals…', ...
+        'Tooltip', ['Edit shared parameters (max tracks, Pd, filter ' ...
+                    'initialization). Affects ALL trackers.'], ...
+        'ButtonPushedFcn', @(~,~) onEditGlobals()); %#ok<NASGU>
 
     % --- Right: Degradation panel ---
     %  Layout: 5 toggles, spacer, weather row (label+dropdown sub-grid),
@@ -348,8 +373,25 @@ function varargout = runSimGUI(projectRoot)
         chkRCS.Value       = logical(getFieldOrDefault(deg, 'rcs_range_filter',  false));
 
         % Weather string normalization — empty/missing → "none".
+        % v3.5 §5c.5 — polymorphic weather field. The on-disk shape may
+        % be either a legacy string scalar OR a {fallback, regions[]}
+        % struct. The dropdown shows the FALLBACK (or 'none' if missing);
+        % any regions are preserved through the originalConfig copy and
+        % round-tripped on Save (see saveChanges below). Editing weather
+        % regions themselves still requires the Path Editor.
         ddWeather.Items = listWeatherOptions();
-        weatherVal = char(string(getFieldOrDefault(deg, 'weather', 'none')));
+        weatherField = getFieldOrDefault(deg, 'weather', 'none');
+        if isstruct(weatherField)
+            if isfield(weatherField, 'fallback') && ~isempty(weatherField.fallback)
+                weatherVal = char(string(weatherField.fallback));
+            else
+                weatherVal = 'none';
+            end
+        elseif ischar(weatherField) || isstring(weatherField)
+            weatherVal = char(string(weatherField));
+        else
+            weatherVal = 'none';
+        end
         if isempty(weatherVal); weatherVal = 'none'; end
         if ismember(weatherVal, ddWeather.Items)
             ddWeather.Value = weatherVal;
@@ -497,7 +539,23 @@ function varargout = runSimGUI(projectRoot)
         cfg.degradation.ground_clutter    = logical(chkClutter.Value);
         cfg.degradation.doppler_fade      = logical(chkDoppler.Value);
         cfg.degradation.rcs_range_filter  = logical(chkRCS.Value);
-        cfg.degradation.weather           = char(ddWeather.Value);
+        % v3.5 §5c.5 — polymorphic weather write. If the original cfg
+        % carried a {fallback, regions[]} struct, keep the regions and
+        % only update the fallback from the dropdown. Otherwise emit a
+        % legacy string scalar (matches editor exporter behavior).
+        chosenWeather = char(ddWeather.Value);
+        existingWeather = struct();
+        if isfield(cfg.degradation, 'weather')
+            existingWeather = cfg.degradation.weather;
+        end
+        if isstruct(existingWeather) && isfield(existingWeather, 'regions') ...
+                && ~isempty(existingWeather.regions)
+            cfg.degradation.weather = struct( ...
+                'fallback', chosenWeather, ...
+                'regions',  existingWeather.regions);
+        else
+            cfg.degradation.weather = chosenWeather;
+        end
 
         if ~isfield(cfg, 'cache') || ~isstruct(cfg.cache)
             cfg.cache = struct('save_detections', true);
@@ -733,8 +791,421 @@ function varargout = runSimGUI(projectRoot)
         btnCompare.Enable      = sv;
         btnTune.Enable         = sv;
         btnReload.Enable       = sv;
+        % v3.5 §Step2 — Edit/Globals buttons. Globals follows the master
+        % enable (it doesn't need a tracker selected to operate). Edit
+        % goes off here; onTrackerSelectionChanged re-enables it when
+        % exactly one tracker is selected.
+        btnEditGlobals.Enable = sv;
+        btnEditTracker.Enable = 'off';
+        if tf
+            onTrackerSelectionChanged();
+        end
         % btnSave is governed by isDirty; force off when no run loaded.
         if ~tf, btnSave.Enable = 'off'; end
+    end
+
+    function onTrackerSelectionChanged()
+        %onTrackerSelectionChanged  v3.5 §Step2 — listbox callback.
+        %   Updates the Edit Tracker button enable state (1 selected
+        %   only) and forwards to updateDirty so the existing dirty-
+        %   tracking logic still fires.
+        val = listTrackers.Value;
+        if iscell(val)
+            nSel = numel(val);
+        elseif ischar(val) || isstring(val)
+            nSel = 1;
+        else
+            nSel = 0;
+        end
+        % "(no run loaded)" placeholder counts as zero real trackers.
+        if nSel == 1
+            firstVal = val;
+            if iscell(firstVal); firstVal = firstVal{1}; end
+            if strcmp(char(firstVal), '(no run loaded)')
+                nSel = 0;
+            end
+        end
+        if nSel == 1 && strcmp(listTrackers.Enable, 'on')
+            btnEditTracker.Enable = 'on';
+        else
+            btnEditTracker.Enable = 'off';
+        end
+        updateDirty();
+    end
+
+    function onEditTracker()
+        %onEditTracker  v3.5 §Step2 — open the per-tracker editor modal.
+        %
+        %  STEP 2.2 (this commit): full editor for GNN — Identity +
+        %  Algorithm Parameters, real Save logic with name validation,
+        %  list refresh on save. JPDA / TOMHT show Identity only with a
+        %  "coming in 2.3" placeholder and a disabled Save button.
+        %
+        %  Save-As semantics:
+        %   * Default name pre-fills with "my_<TYPE>" or auto-suffixed
+        %     to first unused "my_<TYPE>_N".
+        %   * Names starting with "default_" are rejected (Q2 design).
+        %   * Existing files trigger an Overwrite confirm.
+        %   * Saved file lands at config/trackers/<TYPE>/<name>.json.
+        %   * Untouched fields in the source JSON (e.g. JPDA-specific
+        %     params inside a GNN file) are PRESERVED so editing GNN
+        %     never silently strips JPDA/TOMHT-relevant settings.
+        val = listTrackers.Value;
+        if iscell(val); val = val{1}; end
+        trackerRef = char(val);
+        parts = split(string(trackerRef), '/');
+        if numel(parts) ~= 2
+            uialert(fig, sprintf('Invalid tracker reference "%s".', trackerRef), ...
+                'Edit Tracker'); return;
+        end
+        trackerType = char(parts(1));
+        stem        = char(parts(2));
+
+        jsonPath = fullfile(projectRoot, 'config', 'trackers', trackerType, [stem '.json']);
+        if ~exist(jsonPath, 'file')
+            uialert(fig, sprintf('Tracker file not found:\n%s', jsonPath), ...
+                'Edit Tracker'); return;
+        end
+        try
+            cfg = jsondecode(fileread(jsonPath));
+        catch err
+            uialert(fig, sprintf('Failed to read JSON:\n%s', err.message), ...
+                'Edit Tracker'); return;
+        end
+
+        % Current values with defensive fallbacks. paramsStruct may be
+        % missing entirely on a hand-edited JSON; we still want sensible
+        % values to seed the form.
+        curDesc      = char(string(getFieldOrDefault(cfg, 'description', '')));
+        curFilter    = char(string(getFieldOrDefault(cfg, 'filter_model', 'IMM')));
+        curVolume    = getFieldOrDefault(cfg, 'volume', 1e9);
+        curBeta      = getFieldOrDefault(cfg, 'beta',   1e-14);
+        paramsStruct = getFieldOrDefault(cfg, 'params', struct());
+        curGate      = getFieldOrDefault(paramsStruct, 'gate',              45);
+        curConfirm   = getFieldOrDefault(paramsStruct, 'confirm_threshold', 20);
+        curDelete    = getFieldOrDefault(paramsStruct, 'delete_threshold', -5);
+        curFarGnn    = getFieldOrDefault(paramsStruct, 'far_gnn',           1e-6);
+        % v3.5 §Step2.3 — JPDA + TOMHT-specific fields.
+        curGateJpda  = getFieldOrDefault(paramsStruct, 'gate_jpda',          45);
+        curFarJpda   = getFieldOrDefault(paramsStruct, 'far_jpda',           1e-6);
+        curBetaJpda  = getFieldOrDefault(paramsStruct, 'beta_jpda',          1e-14);
+        curTimeTol   = getFieldOrDefault(paramsStruct, 'time_tolerance_jpda', 0.05);
+        curNumTracksJ = getFieldOrDefault(paramsStruct, 'num_tracks_jpda',   500);
+        curJpdaConf  = getFieldOrDefault(paramsStruct, 'jpda_confirm_prob',  0.95);
+        curJpdaDel   = getFieldOrDefault(paramsStruct, 'jpda_delete_prob',   0.05);
+        curFarMht    = getFieldOrDefault(paramsStruct, 'far_mht',            1e-6);
+        curMaxBranch = getFieldOrDefault(paramsStruct, 'max_branches',       5);
+        % TOMHT threshold multiplier is an array [confirm, history, delete]
+        % multiplied by gate inside buildTracker. Normalize length: pad
+        % with defaults if shorter, truncate if longer.
+        rawMult = getFieldOrDefault(paramsStruct, 'tomht_threshold_multiplier', [0.2, 1, 1]);
+        rawMult = rawMult(:).';  % force row
+        defMult = [0.2, 1, 1];
+        for kPad = 1:3
+            if numel(rawMult) < kPad; rawMult(kPad) = defMult(kPad); end
+        end
+        curMult1 = rawMult(1);  curMult2 = rawMult(2);  curMult3 = rawMult(3);
+
+        % Pre-fill Save As name. Refuse-default-name guard (Q2) means
+        % default_<TYPE> auto-suggests my_<TYPE>; any other name
+        % auto-suggests the same name (user can edit before Save).
+        if startsWith(stem, 'default_')
+            suggestedName = suggestNewTrackerName(projectRoot, trackerType, 'my');
+        else
+            suggestedName = stem;
+        end
+
+        % ---- Build modal -------------------------------------------------
+        editorFig = uifigure('Name', ['Edit Tracker — ' trackerRef], ...
+            'Position', [200 120 560 600], ...
+            'WindowStyle', 'modal');
+        gl = uigridlayout(editorFig, [4 1]);
+        gl.RowHeight  = {130, '1x', 40, 40};
+        gl.RowSpacing = 10;
+        gl.Padding    = [14 14 14 14];
+
+        % ---- Identity section --------------------------------------------
+        pnlId = uipanel(gl, 'Title', 'Identity', 'FontWeight', 'bold');
+        glId = uigridlayout(pnlId, [3 2]);
+        glId.ColumnWidth = {140, '1x'};
+        glId.RowHeight   = {26, 26, 26};
+        glId.RowSpacing  = 4;
+        uilabel(glId, 'Text', 'Description:');
+        editDesc = uieditfield(glId, 'text', 'Value', curDesc);
+        uilabel(glId, 'Text', 'Tracker type:');
+        uilabel(glId, 'Text', trackerType, 'FontWeight', 'bold');
+        uilabel(glId, 'Text', 'Filter model:');
+        filterDD = uidropdown(glId, 'Items', {'IMM', 'CV'}, ...
+            'Value', curFilter, ...
+            'Tooltip', ['IMM = Interacting Multiple Model (CV + Coordinated Turn). ' ...
+                        'CV = Constant Velocity only.']);
+
+        % ---- Algorithm Parameters section --------------------------------
+        pnlAlg = uipanel(gl, 'Title', 'Algorithm Parameters', 'FontWeight', 'bold', ...
+            'Scrollable', 'on');
+        pnlAlg.Layout.Row = 2;
+        % v3.5 §Step2.3 — row count sized for TOMHT (the widest at 9 rows).
+        % Smaller types under-fill but the panel is Scrollable so excess
+        % rows don't push the buttons off-screen.
+        glAlg = uigridlayout(pnlAlg, [9 2]);
+        glAlg.ColumnWidth = {220, '1x'};
+        glAlg.RowHeight   = repmat({26}, 1, 9);
+        glAlg.RowSpacing  = 4;
+
+        % Initialize all per-type field handles to [] so onSave's branch
+        % can safely test isempty(). Without this, accessing an undefined
+        % editGate inside JPDA's branch would error.
+        editGate = []; editConfirm = []; editDelete = []; editFar = [];
+        editVolume = []; editBeta = [];
+        editGateJ = []; editFarJ = []; editBetaJ = []; editTimeTol = [];
+        editNumTrJ = []; editJpdaConf = []; editJpdaDel = [];
+        editFarMht = []; editMaxBr = [];
+        editMult1 = []; editMult2 = []; editMult3 = [];
+
+        switch upper(trackerType)
+            case 'GNN'
+                uilabel(glAlg, 'Text', 'Gate (Mahalanobis):');
+                editGate = uieditfield(glAlg, 'numeric', 'Value', curGate, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Confirmation threshold:');
+                editConfirm = uieditfield(glAlg, 'numeric', 'Value', curConfirm);
+                uilabel(glAlg, 'Text', 'Deletion threshold:');
+                editDelete = uieditfield(glAlg, 'numeric', 'Value', curDelete);
+                uilabel(glAlg, 'Text', 'False alarm rate (FAR):');
+                editFar = uieditfield(glAlg, 'numeric', 'Value', curFarGnn, ...
+                    'Limits', [0 1], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Volume:');
+                editVolume = uieditfield(glAlg, 'numeric', 'Value', curVolume, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Beta (new-target density):');
+                editBeta = uieditfield(glAlg, 'numeric', 'Value', curBeta, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                saveEnabled = true;
+            case 'JPDA'
+                % JPDA uses _jpda-suffixed gate/FAR/beta because it has
+                % Integrated track logic, not Score, so the value scales
+                % are different than GNN/TOMHT.
+                uilabel(glAlg, 'Text', 'Gate (JPDA, Mahalanobis):');
+                editGateJ = uieditfield(glAlg, 'numeric', 'Value', curGateJpda, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'False alarm rate (JPDA):');
+                editFarJ = uieditfield(glAlg, 'numeric', 'Value', curFarJpda, ...
+                    'Limits', [0 1], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Beta (JPDA new-target density):');
+                editBetaJ = uieditfield(glAlg, 'numeric', 'Value', curBetaJpda, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Time tolerance (s):');
+                editTimeTol = uieditfield(glAlg, 'numeric', 'Value', curTimeTol, ...
+                    'Limits', [0 Inf]);
+                uilabel(glAlg, 'Text', 'Max num tracks (JPDA):');
+                editNumTrJ = uieditfield(glAlg, 'numeric', 'Value', curNumTracksJ, ...
+                    'Limits', [1 Inf], 'RoundFractionalValues', 'on');
+                uilabel(glAlg, 'Text', 'Confirm probability:');
+                editJpdaConf = uieditfield(glAlg, 'numeric', 'Value', curJpdaConf, ...
+                    'Limits', [0 1]);
+                uilabel(glAlg, 'Text', 'Delete probability:');
+                editJpdaDel = uieditfield(glAlg, 'numeric', 'Value', curJpdaDel, ...
+                    'Limits', [0 1]);
+                saveEnabled = true;
+            case 'TOMHT'
+                uilabel(glAlg, 'Text', 'Gate (Mahalanobis):');
+                editGate = uieditfield(glAlg, 'numeric', 'Value', curGate, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Confirmation threshold:');
+                editConfirm = uieditfield(glAlg, 'numeric', 'Value', curConfirm);
+                uilabel(glAlg, 'Text', 'Deletion threshold:');
+                editDelete = uieditfield(glAlg, 'numeric', 'Value', curDelete);
+                uilabel(glAlg, 'Text', 'False alarm rate (MHT):');
+                editFarMht = uieditfield(glAlg, 'numeric', 'Value', curFarMht, ...
+                    'Limits', [0 1], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Volume:');
+                editVolume = uieditfield(glAlg, 'numeric', 'Value', curVolume, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Beta (new-target density):');
+                editBeta = uieditfield(glAlg, 'numeric', 'Value', curBeta, ...
+                    'Limits', [0 Inf], 'LowerLimitInclusive', false);
+                uilabel(glAlg, 'Text', 'Max track branches:');
+                editMaxBr = uieditfield(glAlg, 'numeric', 'Value', curMaxBranch, ...
+                    'Limits', [1 Inf], 'RoundFractionalValues', 'on');
+                % Threshold multiplier triple. Each is multiplied by gate
+                % inside buildTracker (line: tomhtThresh = mult * gate)
+                % to form trackerTOMHT's AssignmentThreshold array:
+                % [Confirm, History, Deletion]. We label as such.
+                uilabel(glAlg, 'Text', 'Threshold mult (confirm):');
+                editMult1 = uieditfield(glAlg, 'numeric', 'Value', curMult1, ...
+                    'Limits', [0 Inf]);
+                uilabel(glAlg, 'Text', 'Threshold mult (history):');
+                editMult2 = uieditfield(glAlg, 'numeric', 'Value', curMult2, ...
+                    'Limits', [0 Inf]);
+                uilabel(glAlg, 'Text', 'Threshold mult (deletion):');
+                editMult3 = uieditfield(glAlg, 'numeric', 'Value', curMult3, ...
+                    'Limits', [0 Inf]);
+                saveEnabled = true;
+            otherwise
+                uilabel(glAlg, ...
+                    'Text', sprintf(['(Unknown tracker type "%s". ' ...
+                                     'No editor available.)'], trackerType), ...
+                    'WordWrap', 'on');
+                saveEnabled = false;
+        end
+
+        % ---- Save-as row -------------------------------------------------
+        glSaveAs = uigridlayout(gl, [1 2]);
+        glSaveAs.Layout.Row = 3;
+        glSaveAs.ColumnWidth = {140, '1x'};
+        glSaveAs.Padding = [0 0 0 0];
+        uilabel(glSaveAs, 'Text', 'Save as:');
+        editName = uieditfield(glSaveAs, 'text', 'Value', suggestedName, ...
+            'Tooltip', sprintf( ...
+                'Writes to config/trackers/%s/<name>.json. "default_" names refused.', ...
+                trackerType));
+
+        % ---- Buttons row -------------------------------------------------
+        glBtns = uigridlayout(gl, [1 3]);
+        glBtns.Layout.Row = 4;
+        glBtns.ColumnWidth = {'1x', 100, 100};
+        glBtns.ColumnSpacing = 8;
+        glBtns.Padding = [0 0 0 0];
+        uilabel(glBtns);  % spacer
+        uibutton(glBtns, 'Text', 'Cancel', ...
+            'ButtonPushedFcn', @(~,~) delete(editorFig));
+        btnSaveModal = uibutton(glBtns, 'Text', 'Save', ...
+            'FontWeight', 'bold', ...
+            'ButtonPushedFcn', @(~,~) onSave());
+        if ~saveEnabled
+            btnSaveModal.Enable = 'off';
+            btnSaveModal.Tooltip = sprintf( ...
+                'Save for %s tracker editor lands in step 2.3.', trackerType); %#ok<NASGU>
+        end
+
+        uiwait(editorFig);
+
+        % ---- Nested: Save callback ---------------------------------------
+        function onSave()
+            newName = strtrim(char(editName.Value));
+            [okName, msg] = validateSaveAsName(newName);
+            if ~okName
+                uialert(editorFig, msg, 'Invalid name'); return;
+            end
+            outPath = fullfile(projectRoot, 'config', 'trackers', trackerType, ...
+                [newName '.json']);
+            if exist(outPath, 'file')
+                choice = uiconfirm(editorFig, ...
+                    sprintf('Overwrite existing %s/%s.json?', trackerType, newName), ...
+                    'File exists', ...
+                    'Options', {'Overwrite', 'Cancel'}, ...
+                    'DefaultOption', 'Cancel', ...
+                    'CancelOption',  'Cancel', ...
+                    'Icon', 'warning');
+                if ~strcmp(choice, 'Overwrite'); return; end
+            end
+            % Build output — preserve all unedited fields (notably the
+            % JPDA/TOMHT-specific params that this GNN file may carry).
+            outCfg = cfg;
+            outCfg.description  = char(editDesc.Value);
+            outCfg.tracker_type = trackerType;
+            outCfg.filter_model = char(filterDD.Value);
+            if ~isstruct(outCfg.params); outCfg.params = struct(); end
+            % v3.5 §Step2.3 — write only the fields used by this tracker
+            % type. Cross-type fields are preserved verbatim from cfg.
+            switch upper(trackerType)
+                case 'GNN'
+                    outCfg.volume = editVolume.Value;
+                    outCfg.beta   = editBeta.Value;
+                    outCfg.params.gate              = editGate.Value;
+                    outCfg.params.confirm_threshold = editConfirm.Value;
+                    outCfg.params.delete_threshold  = editDelete.Value;
+                    outCfg.params.far_gnn           = editFar.Value;
+                case 'JPDA'
+                    outCfg.params.gate_jpda            = editGateJ.Value;
+                    outCfg.params.far_jpda             = editFarJ.Value;
+                    outCfg.params.beta_jpda            = editBetaJ.Value;
+                    outCfg.params.time_tolerance_jpda  = editTimeTol.Value;
+                    outCfg.params.num_tracks_jpda      = editNumTrJ.Value;
+                    outCfg.params.jpda_confirm_prob    = editJpdaConf.Value;
+                    outCfg.params.jpda_delete_prob     = editJpdaDel.Value;
+                case 'TOMHT'
+                    outCfg.volume = editVolume.Value;
+                    outCfg.beta   = editBeta.Value;
+                    outCfg.params.gate              = editGate.Value;
+                    outCfg.params.confirm_threshold = editConfirm.Value;
+                    outCfg.params.delete_threshold  = editDelete.Value;
+                    outCfg.params.far_mht           = editFarMht.Value;
+                    outCfg.params.max_branches      = editMaxBr.Value;
+                    outCfg.params.tomht_threshold_multiplier = ...
+                        [editMult1.Value, editMult2.Value, editMult3.Value];
+            end
+            try
+                writeJsonFile(outPath, outCfg);
+            catch err
+                uialert(editorFig, sprintf('Write failed:\n%s', err.message), ...
+                    'Save failed', 'Icon', 'error'); return;
+            end
+            % Refresh tracker list + select the new entry.
+            newRef = [trackerType '/' newName];
+            refreshOptions();
+            if any(strcmp(listTrackers.Items, newRef))
+                listTrackers.Value = {newRef};
+                onTrackerSelectionChanged();
+            end
+            delete(editorFig);
+        end
+    end
+
+    function [ok, msg] = validateSaveAsName(name)
+        %validateSaveAsName  v3.5 §Step2 — enforce filename rules for
+        %  tracker Save As. Forbidden:
+        %    * Empty / whitespace-only
+        %    * Names starting with "default_" (Q2 design — default_*
+        %      configs are read-only baselines)
+        %    * Characters outside [A-Za-z0-9_-]
+        ok = false; msg = '';
+        if isempty(name)
+            msg = 'Save name cannot be empty.'; return;
+        end
+        if startsWith(name, 'default_') || strcmp(name, 'default')
+            msg = ['Names starting with "default_" are reserved for ' ...
+                   'read-only baseline configs. Use a different name (e.g. "my_GNN").'];
+            return;
+        end
+        if ~all(isstrprop(name, 'alphanum') | (name == '_') | (name == '-'))
+            msg = 'Name may only contain letters, digits, underscores, and dashes.';
+            return;
+        end
+        ok = true;
+    end
+
+    function onEditGlobals()
+        %onEditGlobals  v3.5 §Step2 — open the tracker_globals.json editor.
+        %   STEP 2.1 (this commit): skeleton modal only — real fields
+        %   in 2.4.
+        editorFig = uifigure('Name', 'Edit Tracker Globals', ...
+            'Position', [220 220 480 380], ...
+            'WindowStyle', 'modal');
+        gl = uigridlayout(editorFig, [2 1]);
+        gl.RowHeight = {'1x', 40};
+        gl.Padding = [16 16 16 16];
+        gl.RowSpacing = 12;
+        uilabel(gl, ...
+            'Text', ['Globals editor (tracker_globals.json).' newline newline ...
+                     '(fields land in step 2.4: max tracks, Pd ' ...
+                     'ideal/degraded, filter init params)'], ...
+            'HorizontalAlignment', 'left', ...
+            'VerticalAlignment',   'top');
+        glBtns = uigridlayout(gl, [1 3]);
+        glBtns.Layout.Row = 2;
+        glBtns.ColumnWidth = {'1x', 100, 100};
+        glBtns.ColumnSpacing = 8;
+        glBtns.Padding = [0 0 0 0];
+        uilabel(glBtns);  % spacer
+        uibutton(glBtns, 'Text', 'Cancel', ...
+            'ButtonPushedFcn', @(~,~) delete(editorFig));
+        btnSaveModal = uibutton(glBtns, 'Text', 'Save', ...
+            'FontWeight', 'bold', ...
+            'Enable', 'off', ...
+            'Tooltip', 'Save lights up in step 2.4 once fields exist.', ...
+            'ButtonPushedFcn', @(~,~) delete(editorFig)); %#ok<NASGU>
+        uiwait(editorFig);
     end
 end
 
@@ -800,4 +1271,21 @@ function writeJsonFile(path, cfg)
     end
     closer = onCleanup(@() fclose(fid)); %#ok<NASGU>
     fprintf(fid, '%s', jsonencode(cfg, 'PrettyPrint', true));
+end
+
+function name = suggestNewTrackerName(projectRoot, trackerType, prefix)
+%suggestNewTrackerName  v3.5 §Step2 helper — build a fresh tracker
+%  filename stem under config/trackers/<TYPE>/. Tries "<prefix>_<TYPE>"
+%  first; if taken, appends _2, _3, ... until an unused name is found.
+    base = sprintf('%s_%s', prefix, trackerType);
+    name = base;
+    n = 2;
+    while exist(fullfile(projectRoot, 'config', 'trackers', trackerType, ...
+            [name '.json']), 'file')
+        name = sprintf('%s_%d', base, n);
+        n = n + 1;
+        if n > 999  % defensive: don't loop forever on a bug
+            break;
+        end
+    end
 end

@@ -1,0 +1,80 @@
+{
+  "description": "Multi-target scenario (2 targets) exported on 2026-04-26.",
+  "duration_s": 108,
+  "targets": [
+    {
+      "name": "M5c_b",
+      "label": "M5c_b",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            -35695.018163628687,
+            23810.224474382991,
+            -3000
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            -31979.648419031444,
+            29285.506203263161,
+            -3000
+          ],
+          "time_s": 26.467393479427507,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            -26504.366690151292,
+            29285.506203263161,
+            -3000
+          ],
+          "time_s": 48.368520394948121,
+          "speed_kmh": 900
+        }
+      ]
+    },
+    {
+      "name": "m_5cb",
+      "label": "m_5cb",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            -39410.387908225945,
+            -19600.937804595389,
+            -3000
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            -22397.905393491168,
+            -19992.029356658262,
+            -100
+          ],
+          "time_s": 69.049259392552671,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            -30024.190658717107,
+            -14907.839179840968,
+            -3000
+          ],
+          "time_s": 107.50322495152153,
+          "speed_kmh": 900
+        }
+      ]
+    }
+  ]
+}

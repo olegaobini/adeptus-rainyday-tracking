@@ -132,7 +132,7 @@ function loadEnvironmentFromRun(state, runDef)
 %loadEnvironmentFromRun  Parse the M7 environment fields out of a run
 %                         file and write them into state. Idempotent
 %                         — safe to re-call (it fully resets terrain,
-%                         weather, degradation, extras).
+%                         weather, degradation, extras, regions).
 %
 %  Resilient to missing / partial fields: an older run file that
 %  predates M7 lands as rural terrain + no weather + all-on degradation
@@ -140,19 +140,28 @@ function loadEnvironmentFromRun(state, runDef)
 %  is a weather reference like "rain/my_storm" that can't be resolved —
 %  we warn and leave state.weather empty so the user sees the gap
 %  rather than mysteriously getting default rain.
+%
+%  v3.5 §5c.5 — terrain and weather are now polymorphic. Each accepts
+%  either a legacy string scalar (single component, no regions) or a
+%  struct with {fallback, regions[]} (v3.5 multi-region shape). Regions
+%  are parsed into TerrainRegionRecord / WeatherRegionRecord arrays via
+%  parseTerrainFieldEditor / parseWeatherFieldEditor below. Active
+%  region indices are clamped to the new collections at the end —
+%  defaults to 1 if any regions exist, 0 otherwise. envSubMode (the
+%  Fallback/Regions sub-panel toggle) is editor view state and is
+%  intentionally NOT reset by Open Scenario.
 
-    % Terrain — required by schema but tolerated if missing.
+    % v3.5 §5c.5 — reset region collections up-front so any partial-
+    % failure mid-parse leaves the editor in a consistent state.
+    state.terrainRegions = trackbench.editor.TerrainRegionRecord.empty;
+    state.weatherRegions = trackbench.editor.WeatherRegionRecord.empty;
+
+    % Terrain — polymorphic dispatch (v3.5 §5c.5). Accept either a
+    % legacy string scalar (single component, no regions) or a struct
+    % with {fallback, regions[]} (v3.5 multi-region shape).
     if isfield(runDef, 'terrain') && ~isempty(runDef.terrain)
-        terrainRef = string(runDef.terrain);
-        try
-            state.terrain = trackbench.editor.loadTerrainFromJSON( ...
-                state.projectRoot, terrainRef);
-        catch ME
-            warning('trackbench:editor:openScenarioFromJSON:terrainNotFound', ...
-                ['Run file references missing/bad terrain "%s":\n  %s\n' ...
-                 'Falling back to rural default.'], terrainRef, ME.message);
-            state.terrain = trackbench.editor.terrainDefaults("rural");
-        end
+        [state.terrain, state.terrainRegions] = parseTerrainFieldEditor( ...
+            runDef.terrain, state);
     else
         state.terrain = trackbench.editor.terrainDefaults("rural");
     end
@@ -175,19 +184,12 @@ function loadEnvironmentFromRun(state, runDef)
                 state.degradation.(key) = logical(deg.(key));
             end
         end
-        % Weather reference.
+        % Weather reference — polymorphic dispatch (v3.5 §5c.5). Same
+        % shapes as terrain except the fallback may be the literal
+        % "none" (no global weather, only storm-cell regions).
         if isfield(deg, 'weather') && ~isempty(deg.weather)
-            wRef = string(deg.weather);
-            if wRef ~= "" && lower(wRef) ~= "none"
-                try
-                    state.weather = trackbench.editor.loadWeatherFromJSON( ...
-                        state.projectRoot, wRef);
-                catch ME
-                    warning('trackbench:editor:openScenarioFromJSON:weatherNotFound', ...
-                        ['Run file references missing/bad weather "%s":\n  %s\n' ...
-                         'Weather left empty.'], wRef, ME.message);
-                end
-            end
+            [state.weather, state.weatherRegions] = parseWeatherFieldEditor( ...
+                deg.weather, state);
         end
         % Unknown keys → degradationExtras (verbatim passthrough).
         allKeys = fieldnames(deg);
@@ -197,6 +199,22 @@ function loadEnvironmentFromRun(state, runDef)
                 state.degradationExtras.(key) = deg.(key);
             end
         end
+    end
+
+    % v3.5 §5c.5 — clamp active region indices to the new collections.
+    %   Default to first region if any exist (matches the active-target
+    %   / active-sensor convention); otherwise 0. envSubMode is editor
+    %   view state and intentionally NOT reset — the user's panel
+    %   context carries across an Open Scenario.
+    if isempty(state.terrainRegions)
+        state.activeTerrainRegionIdx = 0;
+    else
+        state.activeTerrainRegionIdx = 1;
+    end
+    if isempty(state.weatherRegions)
+        state.activeWeatherRegionIdx = 0;
+    else
+        state.activeWeatherRegionIdx = 1;
     end
 end
 
@@ -210,6 +228,257 @@ function d = defaultDegradationLocal()
         'horizon_masking',   true, ...
         'ground_clutter',    true, ...
         'doppler_fade',      true);
+end
+
+
+%% ========================================================================
+%  v3.5 §5c.5 — Multi-region run-file parsers (editor-side mirrors of
+%                trackbench.config.loadRunFile.parseTerrainField /
+%                parseWeatherField). Build typed value-class arrays
+%                (TerrainRegionRecord / WeatherRegionRecord) instead of
+%                the sim-engine cell-of-structs intermediate.
+%% ========================================================================
+
+function [fallback, regions] = parseTerrainFieldEditor(field, state)
+%parseTerrainFieldEditor  Editor-side terrain field parser. Returns:
+%    fallback   a TerrainRecord (always populated; falls back to
+%               terrainDefaults("rural") if the input is unparseable
+%               or fails to load).
+%    regions    a TerrainRegionRecord 1xN array (empty for legacy
+%               string-scalar input or when regions[] is missing/empty).
+    fallback = trackbench.editor.terrainDefaults("rural");
+    regions = trackbench.editor.TerrainRegionRecord.empty;
+
+    if ischar(field) || isstring(field)
+        % Legacy string scalar.
+        ref = string(field);
+        if strlength(ref) > 0
+            try
+                fallback = trackbench.editor.loadTerrainFromJSON( ...
+                    state.projectRoot, ref);
+            catch ME
+                warning('trackbench:editor:openScenarioFromJSON:terrainNotFound', ...
+                    ['Run file references missing/bad terrain "%s":\n  %s\n' ...
+                     'Falling back to rural default.'], ref, ME.message);
+            end
+        end
+        return;
+    end
+
+    if isstruct(field)
+        % v3.5 §5a multi-region shape: {fallback, regions: [...]}.
+        if isfield(field, 'fallback') && ~isempty(field.fallback)
+            fbRef = string(field.fallback);
+            try
+                fallback = trackbench.editor.loadTerrainFromJSON( ...
+                    state.projectRoot, fbRef);
+            catch ME
+                warning('trackbench:editor:openScenarioFromJSON:terrainNotFound', ...
+                    ['Run file references missing/bad terrain fallback "%s":\n  %s\n' ...
+                     'Falling back to rural default.'], fbRef, ME.message);
+            end
+        end
+        if isfield(field, 'regions') && ~isempty(field.regions)
+            regions = parseRegionsToRecords( ...
+                field.regions, 'terrain', state);
+        end
+        return;
+    end
+
+    warning('trackbench:editor:openScenarioFromJSON:badTerrainField', ...
+        'Unrecognized terrain field type "%s" — using rural default.', ...
+        class(field));
+end
+
+
+function [fallback, regions] = parseWeatherFieldEditor(field, state)
+%parseWeatherFieldEditor  Editor-side weather field parser. Returns:
+%    fallback   a WeatherRecord (1x1) OR an empty WeatherRecord array.
+%               Empty means "no global weather" — corresponds to a
+%               legacy "none" string or fallback="none" inside a
+%               struct shape.
+%    regions    a WeatherRegionRecord 1xN array (empty for legacy
+%               string-scalar input or when regions[] is missing/empty).
+    fallback = trackbench.editor.WeatherRecord.empty;
+    regions = trackbench.editor.WeatherRegionRecord.empty;
+
+    if ischar(field) || isstring(field)
+        % Legacy string scalar.
+        ref = string(field);
+        if strlength(ref) == 0 || strcmpi(ref, "none")
+            return;
+        end
+        try
+            fallback = trackbench.editor.loadWeatherFromJSON( ...
+                state.projectRoot, ref);
+        catch ME
+            warning('trackbench:editor:openScenarioFromJSON:weatherNotFound', ...
+                ['Run file references missing/bad weather "%s":\n  %s\n' ...
+                 'Weather left empty.'], ref, ME.message);
+        end
+        return;
+    end
+
+    if isstruct(field)
+        % v3.5 §5a multi-region shape.
+        if isfield(field, 'fallback') && ~isempty(field.fallback)
+            fbRef = string(field.fallback);
+            if strlength(fbRef) > 0 && ~strcmpi(fbRef, "none")
+                try
+                    fallback = trackbench.editor.loadWeatherFromJSON( ...
+                        state.projectRoot, fbRef);
+                catch ME
+                    warning('trackbench:editor:openScenarioFromJSON:weatherNotFound', ...
+                        ['Run file references missing/bad weather fallback "%s":\n  %s\n' ...
+                         'Weather fallback left empty.'], fbRef, ME.message);
+                end
+            end
+        end
+        if isfield(field, 'regions') && ~isempty(field.regions)
+            regions = parseRegionsToRecords( ...
+                field.regions, 'weather', state);
+        end
+        return;
+    end
+
+    warning('trackbench:editor:openScenarioFromJSON:badWeatherField', ...
+        'Unrecognized weather field type "%s" — treating as "none".', ...
+        class(field));
+end
+
+
+function records = parseRegionsToRecords(regs, kind, state)
+%parseRegionsToRecords  Common region-array parser. Normalizes the
+%                        struct-array-vs-cell-array quirk of jsondecode
+%                        (homogeneous JSON object arrays come back as
+%                        struct arrays; mixed shapes come back as cell
+%                        arrays of structs). Iterates and builds a
+%                        typed value-class array.
+%
+%  Per-region failures (missing config, bad polygon shape, unresolvable
+%  config path) warn-and-skip rather than aborting the whole open. The
+%  alternative — erroring — would lose the user's other regions on a
+%  single bad entry. Tradeoff: the editor is more forgiving than the
+%  sim engine's parseRegion (which errors on missing config).
+    switch kind
+        case 'terrain'
+            empty = trackbench.editor.TerrainRegionRecord.empty;
+        case 'weather'
+            empty = trackbench.editor.WeatherRegionRecord.empty;
+        otherwise
+            error('parseRegionsToRecords:badKind', ...
+                'Unknown region kind: %s', kind);
+    end
+
+    if isstruct(regs); regs = num2cell(regs); end
+    n = numel(regs);
+    if n == 0
+        records = empty;
+        return;
+    end
+
+    % Pre-allocate; trim with `keep` mask after the loop.
+    switch kind
+        case 'terrain'
+            tmp = repmat(trackbench.editor.TerrainRegionRecord, 1, n);
+        case 'weather'
+            tmp = repmat(trackbench.editor.WeatherRegionRecord, 1, n);
+    end
+    keep = false(1, n);
+
+    for k = 1:n
+        rDef = regs{k};
+        if ~isstruct(rDef)
+            warning('trackbench:editor:openScenarioFromJSON:badRegion', ...
+                'Region #%d is not a JSON object (%s) — skipping.', ...
+                k, class(rDef));
+            continue;
+        end
+        rec = tmp(k);
+        if isfield(rDef, 'name')
+            rec.name = string(rDef.name);
+        end
+        if isfield(rDef, 'config') && ~isempty(rDef.config)
+            rec.configPath = string(rDef.config);
+        else
+            warning('trackbench:editor:openScenarioFromJSON:missingRegionConfig', ...
+                'Region #%d (%s) missing required "config" field — skipping.', ...
+                k, char(rec.name));
+            continue;
+        end
+        if isfield(rDef, 'polygon_xy')
+            rec.polygonXY = normalizePolygonXY(rDef.polygon_xy, rec.name);
+        end
+        % Resolve the inner record from configPath. Failure is non-fatal
+        % — keep the region with whatever inner-record default the value
+        % class provides, warn so the user can fix the path. Keeps the
+        % polygon and name visible in the editor for repair.
+        try
+            switch kind
+                case 'terrain'
+                    rec.terrain = trackbench.editor.loadTerrainFromJSON( ...
+                        state.projectRoot, rec.configPath);
+                case 'weather'
+                    rec.weather = trackbench.editor.loadWeatherFromJSON( ...
+                        state.projectRoot, rec.configPath);
+            end
+        catch ME
+            warning('trackbench:editor:openScenarioFromJSON:regionConfigNotFound', ...
+                ['Region "%s" config "%s" could not be loaded:\n  %s\n' ...
+                 'Region added with default inner record — fix Change Config.'], ...
+                char(rec.name), char(rec.configPath), ME.message);
+        end
+        tmp(k) = rec;
+        keep(k) = true;
+    end
+
+    records = tmp(keep);
+end
+
+
+function poly = normalizePolygonXY(raw, regionName)
+%normalizePolygonXY  Coerce a jsondecode'd polygon_xy value into the
+%                     Nx2 double matrix that TerrainRegionRecord /
+%                     WeatherRegionRecord expect.
+%
+%  jsondecode quirks handled here:
+%    * Empty array "[]"      → 0x0  → reshape to zeros(0,2)
+%    * Single pair [x,y]     → 2x1 column or 1x2 row → reshape to 1x2
+%    * Normal Nx2 (N>=2)     → already correct
+%    * Transposed 2xN (N>=3) → flip to Nx2
+%    * Anything else         → warn and return zeros(0,2)
+%
+%  Mirrors trackbench.config.loadRunFile.parseRegion's polygon
+%  validation, with the addition of empty-array tolerance (the sim
+%  engine errors on bad shapes; the editor wants to display+repair
+%  scenarios with zero or partial polygon data).
+    if ~isnumeric(raw)
+        warning('trackbench:editor:openScenarioFromJSON:badPolygon', ...
+            'Region "%s" polygon_xy must be numeric (got %s) — using empty.', ...
+            char(regionName), class(raw));
+        poly = zeros(0, 2);
+        return;
+    end
+    if isempty(raw)
+        poly = zeros(0, 2);
+        return;
+    end
+    if isvector(raw) && numel(raw) == 2
+        poly = raw(:).';   % normalize to 1x2 row
+        return;
+    end
+    if size(raw, 2) == 2
+        poly = raw;
+        return;
+    end
+    if size(raw, 1) == 2 && size(raw, 2) > 2
+        poly = raw';   % flip transposed to Nx2
+        return;
+    end
+    warning('trackbench:editor:openScenarioFromJSON:badPolygon', ...
+        'Region "%s" polygon_xy has unexpected shape %dx%d — using empty.', ...
+        char(regionName), size(raw, 1), size(raw, 2));
+    poly = zeros(0, 2);
 end
 
 

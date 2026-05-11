@@ -1,0 +1,21 @@
+{
+    "_DESCRIPTION": "v3.5 §5a/5b smoke-test target. Single airliner flying due east along y=0 from x=-30km to x=+30km over 240s. Designed to traverse two test polygons (mountain at [-15,+15]km, rain at [+5,+35]km) so detection-count differences across polygon edges are easy to see in the scan log. Uses waypoint behavior so the file is round-trippable through the path editor (loadFromJSON supports waypoint behavior only).",
+    "_USED_BY": "config/runs/test_multi_region.json",
+
+    "duration_s": 240,
+    "targets": [
+        {
+            "name": "east_transit",
+            "label": "East-transit airliner (y=0, FL163)",
+            "behavior": "waypoints",
+            "rcs_dbsm": 20,
+            "rcs_profile": "airliner",
+            "curve_mode": "straight",
+            "waypoints": [
+                { "pos": [-30000, 0, -5000], "time_s":   0, "speed_kmh": 900 },
+                { "pos": [ 30000, 0, -5000], "time_s": 240, "speed_kmh": 900 }
+            ],
+            "dimensions": { "length_m": 38, "width_m": 34, "height_m": 12 }
+        }
+    ]
+}

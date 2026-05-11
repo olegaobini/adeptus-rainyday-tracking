@@ -129,7 +129,7 @@ function buildUI(state)
     %   row (13 rows total → 378 px). If this window feels cramped
     %   after M3.5 (radar X/Y add 2 more scenario rows), grow Scenario
     %   to ~420 and/or enlarge the figure.
-    inner = uigridlayout(sg, [11 1]);
+    inner = uigridlayout(sg, [14 1]);
     % Help panel (last row) stays at 115 from the M5 shortcuts pass.
     %
     % M5 §3.1 ROW INSERT
@@ -190,7 +190,21 @@ function buildUI(state)
     %   per-type) + storm start/end pair + profile DD + pd_floor +
     %   clutter_mult (fog/icing disabled) + sparkline (36 px) + Load.
     %   ~12 rows at ~22 px plus 36 px for the sparkline plus panel title.
-    inner.RowHeight   = {85, 145, 378, 230, 378, 280, 340, 240, 65, 60, 115};
+    %
+    %   v3.5 §5c.2 LAYOUT EXPANSION — 14 rows total.
+    %     Inserted 3 new rows for the Environment-mode regions UX:
+    %       Row 6  (50 px)  : Env sub-mode toggle (Fallback / Regions)
+    %       Row 9  (250 px) : Terrain Regions sub-panel
+    %       Row 10 (250 px) : Weather Regions sub-panel
+    %     The Selection / File / Undo / Help rows shifted from 8/9/10/11
+    %     to 11/12/13/14. applyEditMode collapses rows to 0 px based on:
+    %       editMode == environment           → row 6 visible
+    %       envSubMode == fallback (env on)   → rows 7+8 visible
+    %       envSubMode == regions  (env on)   → rows 9+10 visible
+    %     The sub-mode toggle is hidden entirely when not in environment
+    %     mode (no greyed-out version) — matches existing top-level mode
+    %     toggle behavior.
+    inner.RowHeight   = {85, 145, 378, 230, 378, 50, 280, 340, 250, 250, 240, 65, 60, 115};
     inner.ColumnWidth = {'1x'};
     inner.RowSpacing  = 4;
     inner.Scrollable  = 'on';
@@ -222,22 +236,31 @@ function buildUI(state)
     % ── Scenario sub-panel (row 5) ──────────────────────────────────
     buildScenarioPanel(inner, state);
 
-    % ── Terrain sub-panel (M7 §3.2, row 6) ──────────────────────────
+    % ── Env Sub-mode toggle (5c.2, row 6) ─────────────────────────
+    buildEnvSubModeTogglePanel(inner, state);
+
+    % ── Terrain sub-panel (M7 §3.2, row 7) ──────────────────────────
     buildTerrainPanel(inner, state);
 
-    % ── Weather sub-panel (M7 §3.2, row 7) ──────────────────────────
+    % ── Weather sub-panel (M7 §3.2, row 8) ──────────────────────────
     buildWeatherPanel(inner, state);
 
-    % ── Selection sub-panel (row 8) ─────────────────────────────────
+    % ── Terrain Regions sub-panel (5c.2, row 9) ───────────────────
+    buildTerrainRegionsPanel(inner, state);
+
+    % ── Weather Regions sub-panel (5c.2, row 10) ──────────────────
+    buildWeatherRegionsPanel(inner, state);
+
+    % ── Selection sub-panel (row 11) ─────────────────────────────────
     buildSelectionPanel(inner, state);
 
-    % ── File sub-panel (row 9) ──────────────────────────────────────
+    % ── File sub-panel (row 12) ──────────────────────────────────────
     buildFilePanel(inner, state);
 
-    % ── Undo/redo sub-panel (row 10) ────────────────────────────────
+    % ── Undo/redo sub-panel (row 13) ────────────────────────────────
     buildUndoPanel(inner, state);
 
-    % ── Help sub-panel (row 11) ─────────────────────────────────────
+    % ── Help sub-panel (row 14) ─────────────────────────────────────
     buildHelpPanel(inner);
 
     % ── Storm-window timeline strip (M7 §3.3) ───────────────────────
@@ -280,6 +303,15 @@ function buildUI(state)
     % (rural default); Weather renders its (none) empty state initially.
     refreshTerrainPanel(state);
     refreshWeatherPanel(state);
+    % v3.5 §5c.2 — seed the new Regions sub-panels and the sub-mode
+    % toggle so they show correct values even before the user enters
+    % Environment mode. (applyEditMode also re-runs these inside its
+    % environmentOn branch, but seeding here covers the case where the
+    % initial editMode is targets/sensors and the user later flips into
+    % environment — the panels are already current.)
+    refreshTerrainRegionsPanel(state);
+    refreshWeatherRegionsPanel(state);
+    refreshEnvSubModePanel(state);
     applyEditMode(state);
 end
 
@@ -1110,8 +1142,10 @@ function buildTerrainPanel(parent, state)
     state.terrainLoadBtn.Layout.Column = [1 2];
     state.terrainOverlayCB = uicheckbox(g, ...
         'Text', 'Overlay on map', ...
-        'Value', false, ...
-        'Tooltip', 'Tint the map with a type-coloured terrain overlay (2D only).', ...
+        'Value', true, ...
+        'Tooltip', ['Render procedural terrain heightmap on the map ' ...
+                    '(2D hypsometric tint, 3D surface). Uncheck if ' ...
+                    'rendering ever lags.'], ...
         'ValueChangedFcn', @(~, ~) onTerrainOverlayToggled(state));
     state.terrainOverlayCB.Layout.Row = 9;
     state.terrainOverlayCB.Layout.Column = [3 4];
@@ -1460,6 +1494,142 @@ function onAxesClick(~, evt, state)
         return;
     end
 
+    % ── v3.5 §5c.3 — polygon-edit click branch ─────────────────
+    %  Active-edit clicks come BEFORE sensor / waypoint dispatch so the
+    %  polygon-edit overlay owns the map while the user is drawing.
+    %  Right-click is consumed (no context menu in edit mode); left-click
+    %  on a 'normal' selection appends a vertex; left-click on an 'open'
+    %  selection (double-click) commits.
+    %
+    %  3D guard: in 3D view we don't have a meaningful (x, y) for vertex
+    %  placement, so just post a status nag and bail. The lockdown helper
+    %  doesn't touch the view-mode toggle (which is a Scenario-panel
+    %  control hidden in env mode anyway), so this case is rare — only
+    %  reachable if the user enters polygon edit then somehow flips into
+    %  3D via keyboard 'V' shortcut.
+    if state.polygonEditActive
+        if isRightClick
+            return;   % swallow right-click; no context menu while editing
+        end
+        if in3D
+            setStatus(state, 'Switch to 2D to add polygon vertices (3D is view-only).');
+            return;
+        end
+        isOpen = strcmpi(sel, 'open');
+        if isOpen
+            % Double-click → commit. The first click of the double already
+            % appended a vertex via the 'normal' branch below in a prior
+            % onAxesClick invocation; no need to re-append here.
+            tryCommitPolygonEdit(state);
+            return;
+        end
+        % Near-duplicate guard: skip clicks that land within ~10 px of
+        % the most recent draft vertex (prevents double-vertex from a
+        % jittery click+release). Threshold is in WORLD meters, sized
+        % from the current axes pixel-per-meter.
+        if size(state.polygonEditDraft, 1) >= 1
+            last = state.polygonEditDraft(end, :);
+            xs = state.ax.XLim;
+            axPix = getpixelposition(state.ax, true);
+            if axPix(3) > 0
+                metersPerPx = (xs(2) - xs(1)) / axPix(3);
+                jitterM = 10 * metersPerPx;
+                if hypot(pt(1) - last(1), pt(2) - last(2)) < jitterM
+                    return;   % silently swallow the dupe click
+                end
+            end
+        end
+        state.appendPolygonDraftVertex(pt(1), pt(2));
+        trackbench.editor.drawMap(state);
+        nv = size(state.polygonEditDraft, 1);
+        if nv < 3
+            setStatus(state, sprintf( ...
+                'Polygon vertex #%d at (%.0f, %.0f) m. Need %d more before commit.', ...
+                nv, pt(1), pt(2), 3 - nv));
+        else
+            setStatus(state, sprintf( ...
+                'Polygon vertex #%d at (%.0f, %.0f) m. Enter to commit, Esc to cancel.', ...
+                nv, pt(1), pt(2)));
+        end
+        return;
+    end
+
+    % ── v3.5 §5c.6 — Region vertex drag + edge shift-click insert ──
+    %  Priority: AFTER polygon-edit (append mode wins), BEFORE all other
+    %  branches. "Any visible region" UX (per design Q1) — a click on a
+    %  region polygon vertex grabs that vertex regardless of editMode /
+    %  envSubMode. Auto-promotes the region to active so panel state +
+    %  drawMap visual feedback + undo all stay consistent.
+    %
+    %  3D guard: vertex drag is 2D-only (matches waypoint/sensor drag).
+    %  In 3D, vertex clicks fall through to the existing branches and
+    %  end up at the 3D "switch to 2D" status nag.
+    %
+    %  Read-only guard: regions whose inner record is readOnly cannot
+    %  be edited. The pick still hits visually, but we post a status
+    %  nag and don't start a drag (or insert).
+    if ~in3D && ~isMiddleClick
+        [vKind, vReg, vVtx] = state.findRegionVertexAt(pt(1), pt(2));
+        if vVtx > 0 && ~isRightClick
+            if isRegionReadOnly(state, vKind, vReg)
+                setStatus(state, sprintf( ...
+                    '%s region is read-only — cannot edit vertices.', vKind));
+                return;
+            end
+            beginRegionVertexDrag(state, vKind, vReg, vVtx);
+            return;
+        end
+        if isShift && ~isRightClick && vVtx == 0
+            [eKind, eReg, eIdx, eProj] = state.findRegionEdgeAt(pt(1), pt(2));
+            if eIdx > 0
+                if isRegionReadOnly(state, eKind, eReg)
+                    setStatus(state, sprintf( ...
+                        '%s region is read-only — cannot insert vertices.', eKind));
+                    return;
+                end
+                insertRegionVertexFromClick(state, eKind, eReg, eIdx, eProj);
+                return;
+            end
+        end
+        % No vertex or edge hit — if the user had a region vertex
+        % selected (for Delete-key targeting), clear it on a left-click
+        % miss so Delete can't target a stale vertex they think they
+        % deselected. Right-click and middle-click leave selection alone.
+        if ~isRightClick && state.selectedVertexIdx > 0
+            state.selectedRegionKind = "";
+            state.selectedRegionIdx = 0;
+            state.selectedVertexIdx = 0;
+            % No drawMap here — selected-vertex highlight is added in
+            % 5c.6.6, so there's nothing visual to refresh yet.
+        end
+    end
+
+    % ── v3.5 §5c.3 fix — environment-mode map-click guard ─────────
+    %  Pre-fix, env mode had no click branch, so map clicks fell through
+    %  to the targets-mode waypoint logic and added waypoints to the
+    %  active target. The Targets/Selection panels aren't even visible
+    %  in env mode, so the user couldn't see what was happening — just
+    %  scattered yellow dots accumulating on the map.
+    %
+    %  Now: a left-click in env mode just posts the click coordinates
+    %  with a hint about how to actually interact (pick Regions sub-mode
+    %  and click "Edit polygon…"). Right-click is swallowed (no context
+    %  menu in env mode — the menu's actions all target waypoints).
+    %
+    %  Note: the polygon-edit branch above already returned for the
+    %  active-edit case, so we don't need to re-check polygonEditActive
+    %  here.
+    if state.editMode == "environment"
+        if isRightClick
+            return;
+        end
+        setStatus(state, sprintf( ...
+            ['x=%.0f m, y=%.0f m  (Environment mode — pick Regions sub-mode ' ...
+             'and click "Edit polygon…" to draw on the map.)'], ...
+            pt(1), pt(2)));
+        return;
+    end
+
     % ── M6 §3.5 — sensor-mode click routing ─────────────────────────
     %  Priority 1 (Place-on-map pending): a previous Place-on-map press
     %  armed a one-shot teleport. Consume the click and return to normal.
@@ -1637,6 +1807,21 @@ function onMouseMove(~, state)
         return;
     end
 
+    % ── v3.5 §5c.6 — Region vertex drag live update (2D only) ────────
+    %  Mirrors the waypoint drag branch below. commit=false: pushUndo
+    %  was already taken in beginRegionVertexDrag, so we don't burn an
+    %  undo slot per cursor frame. moveRegionVertex's no-op for
+    %  out-of-range indices means a stale drag survives an undo /
+    %  region-delete-during-drag without throwing.
+    if state.vertexDragActive && state.viewMode ~= "3d"
+        state.moveRegionVertex(state.vertexDragKind, ...
+                               state.vertexDragRegionIdx, ...
+                               state.vertexDragVertexIdx, ...
+                               x, y, false);
+        trackbench.editor.drawMap(state);
+        return;
+    end
+
     % ── 1. Drag branch (2D only) ─────────────────────────────────────
     if state.dragActive && state.selectedIndex >= 1 && state.viewMode ~= "3d"
         state.moveSelectedTo(x, y, false);   % commit=false: no undo per frame
@@ -1671,6 +1856,42 @@ function onMouseMove(~, state)
         return;
     end
 
+    % ── v3.5 §5c.6 — Region vertex / edge hover state ((5+6 combined) ──
+    %  Polled per mousemove (2D only — 3D screen-projected coords don't
+    %  map cleanly to polygon hit-tests). Cheap hit-test (just distance
+    %  math), then compare against previous hover state and only redraw
+    %  if changed. Shift-tracking via fig.CurrentModifier means shift-
+    %  press-without-mousemove won't update the edge highlight instantly
+    %  — user has to nudge the cursor. Acceptable trade-off vs adding a
+    %  full WindowKeyReleaseFcn (noted as polish in CHECKPOINT).
+    if state.viewMode ~= "3d"
+        shiftHeld = false;
+        if isgraphics(state.fig)
+            shiftHeld = any(strcmp(state.fig.CurrentModifier, 'shift'));
+        end
+        [newHoverKind, newHoverRegion, newHoverVertex] = state.findRegionVertexAt(x, y);
+        newHoverEdge = 0;
+        if shiftHeld && newHoverVertex == 0
+            [eKind, eReg, eIdx, ~] = state.findRegionEdgeAt(x, y);
+            if eIdx > 0
+                newHoverKind   = eKind;
+                newHoverRegion = eReg;
+                newHoverEdge   = eIdx;
+            end
+        end
+        hoverChanged = (newHoverKind   ~= state.hoverRegionKind) || ...
+                       (newHoverRegion ~= state.hoverRegionIdx) || ...
+                       (newHoverVertex ~= state.hoverVertexIdx) || ...
+                       (newHoverEdge   ~= state.hoverEdgeIdx);
+        if hoverChanged
+            state.hoverRegionKind = newHoverKind;
+            state.hoverRegionIdx  = newHoverRegion;
+            state.hoverVertexIdx  = newHoverVertex;
+            state.hoverEdgeIdx    = newHoverEdge;
+            trackbench.editor.drawMap(state);
+        end
+    end
+
     % Hover tooltip is 2D-only — skip in 3D where (x, y) isn't meaningful.
     if state.viewMode == "3d"
         return;
@@ -1694,6 +1915,28 @@ function onMouseUp(~, state)
 %onMouseUp  Terminate drag OR middle-click pan. Drag-end keeps the
 %           single pushUndo we did on drag start; pan-end does NOT
 %           create an undo entry (pan is a view change, not a data edit).
+    if state.vertexDragActive
+        state.vertexDragActive = false;
+        rname = getRegionName(state, state.vertexDragKind, state.vertexDragRegionIdx);
+        vtx   = state.vertexDragVertexIdx;
+        kind  = state.vertexDragKind;
+        setStatus(state, sprintf('Moved %s region "%s" vertex #%d.', kind, rname, vtx));
+        state.vertexDragKind      = "";
+        state.vertexDragRegionIdx = 0;
+        state.vertexDragVertexIdx = 0;
+        % v3.5 §5c.6 — refresh region panels in case auto-promote moved
+        % the active region. The dropdown shows "(active)" next to the
+        % region the user just grabbed; without this refresh it would
+        % stay stuck on whatever was active before mousedown.
+        refreshTerrainRegionsPanel(state);
+        refreshWeatherRegionsPanel(state);
+        % A final drawMap to flush any cache-skip-during-drag state in
+        % the heightmap renderer (deferred optimization — see CHECKPOINT
+        % "During waypoint drag, drawMap fires repeatedly"). No-op today
+        % since the heightmap cache is invalidated per-vertex hash, but
+        % belt-and-suspenders for the future skip-during-drag tweak.
+        trackbench.editor.drawMap(state);
+    end
     if state.dragActive
         state.dragActive = false;
         state.dragStartWP = [];
@@ -1755,6 +1998,30 @@ function onKeyPress(~, evt, state)
     % Universal (no focus guard) — safe inside or outside text fields.
     switch evt.Key
         case {'delete', 'backspace'}
+            % v3.5 §5c.3 — in polygon-edit mode, Delete/Backspace are
+            % swallowed. Vertex deletion during APPEND is intentionally
+            % left out: append mode is for laying down a fresh polygon
+            % left-to-right, not editing back into it. Escape aborts;
+            % Enter commits and gives the user the post-commit editing
+            % tools (vertex drag / delete / insert from 5c.6).
+            if state.polygonEditActive
+                setStatus(state, ['Polygon edit (append) — Delete is disabled. ' ...
+                                  'Esc to abort, Enter to commit then edit vertices.']);
+                return;
+            end
+            % v3.5 §5c.6 — Region vertex delete. Priority over the
+            % sensor / waypoint delete paths so the status message
+            % posted by beginRegionVertexDrag ("...Del to remove")
+            % stays a true promise. If both a region vertex AND a
+            % waypoint are selected (possible across modes — see the
+            % "mutual exclusion" comment on selectedRegionKind in
+            % EditorState), region vertex wins. Click empty space
+            % first to clear region selection and reroute Delete to
+            % the waypoint.
+            if state.selectedVertexIdx > 0
+                handleRegionVertexDelete(state);
+                return;
+            end
             % M6 §3.5C — Delete in sensors mode routes through the
             % Delete-button confirm path so the user doesn't lose a
             % sensor from a stray keypress. In targets mode, the existing
@@ -1766,6 +2033,16 @@ function onKeyPress(~, evt, state)
             end
             return;
         case 'escape'
+            % v3.5 §5c.3 — polygon-edit abort takes priority over every
+            % other Escape branch. The stored polygon was never touched,
+            % so this is a clean rollback (no undo entry).
+            if state.polygonEditActive
+                state.abortPolygonEdit();
+                applyPolygonEditLockdown(state);   % releases the lock
+                trackbench.editor.drawMap(state);
+                setStatus(state, 'Polygon edit cancelled.');
+                return;
+            end
             % M6 §3.6C — Escape during an active sensor drag aborts the
             % drag: reverts the sensor position to its drag start, pops
             % the undo snapshot (so the aborted drag leaves no history),
@@ -1788,16 +2065,49 @@ function onKeyPress(~, evt, state)
                 setStatus(state, 'Place cancelled.');
                 return;
             end
+            % v3.5 §5c.6 — Escape also clears region-vertex selection.
+            % Pairs with the empty-click clear in onAxesClick so users
+            % have two ways to bail out of an accidental vertex select.
+            hadRegionVtx = (state.selectedVertexIdx > 0);
+            state.selectedRegionKind = "";
+            state.selectedRegionIdx  = 0;
+            state.selectedVertexIdx  = 0;
             state.selectedIndex = 0;
             trackbench.editor.drawMap(state);
             refreshSelectionPanel(state);
-            setStatus(state, 'Selection cleared.');
+            if hadRegionVtx
+                setStatus(state, 'Region vertex selection cleared.');
+            else
+                setStatus(state, 'Selection cleared.');
+            end
             return;
         case 'z'
+            % v3.5 §5c.3 — Ctrl+Z is refused while polygon-edit is active.
+            % Refusing rather than aborting (option B from design): less
+            % surprising than discarding the user's draft on a
+            % muscle-memory undo press. Vertex-by-vertex undo is 5c.6.
+            if ctrl && state.polygonEditActive
+                setStatus(state, ['Polygon edit active — Esc to cancel, Enter to commit. ' ...
+                                  'Undo is refused mid-edit.']);
+                return;
+            end
             if ctrl; onUndo(state); end
             return;
         case 'y'
+            if ctrl && state.polygonEditActive
+                setStatus(state, ['Polygon edit active — Esc to cancel, Enter to commit. ' ...
+                                  'Redo is refused mid-edit.']);
+                return;
+            end
             if ctrl; onRedo(state); end
+            return;
+        case 'return'
+            % v3.5 §5c.3 — Enter commits a polygon edit. Outside polygon-
+            % edit mode, Enter is unbound (matches pre-5c.3 behavior).
+            if state.polygonEditActive
+                tryCommitPolygonEdit(state);
+                return;
+            end
             return;
     end
 
@@ -1841,14 +2151,46 @@ function onKeyPress(~, evt, state)
         case 'v'
             if ctrl || shift; return; end  % leave Ctrl+V / Shift+V for future use
             toggleViewModeViaKey(state);
+        case 'r'
+            % v3.5 fix — "reset view" recovery shortcut. Forces the
+            % next drawMap to take the firstDraw branch, which
+            % re-autofits limits + aspect. Works in both 2D and 3D so
+            % users have a consistent way out of any zoomed/panned/
+            % rotated state.
+            if ctrl || shift; return; end
+            if state.viewMode == "3d"
+                state.has3DViewState = false;
+                trackbench.editor.drawMap(state);
+                setStatus(state, '3D view reset to autofit.');
+            else
+                state.has2DViewState = false;
+                trackbench.editor.drawMap(state);
+                setStatus(state, '2D view reset to autofit.');
+            end
         case 'leftarrow'
-            nudgeSelectedXY(state, -stepM, 0, stepM);
+            if state.viewMode == "3d"
+                rotate3DView(state, -5, 0, shift);
+            else
+                nudgeSelectedXY(state, -stepM, 0, stepM);
+            end
         case 'rightarrow'
-            nudgeSelectedXY(state,  stepM, 0, stepM);
+            if state.viewMode == "3d"
+                rotate3DView(state, +5, 0, shift);
+            else
+                nudgeSelectedXY(state,  stepM, 0, stepM);
+            end
         case 'uparrow'
-            nudgeSelectedXY(state, 0,  stepM, stepM);
+            if state.viewMode == "3d"
+                rotate3DView(state, 0, +5, shift);
+            else
+                nudgeSelectedXY(state, 0,  stepM, stepM);
+            end
         case 'downarrow'
-            nudgeSelectedXY(state, 0, -stepM, stepM);
+            if state.viewMode == "3d"
+                rotate3DView(state, 0, -5, shift);
+            else
+                nudgeSelectedXY(state, 0, -stepM, stepM);
+            end
         case 'pageup'
             bumpSelectedAltitude(state,  stepM);
         case 'pagedown'
@@ -1985,12 +2327,32 @@ function onScrollWheel(~, evt, state)
     if scrollCount == 0; return; end
 
     if state.viewMode == "3d"
-        % 3D: narrower camera-view-angle = zoomed in.
-        va = ax.CameraViewAngle;
-        factor = 1.2 ^ scrollCount;           % +tick → wider (zoom out)
-        newVA = max(1, min(120, va * factor));
-        ax.CameraViewAngle = newVA;
-        setStatus(state, sprintf('3D zoom: %.1f° view angle.', newVA));
+        % v3.5 fix — axis-limit zoom in 3D, matching 2D behavior.
+        %
+        % The previous mechanism adjusted ax.CameraViewAngle (perspective
+        % field-of-view, 1°–120°). At wide angles the perspective went
+        % fisheye-distorted, and the CameraViewAngle persisted across
+        % view-mode toggles which left the camera stuck in a warped
+        % state. Axis-limit zoom is what MATLAB's built-in magnifying-
+        % glass tool does, so the behavior matches what users expect.
+        %
+        % Zoom is centered on the current view center, not the cursor.
+        % Cursor-anchored 3D zoom requires a ray-cast through the
+        % camera into the scene to find the world point under the
+        % cursor; deferred as future polish. For tens-of-km horizontal
+        % spans, center-zoom is close enough to feel natural.
+        factor = 1.2 ^ scrollCount;  % +tick (scroll-down) = wider
+        cx = mean(ax.XLim);
+        cy = mean(ax.YLim);
+        cz = mean(ax.ZLim);
+        halfX = 0.5 * (ax.XLim(2) - ax.XLim(1)) * factor;
+        halfY = 0.5 * (ax.YLim(2) - ax.YLim(1)) * factor;
+        halfZ = 0.5 * (ax.ZLim(2) - ax.ZLim(1)) * factor;
+        ax.XLim = [cx - halfX, cx + halfX];
+        ax.YLim = [cy - halfY, cy + halfY];
+        ax.ZLim = [cz - halfZ, cz + halfZ];
+        setStatus(state, sprintf('3D zoom: %.1f km span (press R to reset view).', ...
+            (ax.XLim(2) - ax.XLim(1)) / 1000));
         return;
     end
 
@@ -2745,8 +3107,17 @@ function refreshAfterEnvironmentChange(state)
 %                                The standalone callers (Open Scenario,
 %                                Load Terrain/Weather) call drawMap on
 %                                their own paths.
+%
+%  v3.5 §5c.2 — also re-syncs the new Regions sub-panels and sub-mode
+%  toggle so undo/redo of region operations (Add, Dup, Del, Rename,
+%  Polygon edits, Change Config) updates the UI. The toggle Value
+%  state is captured + restored by snapshot/restore so undo CAN bring
+%  back the previous sub-mode along with everything else.
     refreshTerrainPanel(state);
     refreshWeatherPanel(state);
+    refreshTerrainRegionsPanel(state);
+    refreshWeatherRegionsPanel(state);
+    refreshEnvSubModePanel(state);
 end
 
 
@@ -3035,8 +3406,12 @@ function onViewModeChanged(src, state)
     state.panStartFigPt = [];
     state.panStartXLim = [];
     state.panStartYLim = [];
-    % Force autofit on the next drawMap3D so a view-mode switch always
-    % frames the current scene.
+    % Force autofit on the destination view so a mode switch always
+    % frames the current scene cleanly. v3.5 fix — has2DViewState added
+    % parallel to has3DViewState: stale axis limits from the
+    % just-departed view would otherwise leak into the new view and
+    % render the scene at the wrong scale/aspect.
+    state.has2DViewState = false;
     state.has3DViewState = false;
     trackbench.editor.drawMap(state);
     if state.viewMode == "3d"
@@ -4660,8 +5035,17 @@ function applyEditMode(state)
     setPanelVisibleIfGraphics(state.selectedPanel,     targetsOn);
     setPanelVisibleIfGraphics(state.sensorsPanel,      sensorsOn);
     setPanelVisibleIfGraphics(state.sensorParamsPanel, sensorsOn);
-    setPanelVisibleIfGraphics(state.terrainPanel,      environmentOn);
-    setPanelVisibleIfGraphics(state.weatherPanel,      environmentOn);
+    % v3.5 §5c.2 — environment splits into two sub-modes:
+    %   fallback : edits state.terrain / state.weather (Terrain + Weather panels)
+    %   regions  : edits terrainRegions / weatherRegions (the two new panels)
+    % The sub-mode toggle itself is shown whenever environmentOn.
+    envFallbackOn = environmentOn && (state.envSubMode == "fallback");
+    envRegionsOn  = environmentOn && (state.envSubMode == "regions");
+    setPanelVisibleIfGraphics(state.envSubModePanel,       environmentOn);
+    setPanelVisibleIfGraphics(state.terrainPanel,          envFallbackOn);
+    setPanelVisibleIfGraphics(state.weatherPanel,          envFallbackOn);
+    setPanelVisibleIfGraphics(state.terrainRegionsPanel,   envRegionsOn);
+    setPanelVisibleIfGraphics(state.weatherRegionsPanel,   envRegionsOn);
 
     % Collapse hidden rows to 0 px in the parent grid so visible panels
     % shift up to fill the space. Originals are restored from the
@@ -4673,13 +5057,20 @@ function applyEditMode(state)
             rh{3} = 0;  % Sensor Params
         end
         if ~targetsOn
-            rh{4} = 0;  % Targets
-            rh{5} = 0;  % Scenario
-            rh{8} = 0;  % Selection
+            rh{4}  = 0;  % Targets
+            rh{5}  = 0;  % Scenario
+            rh{11} = 0;  % Selection (was row 8 pre-5c.2)
         end
         if ~environmentOn
-            rh{6} = 0;  % Terrain
-            rh{7} = 0;  % Weather
+            rh{6}  = 0;  % Env sub-mode toggle (5c.2)
+        end
+        if ~envFallbackOn
+            rh{7} = 0;  % Terrain (was row 6 pre-5c.2)
+            rh{8} = 0;  % Weather (was row 7 pre-5c.2)
+        end
+        if ~envRegionsOn
+            rh{9}  = 0;  % Terrain Regions (5c.2)
+            rh{10} = 0;  % Weather Regions (5c.2)
         end
         state.editorInnerGrid.RowHeight = rh;
     end
@@ -4776,6 +5167,14 @@ function applyEditMode(state)
         % Fine-grained refresh takes over enable logic for these widgets.
         refreshTerrainPanel(state);
         refreshWeatherPanel(state);
+        % v3.5 §5c.2 — regions panels + sub-mode toggle re-sync. Refresh
+        % regardless of which sub-mode is active so when the user flips
+        % the toggle, the newly-shown panel is already current. The
+        % buildUI seed-time call also goes through here when env mode is
+        % the initial editMode.
+        refreshTerrainRegionsPanel(state);
+        refreshWeatherRegionsPanel(state);
+        refreshEnvSubModePanel(state);
     else
         for k = 1:numel(terrainFields)
             setEnableIfGraphics(terrainFields{k}, false);
@@ -5116,4 +5515,1159 @@ function onClose(fig, state)
         end
     end
     delete(fig);
+end
+
+
+%% ========================================================================
+%  5c.2 — ENVIRONMENT SUB-MODE TOGGLE + REGIONS SUB-PANELS
+%% ========================================================================
+%  Three new sub-panels for the v3.5 §5c.2 region-editing UX. The sub-mode
+%  toggle is hidden until Environment top-level mode is active; once it
+%  is, the toggle picks between Fallback (existing Terrain + Weather
+%  panels) and Regions (Terrain Regions + Weather Regions panels).
+%
+%  All builders here mirror existing patterns:
+%    • buildEnvSubModeTogglePanel   — mirrors buildModeTogglePanel
+%                                     (state-button radio pair, mutual-
+%                                     exclusion enforced in callbacks).
+%    • buildTerrainRegionsPanel     — dropdown + Add/Dup/Del strip plus
+%      buildWeatherRegionsPanel       a read-only-ish active-region
+%                                     section (editable name field,
+%                                     read-only configPath label,
+%                                     polygon vertex count badge,
+%                                     Edit Polygon + Change Config
+%                                     buttons). Edit Polygon is greyed
+%                                     in 5c.2 — it activates in 5c.3
+%                                     when polygon-edit sub-mode lands.
+%
+%  All callbacks push undo via the EditorState mutators (which already
+%  do pushUndo internally for region operations — see 5c.1). The view-
+%  state setters (setActive*RegionIdx, setEnvSubMode) do NOT push undo,
+%  matching the existing setEditMode / setActiveSensorIdx patterns.
+
+function buildEnvSubModeTogglePanel(parent, state)
+%buildEnvSubModeTogglePanel  v3.5 §5c.2 — sub-mode toggle (row 6, 50 px).
+%
+%  Layout:
+%    ┌─ Environment sub-mode ─────────────────────────────────┐
+%    │ [ Fallback ]                      [ Regions      ]      │
+%    └─────────────────────────────────────────────────────────────┘
+%
+%  Two state-buttons acting as a mutually-exclusive radio pair. Mutual
+%  exclusion enforced in onEnvSubMode{Fallback,Regions} — same pattern
+%  as the top-level mode toggle. Panel itself is shown/hidden by
+%  applyEditMode based on environmentOn.
+    pnl = uipanel(parent, 'Title', 'Environment sub-mode');
+    state.envSubModePanel = pnl;
+
+    g = uigridlayout(pnl, [1 2]);
+    g.RowHeight   = {26};
+    g.ColumnWidth = {'1x', '1x'};
+    g.Padding     = [6 4 6 4];
+    g.ColumnSpacing = 6;
+
+    isFallback = (state.envSubMode == "fallback");
+    state.envSubModeFallbackBtn = uibutton(g, 'state', ...
+        'Text', 'Fallback', ...
+        'FontWeight', 'bold', ...
+        'Value', isFallback, ...
+        'Tooltip', 'Edit the scenario-wide fallback terrain and weather.', ...
+        'ValueChangedFcn', @(src, ~) onEnvSubModeFallback(src, state));
+    state.envSubModeRegionsBtn = uibutton(g, 'state', ...
+        'Text', 'Regions', ...
+        'FontWeight', 'bold', ...
+        'Value', ~isFallback, ...
+        'Tooltip', 'Edit terrain and weather regions (polygons over the fallback).', ...
+        'ValueChangedFcn', @(src, ~) onEnvSubModeRegions(src, state));
+end
+
+
+function buildTerrainRegionsPanel(parent, state)
+%buildTerrainRegionsPanel  v3.5 §5c.2 — Terrain Regions sub-panel
+%                          (row 9, 250 px).
+%
+%  Layout:
+%    ┌─ Terrain Regions ───────────────────────────────┐
+%    │ Region   [ <none>                 ] ▼                  │
+%    │ [ + Add ] [ Duplicate ] [ Delete ]                     │
+%    │ ──── Active region ───────────────────────────│
+%    │ Name     [ <name>                                    ] │
+%    │ Config:    rural/default_rural                         │
+%    │ Polygon:   0 vertices  ⚠ invalid                        │
+%    │ [ Edit polygon… ]   [ Change config… ]                  │
+%    └────────────────────────────────────────────────────────────┘
+%
+%  Mirrors buildTargetsPanel / buildSensorsPanel structure: dropdown +
+%  collection-management button strip, then a per-active-region read-out
+%  pane with its own action buttons. Inline name editing (rename via
+%  ValueChangedFcn on the name field) replaces the explicit Rename
+%  button — simpler and matches the design we settled on for 5c.2.
+%
+%  Edit Polygon button is constructed with Enable='off' for 5c.2; 5c.3
+%  will flip it on when polygon-edit sub-mode lands. Change Config is
+%  fully wired to onTerrainRegionsChangeConfig.
+    pnl = uipanel(parent, 'Title', 'Terrain Regions');
+    state.terrainRegionsPanel = pnl;
+
+    g = uigridlayout(pnl, [7 2]);
+    g.RowHeight   = {26, 28, 4, 26, 22, 22, 28};
+    g.ColumnWidth = {72, '1x'};
+    g.Padding     = [6 6 6 6];
+    g.RowSpacing  = 4;
+    g.ColumnSpacing = 6;
+
+    % Row 1 — Region picker
+    lblRegion = uilabel(g, 'Text', 'Region', 'HorizontalAlignment', 'right');
+    lblRegion.Layout.Row = 1; lblRegion.Layout.Column = 1;
+    state.terrainRegionsDD = uidropdown(g, ...
+        'Items', {'(no regions)'}, 'ItemsData', {0}, 'Value', 0, ...
+        'Tooltip', 'Active terrain region. Pick another to edit it.', ...
+        'ValueChangedFcn', @(src, ~) onTerrainRegionDDChanged(src, state));
+    state.terrainRegionsDD.Layout.Row = 1;
+    state.terrainRegionsDD.Layout.Column = 2;
+
+    % Row 2 — Add / Dup / Delete strip
+    btns = uigridlayout(g, [1 3]);
+    btns.Layout.Row = 2; btns.Layout.Column = [1 2];
+    btns.RowHeight = {28};
+    btns.ColumnWidth = {'1x', '1x', '1x'};
+    btns.Padding = [0 0 0 0];
+    btns.ColumnSpacing = 4;
+    state.terrainRegionsBtnAdd = uibutton(btns, 'push', 'Text', '+ Add', ...
+        'Tooltip', 'Add a new terrain region seeded from the fallback.', ...
+        'ButtonPushedFcn', @(~, ~) onTerrainRegionsAdd(state));
+    state.terrainRegionsBtnDuplicate = uibutton(btns, 'push', 'Text', 'Duplicate', ...
+        'Tooltip', 'Copy the active region (polygon offset 2 km east).', ...
+        'ButtonPushedFcn', @(~, ~) onTerrainRegionsDuplicate(state));
+    state.terrainRegionsBtnDelete = uibutton(btns, 'push', 'Text', 'Delete', ...
+        'BackgroundColor', [0.90 0.40 0.40], 'FontColor', 'white', ...
+        'Tooltip', 'Remove the active terrain region (undoable).', ...
+        'ButtonPushedFcn', @(~, ~) onTerrainRegionsDelete(state));
+
+    % Row 3 — thin separator (visual breathing room before the active-region readout)
+    sep = uilabel(g, 'Text', '', 'BackgroundColor', [0.85 0.85 0.85]);
+    sep.Layout.Row = 3; sep.Layout.Column = [1 2];
+
+    % Row 4 — Name (inline editable; rename via ValueChangedFcn)
+    lblName = uilabel(g, 'Text', 'Name', 'HorizontalAlignment', 'right');
+    lblName.Layout.Row = 4; lblName.Layout.Column = 1;
+    state.terrainRegionsNameField = uieditfield(g, 'text', 'Value', '', ...
+        'Tooltip', 'Active region name. Press Enter to rename (must be unique).', ...
+        'ValueChangedFcn', @(src, ~) onTerrainRegionsNameFieldChanged(src, state));
+    state.terrainRegionsNameField.Layout.Row = 4;
+    state.terrainRegionsNameField.Layout.Column = 2;
+
+    % Row 5 — Config (read-only label)
+    lblConfig = uilabel(g, 'Text', 'Config:', 'HorizontalAlignment', 'right');
+    lblConfig.Layout.Row = 5; lblConfig.Layout.Column = 1;
+    state.terrainRegionsConfigLabel = uilabel(g, 'Text', '—', ...
+        'FontColor', [0.30 0.30 0.30]);
+    state.terrainRegionsConfigLabel.Layout.Row = 5;
+    state.terrainRegionsConfigLabel.Layout.Column = 2;
+
+    % Row 6 — Polygon status (vertex count + valid/invalid)
+    lblPoly = uilabel(g, 'Text', 'Polygon:', 'HorizontalAlignment', 'right');
+    lblPoly.Layout.Row = 6; lblPoly.Layout.Column = 1;
+    state.terrainRegionsPolygonStatusLabel = uilabel(g, 'Text', '—', ...
+        'FontColor', [0.30 0.30 0.30]);
+    state.terrainRegionsPolygonStatusLabel.Layout.Row = 6;
+    state.terrainRegionsPolygonStatusLabel.Layout.Column = 2;
+
+    % Row 7 — action buttons (Edit polygon greyed in 5c.2, Change config wired)
+    actBtns = uigridlayout(g, [1 2]);
+    actBtns.Layout.Row = 7; actBtns.Layout.Column = [1 2];
+    actBtns.RowHeight = {28};
+    actBtns.ColumnWidth = {'1x', '1x'};
+    actBtns.Padding = [0 0 0 0];
+    actBtns.ColumnSpacing = 4;
+    state.terrainRegionsBtnEditPolygon = uibutton(actBtns, 'push', ...
+        'Text', 'Edit polygon…', ...
+        'Enable', 'off', ...
+        'Tooltip', 'Click to draw a polygon on the map (activates in 5c.3).', ...
+        'ButtonPushedFcn', @(~, ~) onTerrainRegionsEditPolygon(state));
+    state.terrainRegionsBtnChangeConfig = uibutton(actBtns, 'push', ...
+        'Text', 'Change config…', ...
+        'Tooltip', 'Pick a different terrain config file for this region.', ...
+        'ButtonPushedFcn', @(~, ~) onTerrainRegionsChangeConfig(state));
+end
+
+
+function buildWeatherRegionsPanel(parent, state)
+%buildWeatherRegionsPanel  v3.5 §5c.2 — Weather Regions sub-panel
+%                          (row 10, 250 px). Mirror of
+%                          buildTerrainRegionsPanel for weatherRegions.
+    pnl = uipanel(parent, 'Title', 'Weather Regions');
+    state.weatherRegionsPanel = pnl;
+
+    g = uigridlayout(pnl, [7 2]);
+    g.RowHeight   = {26, 28, 4, 26, 22, 22, 28};
+    g.ColumnWidth = {72, '1x'};
+    g.Padding     = [6 6 6 6];
+    g.RowSpacing  = 4;
+    g.ColumnSpacing = 6;
+
+    lblRegion = uilabel(g, 'Text', 'Region', 'HorizontalAlignment', 'right');
+    lblRegion.Layout.Row = 1; lblRegion.Layout.Column = 1;
+    state.weatherRegionsDD = uidropdown(g, ...
+        'Items', {'(no regions)'}, 'ItemsData', {0}, 'Value', 0, ...
+        'Tooltip', 'Active weather region. Pick another to edit it.', ...
+        'ValueChangedFcn', @(src, ~) onWeatherRegionDDChanged(src, state));
+    state.weatherRegionsDD.Layout.Row = 1;
+    state.weatherRegionsDD.Layout.Column = 2;
+
+    btns = uigridlayout(g, [1 3]);
+    btns.Layout.Row = 2; btns.Layout.Column = [1 2];
+    btns.RowHeight = {28};
+    btns.ColumnWidth = {'1x', '1x', '1x'};
+    btns.Padding = [0 0 0 0];
+    btns.ColumnSpacing = 4;
+    state.weatherRegionsBtnAdd = uibutton(btns, 'push', 'Text', '+ Add', ...
+        'Tooltip', 'Add a new weather region seeded from the fallback.', ...
+        'ButtonPushedFcn', @(~, ~) onWeatherRegionsAdd(state));
+    state.weatherRegionsBtnDuplicate = uibutton(btns, 'push', 'Text', 'Duplicate', ...
+        'Tooltip', 'Copy the active region (polygon offset 2 km east).', ...
+        'ButtonPushedFcn', @(~, ~) onWeatherRegionsDuplicate(state));
+    state.weatherRegionsBtnDelete = uibutton(btns, 'push', 'Text', 'Delete', ...
+        'BackgroundColor', [0.90 0.40 0.40], 'FontColor', 'white', ...
+        'Tooltip', 'Remove the active weather region (undoable).', ...
+        'ButtonPushedFcn', @(~, ~) onWeatherRegionsDelete(state));
+
+    sep = uilabel(g, 'Text', '', 'BackgroundColor', [0.85 0.85 0.85]);
+    sep.Layout.Row = 3; sep.Layout.Column = [1 2];
+
+    lblName = uilabel(g, 'Text', 'Name', 'HorizontalAlignment', 'right');
+    lblName.Layout.Row = 4; lblName.Layout.Column = 1;
+    state.weatherRegionsNameField = uieditfield(g, 'text', 'Value', '', ...
+        'Tooltip', 'Active region name. Press Enter to rename (must be unique).', ...
+        'ValueChangedFcn', @(src, ~) onWeatherRegionsNameFieldChanged(src, state));
+    state.weatherRegionsNameField.Layout.Row = 4;
+    state.weatherRegionsNameField.Layout.Column = 2;
+
+    lblConfig = uilabel(g, 'Text', 'Config:', 'HorizontalAlignment', 'right');
+    lblConfig.Layout.Row = 5; lblConfig.Layout.Column = 1;
+    state.weatherRegionsConfigLabel = uilabel(g, 'Text', '—', ...
+        'FontColor', [0.30 0.30 0.30]);
+    state.weatherRegionsConfigLabel.Layout.Row = 5;
+    state.weatherRegionsConfigLabel.Layout.Column = 2;
+
+    lblPoly = uilabel(g, 'Text', 'Polygon:', 'HorizontalAlignment', 'right');
+    lblPoly.Layout.Row = 6; lblPoly.Layout.Column = 1;
+    state.weatherRegionsPolygonStatusLabel = uilabel(g, 'Text', '—', ...
+        'FontColor', [0.30 0.30 0.30]);
+    state.weatherRegionsPolygonStatusLabel.Layout.Row = 6;
+    state.weatherRegionsPolygonStatusLabel.Layout.Column = 2;
+
+    actBtns = uigridlayout(g, [1 2]);
+    actBtns.Layout.Row = 7; actBtns.Layout.Column = [1 2];
+    actBtns.RowHeight = {28};
+    actBtns.ColumnWidth = {'1x', '1x'};
+    actBtns.Padding = [0 0 0 0];
+    actBtns.ColumnSpacing = 4;
+    state.weatherRegionsBtnEditPolygon = uibutton(actBtns, 'push', ...
+        'Text', 'Edit polygon…', ...
+        'Enable', 'off', ...
+        'Tooltip', 'Click to draw a polygon on the map (activates in 5c.3).', ...
+        'ButtonPushedFcn', @(~, ~) onWeatherRegionsEditPolygon(state));
+    state.weatherRegionsBtnChangeConfig = uibutton(actBtns, 'push', ...
+        'Text', 'Change config…', ...
+        'Tooltip', 'Pick a different weather config file for this region.', ...
+        'ButtonPushedFcn', @(~, ~) onWeatherRegionsChangeConfig(state));
+end
+
+
+%% ------------------------------------------------------------------------
+%  5c.2 — REGIONS REFRESH HELPERS
+%% ------------------------------------------------------------------------
+%  Single source-of-truth re-syncers for the new sub-panels. Called by:
+%    • buildUI seed time (after the panels are built, before applyEditMode)
+%    • every region mutation callback (Add, Dup, Del, Rename, ChangeConfig)
+%    • sub-mode toggle (so the panels show fresh data on first reveal)
+%    • undo/redo (via refreshAfterEnvironmentChange — wired in Edit 7)
+
+function refreshEnvSubModePanel(state)
+%refreshEnvSubModePanel  Sync the Fallback/Regions state-buttons to
+%                        state.envSubMode. View state only — does not
+%                        touch the sub-panels themselves; that's
+%                        applyEditMode's job.
+    if ~isgraphics(state.envSubModeFallbackBtn); return; end
+    if ~isgraphics(state.envSubModeRegionsBtn);  return; end
+    isFallback = (state.envSubMode == "fallback");
+    state.envSubModeFallbackBtn.Value = isFallback;
+    state.envSubModeRegionsBtn.Value  = ~isFallback;
+end
+
+
+function refreshTerrainRegionsPanel(state)
+%refreshTerrainRegionsPanel  Rebuild the Terrain Regions dropdown and
+%                            populate the active-region read-out.
+%
+%  Items→ItemsData→Value ordering avoids the uidropdown "Value not in
+%  ItemsData" throw — same pattern as refreshTargetsDropdown.
+%
+%  EMPTY COLLECTION
+%    Dropdown shows "(no regions)" and the action buttons are disabled.
+%    The Add button stays enabled so the user can create the first region.
+%
+%  ACTIVE REGION READOUT
+%    Name field gets the active region's name (or '' when none).
+%    Config label gets the configPath (or '—' when none).
+%    Polygon label gets "N vertices  ✓ valid" or "N vertices  ⚠ invalid"
+%    based on isValidPolygon (≥3 vertices). 0 vertices → "empty".
+    if ~isgraphics(state.terrainRegionsDD); return; end
+    n = numel(state.terrainRegions);
+
+    if n == 0
+        state.terrainRegionsDD.Items     = {'(no regions)'};
+        state.terrainRegionsDD.ItemsData = {0};
+        state.terrainRegionsDD.Value     = 0;
+        setPropIfGraphics(state.terrainRegionsBtnDuplicate,    'Enable', 'off');
+        setPropIfGraphics(state.terrainRegionsBtnDelete,       'Enable', 'off');
+        setPropIfGraphics(state.terrainRegionsNameField,       'Enable', 'off');
+        setPropIfGraphics(state.terrainRegionsBtnChangeConfig, 'Enable', 'off');
+        % v3.5 §5c.3 fix — Edit Polygon must also be disabled when there
+        % are no regions. Pre-fix, this branch left it at whatever state
+        % the n>0 branch had set it to ('on'), so a Ctrl+Z that removed
+        % a region left the button looking clickable but doing nothing
+        % when pressed (early-return on ~hasActiveTerrainRegion).
+        setPropIfGraphics(state.terrainRegionsBtnEditPolygon,  'Enable', 'off');
+        setPropIfGraphics(state.terrainRegionsNameField, 'Value', '');
+        setPropIfGraphics(state.terrainRegionsConfigLabel, 'Text', '—');
+        setPropIfGraphics(state.terrainRegionsPolygonStatusLabel, ...
+            'Text', '—');
+        return;
+    end
+
+    items = cell(1, n);
+    data  = cell(1, n);
+    for k = 1:n
+        rec = state.terrainRegions(k);
+        nm = char(rec.name);
+        if isempty(nm); nm = sprintf('(unnamed %d)', k); end
+        if k == state.activeTerrainRegionIdx
+            items{k} = sprintf('%s  (active)', nm);
+        else
+            items{k} = nm;
+        end
+        data{k} = k;
+    end
+    state.terrainRegionsDD.Items     = items;
+    state.terrainRegionsDD.ItemsData = data;
+    if state.activeTerrainRegionIdx >= 1 && state.activeTerrainRegionIdx <= n
+        state.terrainRegionsDD.Value = state.activeTerrainRegionIdx;
+    else
+        state.terrainRegionsDD.Value = 1;
+    end
+
+    setPropIfGraphics(state.terrainRegionsBtnDuplicate,    'Enable', 'on');
+    setPropIfGraphics(state.terrainRegionsBtnDelete,       'Enable', 'on');
+    setPropIfGraphics(state.terrainRegionsNameField,       'Enable', 'on');
+    setPropIfGraphics(state.terrainRegionsBtnChangeConfig, 'Enable', 'on');
+    % v3.5 §5c.3 — Edit Polygon button activates when there's an active
+    % region. The lockdown helper (applyPolygonEditLockdown) overrides
+    % this when polygon-edit mode is active for ANY region.
+    setPropIfGraphics(state.terrainRegionsBtnEditPolygon,  'Enable', 'on');
+
+    % Active-region read-out.
+    if state.hasActiveTerrainRegion()
+        rec = state.terrainRegions(state.activeTerrainRegionIdx);
+        setPropIfGraphics(state.terrainRegionsNameField, 'Value', char(rec.name));
+        cfg = char(rec.configPath);
+        if isempty(cfg); cfg = '—'; end
+        setPropIfGraphics(state.terrainRegionsConfigLabel, 'Text', cfg);
+        setPropIfGraphics(state.terrainRegionsPolygonStatusLabel, ...
+            'Text', polygonStatusText(rec));
+    else
+        setPropIfGraphics(state.terrainRegionsNameField, 'Value', '');
+        setPropIfGraphics(state.terrainRegionsConfigLabel, 'Text', '—');
+        setPropIfGraphics(state.terrainRegionsPolygonStatusLabel, ...
+            'Text', '—');
+    end
+end
+
+
+function refreshWeatherRegionsPanel(state)
+%refreshWeatherRegionsPanel  Mirror of refreshTerrainRegionsPanel for
+%                            the weather collection.
+    if ~isgraphics(state.weatherRegionsDD); return; end
+    n = numel(state.weatherRegions);
+
+    if n == 0
+        state.weatherRegionsDD.Items     = {'(no regions)'};
+        state.weatherRegionsDD.ItemsData = {0};
+        state.weatherRegionsDD.Value     = 0;
+        setPropIfGraphics(state.weatherRegionsBtnDuplicate,    'Enable', 'off');
+        setPropIfGraphics(state.weatherRegionsBtnDelete,       'Enable', 'off');
+        setPropIfGraphics(state.weatherRegionsNameField,       'Enable', 'off');
+        setPropIfGraphics(state.weatherRegionsBtnChangeConfig, 'Enable', 'off');
+        % v3.5 §5c.3 fix — mirror of the terrain-side fix above.
+        setPropIfGraphics(state.weatherRegionsBtnEditPolygon,  'Enable', 'off');
+        setPropIfGraphics(state.weatherRegionsNameField, 'Value', '');
+        setPropIfGraphics(state.weatherRegionsConfigLabel, 'Text', '—');
+        setPropIfGraphics(state.weatherRegionsPolygonStatusLabel, ...
+            'Text', '—');
+        return;
+    end
+
+    items = cell(1, n);
+    data  = cell(1, n);
+    for k = 1:n
+        rec = state.weatherRegions(k);
+        nm = char(rec.name);
+        if isempty(nm); nm = sprintf('(unnamed %d)', k); end
+        if k == state.activeWeatherRegionIdx
+            items{k} = sprintf('%s  (active)', nm);
+        else
+            items{k} = nm;
+        end
+        data{k} = k;
+    end
+    state.weatherRegionsDD.Items     = items;
+    state.weatherRegionsDD.ItemsData = data;
+    if state.activeWeatherRegionIdx >= 1 && state.activeWeatherRegionIdx <= n
+        state.weatherRegionsDD.Value = state.activeWeatherRegionIdx;
+    else
+        state.weatherRegionsDD.Value = 1;
+    end
+
+    setPropIfGraphics(state.weatherRegionsBtnDuplicate,    'Enable', 'on');
+    setPropIfGraphics(state.weatherRegionsBtnDelete,       'Enable', 'on');
+    setPropIfGraphics(state.weatherRegionsNameField,       'Enable', 'on');
+    setPropIfGraphics(state.weatherRegionsBtnChangeConfig, 'Enable', 'on');
+    % v3.5 §5c.3 — Edit Polygon button activates when there's an active
+    % region. The lockdown helper overrides this during active edit.
+    setPropIfGraphics(state.weatherRegionsBtnEditPolygon,  'Enable', 'on');
+
+    if state.hasActiveWeatherRegion()
+        rec = state.weatherRegions(state.activeWeatherRegionIdx);
+        setPropIfGraphics(state.weatherRegionsNameField, 'Value', char(rec.name));
+        cfg = char(rec.configPath);
+        if isempty(cfg); cfg = '—'; end
+        setPropIfGraphics(state.weatherRegionsConfigLabel, 'Text', cfg);
+        setPropIfGraphics(state.weatherRegionsPolygonStatusLabel, ...
+            'Text', polygonStatusText(rec));
+    else
+        setPropIfGraphics(state.weatherRegionsNameField, 'Value', '');
+        setPropIfGraphics(state.weatherRegionsConfigLabel, 'Text', '—');
+        setPropIfGraphics(state.weatherRegionsPolygonStatusLabel, ...
+            'Text', '—');
+    end
+end
+
+
+function txt = polygonStatusText(rec)
+%polygonStatusText  Human-readable polygon vertex count + validity.
+%                   Used by both Terrain and Weather Regions panels.
+%                   Works for either region-record class because both
+%                   expose .polygonXY and .isValidPolygon().
+    nv = size(rec.polygonXY, 1);
+    if nv == 0
+        txt = 'empty (draw a polygon to define this region)';
+        return;
+    end
+    if rec.isValidPolygon()
+        txt = sprintf('%d vertices  ✓ valid', nv);
+    else
+        txt = sprintf('%d vertices  ⚠ needs ≥3', nv);
+    end
+end
+
+
+%% ------------------------------------------------------------------------
+%  5c.2 — SUB-MODE TOGGLE CALLBACKS
+%% ------------------------------------------------------------------------
+
+function onEnvSubModeFallback(src, state)
+%onEnvSubModeFallback  Fallback state-button handler. Mutual exclusion
+%                      with the Regions button — mirrors
+%                      onModeTargetsPressed (top-level mode toggle).
+    if ~src.Value
+        src.Value = true;   % bounce off-click back on
+        return;
+    end
+    if isgraphics(state.envSubModeRegionsBtn)
+        state.envSubModeRegionsBtn.Value = false;
+    end
+    state.setEnvSubMode("fallback");
+    applyEditMode(state);
+    setStatus(state, 'Environment: editing fallback terrain + weather.');
+end
+
+
+function onEnvSubModeRegions(src, state)
+%onEnvSubModeRegions  Regions state-button handler. Mirror of
+%                     onEnvSubModeFallback.
+    if ~src.Value
+        src.Value = true;
+        return;
+    end
+    if isgraphics(state.envSubModeFallbackBtn)
+        state.envSubModeFallbackBtn.Value = false;
+    end
+    state.setEnvSubMode("regions");
+    applyEditMode(state);
+    setStatus(state, 'Environment: editing terrain + weather regions.');
+end
+
+
+%% ------------------------------------------------------------------------
+%  5c.2 — TERRAIN REGIONS CALLBACKS
+%% ------------------------------------------------------------------------
+
+function onTerrainRegionDDChanged(src, state)
+%onTerrainRegionDDChanged  Switch active terrain region. ItemsData are
+%                          1-based indices, so src.Value is the new idx.
+%                          View state — no undo (mirrors
+%                          onTargetsDropdownChanged → setActiveIdx).
+    newIdx = double(src.Value);
+    if newIdx < 1 || newIdx > numel(state.terrainRegions)
+        return;
+    end
+    state.setActiveTerrainRegionIdx(newIdx);
+    refreshTerrainRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.terrainRegions(newIdx);
+    setStatus(state, sprintf('Active terrain region: %s', rec.name));
+end
+
+
+function onTerrainRegionsAdd(state)
+%onTerrainRegionsAdd  Append a new region (Option B inheritance — seeded
+%                     from the fallback record by EditorState.
+%                     addTerrainRegion). Auto-named region_<n+1>; the
+%                     user can rename via the inline name field.
+    try
+        idx = state.addTerrainRegion();
+    catch ME
+        uialert(state.fig, ME.message, 'Add terrain region failed', 'Icon', 'error');
+        return;
+    end
+    refreshTerrainRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.terrainRegions(idx);
+    setStatus(state, sprintf('Added terrain region "%s" (config: %s).', ...
+        rec.name, rec.configPath));
+end
+
+
+function onTerrainRegionsDuplicate(state)
+%onTerrainRegionsDuplicate  Copy active region with "_copy" suffix and
+%                            polygon offset +2 km east.
+    if ~state.hasActiveTerrainRegion()
+        setStatus(state, 'Nothing to duplicate — add a region first.');
+        return;
+    end
+    try
+        state.duplicateActiveTerrainRegion();
+    catch ME
+        uialert(state.fig, ME.message, 'Duplicate failed', 'Icon', 'error');
+        return;
+    end
+    refreshTerrainRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.terrainRegions(state.activeTerrainRegionIdx);
+    setStatus(state, sprintf('Duplicated → %s', rec.name));
+end
+
+
+function onTerrainRegionsDelete(state)
+%onTerrainRegionsDelete  Confirm + delete active terrain region.
+%                        Always confirms (regions don't have a "clearly
+%                        empty so skip prompt" heuristic the way targets
+%                        do — a region with no polygon vertices is
+%                        still meaningful work).
+    if ~state.hasActiveTerrainRegion()
+        setStatus(state, 'Nothing to delete.');
+        return;
+    end
+    rec = state.terrainRegions(state.activeTerrainRegionIdx);
+    sel = uiconfirm(state.fig, ...
+        sprintf('Delete terrain region "%s"? You can Ctrl+Z to bring it back.', rec.name), ...
+        'Delete terrain region', ...
+        'Options', {'Delete', 'Cancel'}, ...
+        'DefaultOption', 'Cancel', 'CancelOption', 'Cancel', ...
+        'Icon', 'warning');
+    if ~strcmp(sel, 'Delete'); return; end
+    deletedName = rec.name;
+    state.deleteActiveTerrainRegion();
+    refreshTerrainRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf('Deleted terrain region "%s".', deletedName));
+end
+
+
+function onTerrainRegionsNameFieldChanged(src, state)
+%onTerrainRegionsNameFieldChanged  Inline rename via ValueChangedFcn.
+%                                  renameActiveTerrainRegion validates
+%                                  non-empty + unique; failures snap
+%                                  the field back to the old name and
+%                                  surface via uialert.
+    if ~state.hasActiveTerrainRegion()
+        src.Value = '';
+        return;
+    end
+    newName = strtrim(src.Value);
+    cur = char(state.terrainRegions(state.activeTerrainRegionIdx).name);
+    if isempty(newName) || strcmp(newName, cur)
+        src.Value = cur;   % no-op or empty → snap back
+        return;
+    end
+    try
+        state.renameActiveTerrainRegion(newName);
+    catch ME
+        uialert(state.fig, ME.message, 'Rename failed', 'Icon', 'warning');
+        src.Value = cur;
+        return;
+    end
+    refreshTerrainRegionsPanel(state);
+    setStatus(state, sprintf('Renamed terrain region → %s', newName));
+end
+
+
+function onTerrainRegionsEditPolygon(state)
+%onTerrainRegionsEditPolygon  v3.5 §5c.3 — enter polygon-edit mode
+%                              for the active terrain region. Seeds the
+%                              draft with the existing polygonXY (Q1 =
+%                              edit in place). Locks the rest of the UI
+%                              via applyPolygonEditLockdown so the user
+%                              can't switch regions / sub-modes / modes
+%                              mid-edit (Q2 = lock).
+    if ~state.hasActiveTerrainRegion()
+        setStatus(state, 'No active terrain region to edit.');
+        return;
+    end
+    if state.polygonEditActive
+        setStatus(state, 'Already in polygon-edit mode — Enter to commit, Esc to abort.');
+        return;
+    end
+    try
+        state.beginPolygonEdit("terrain");
+    catch ME
+        uialert(state.fig, ME.message, 'Edit polygon failed', 'Icon', 'error');
+        return;
+    end
+    applyPolygonEditLockdown(state);
+    trackbench.editor.drawMap(state);
+    nv = size(state.polygonEditDraft, 1);
+    if nv == 0
+        setStatus(state, ['Polygon edit — click on the map to add vertices. ' ...
+                          'Enter or double-click to commit, Esc to cancel.']);
+    else
+        setStatus(state, sprintf(['Polygon edit — editing existing %d-vertex ' ...
+            'polygon. Click to add more, Enter to commit, Esc to cancel.'], nv));
+    end
+end
+
+
+function onTerrainRegionsChangeConfig(state)
+%onTerrainRegionsChangeConfig  File picker → loadTerrainRegionConfig.
+%                              Default folder: config/terrain/. Path is
+%                              stripped to a library-style relative
+%                              "<typeDir>/<n>" before being passed to
+%                              the loader (mirrors onLoadTerrain).
+%
+%  Polygon is preserved across the swap (loadTerrainRegionConfig
+%  rebuilds the inner record but keeps polygonXY).
+    if ~state.hasActiveTerrainRegion()
+        setStatus(state, 'No active terrain region to change config for.');
+        return;
+    end
+    startDir = defaultTerrainPickerDir(state);
+    [file, path] = uigetfile({'*.json','JSON terrain files'}, ...
+        'Change terrain region config', startDir);
+    if isequal(file, 0); return; end
+    full = fullfile(path, file);
+    relPath = extractConfigRelPath(full, state, "terrain");
+    try
+        state.loadTerrainRegionConfig(relPath);
+    catch ME
+        setStatus(state, sprintf('Change config failed: %s', ME.message));
+        uialert(state.fig, ME.message, 'Change config failed');
+        return;
+    end
+    refreshTerrainRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf('Loaded "%s" into active terrain region.', relPath));
+end
+
+
+%% ------------------------------------------------------------------------
+%  5c.2 — WEATHER REGIONS CALLBACKS
+%% ------------------------------------------------------------------------
+%  Mirrors of the terrain-region callbacks above. Same shape, different
+%  collection. Kept as separate functions (not parametric) for readability
+%  — matches how the rest of the file pairs Targets/Sensors callbacks.
+
+function onWeatherRegionDDChanged(src, state)
+    newIdx = double(src.Value);
+    if newIdx < 1 || newIdx > numel(state.weatherRegions)
+        return;
+    end
+    state.setActiveWeatherRegionIdx(newIdx);
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.weatherRegions(newIdx);
+    setStatus(state, sprintf('Active weather region: %s', rec.name));
+end
+
+
+function onWeatherRegionsAdd(state)
+    try
+        idx = state.addWeatherRegion();
+    catch ME
+        uialert(state.fig, ME.message, 'Add weather region failed', 'Icon', 'error');
+        return;
+    end
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.weatherRegions(idx);
+    setStatus(state, sprintf('Added weather region "%s" (config: %s).', ...
+        rec.name, rec.configPath));
+end
+
+
+function onWeatherRegionsDuplicate(state)
+    if ~state.hasActiveWeatherRegion()
+        setStatus(state, 'Nothing to duplicate — add a region first.');
+        return;
+    end
+    try
+        state.duplicateActiveWeatherRegion();
+    catch ME
+        uialert(state.fig, ME.message, 'Duplicate failed', 'Icon', 'error');
+        return;
+    end
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rec = state.weatherRegions(state.activeWeatherRegionIdx);
+    setStatus(state, sprintf('Duplicated → %s', rec.name));
+end
+
+
+function onWeatherRegionsDelete(state)
+    if ~state.hasActiveWeatherRegion()
+        setStatus(state, 'Nothing to delete.');
+        return;
+    end
+    rec = state.weatherRegions(state.activeWeatherRegionIdx);
+    sel = uiconfirm(state.fig, ...
+        sprintf('Delete weather region "%s"? You can Ctrl+Z to bring it back.', rec.name), ...
+        'Delete weather region', ...
+        'Options', {'Delete', 'Cancel'}, ...
+        'DefaultOption', 'Cancel', 'CancelOption', 'Cancel', ...
+        'Icon', 'warning');
+    if ~strcmp(sel, 'Delete'); return; end
+    deletedName = rec.name;
+    state.deleteActiveWeatherRegion();
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf('Deleted weather region "%s".', deletedName));
+end
+
+
+function onWeatherRegionsNameFieldChanged(src, state)
+    if ~state.hasActiveWeatherRegion()
+        src.Value = '';
+        return;
+    end
+    newName = strtrim(src.Value);
+    cur = char(state.weatherRegions(state.activeWeatherRegionIdx).name);
+    if isempty(newName) || strcmp(newName, cur)
+        src.Value = cur;
+        return;
+    end
+    try
+        state.renameActiveWeatherRegion(newName);
+    catch ME
+        uialert(state.fig, ME.message, 'Rename failed', 'Icon', 'warning');
+        src.Value = cur;
+        return;
+    end
+    refreshWeatherRegionsPanel(state);
+    setStatus(state, sprintf('Renamed weather region → %s', newName));
+end
+
+
+function onWeatherRegionsEditPolygon(state)
+%onWeatherRegionsEditPolygon  v3.5 §5c.3 — mirror of
+%                              onTerrainRegionsEditPolygon for the
+%                              weather collection.
+    if ~state.hasActiveWeatherRegion()
+        setStatus(state, 'No active weather region to edit.');
+        return;
+    end
+    if state.polygonEditActive
+        setStatus(state, 'Already in polygon-edit mode — Enter to commit, Esc to abort.');
+        return;
+    end
+    try
+        state.beginPolygonEdit("weather");
+    catch ME
+        uialert(state.fig, ME.message, 'Edit polygon failed', 'Icon', 'error');
+        return;
+    end
+    applyPolygonEditLockdown(state);
+    trackbench.editor.drawMap(state);
+    nv = size(state.polygonEditDraft, 1);
+    if nv == 0
+        setStatus(state, ['Polygon edit — click on the map to add vertices. ' ...
+                          'Enter or double-click to commit, Esc to cancel.']);
+    else
+        setStatus(state, sprintf(['Polygon edit — editing existing %d-vertex ' ...
+            'polygon. Click to add more, Enter to commit, Esc to cancel.'], nv));
+    end
+end
+
+
+function onWeatherRegionsChangeConfig(state)
+    if ~state.hasActiveWeatherRegion()
+        setStatus(state, 'No active weather region to change config for.');
+        return;
+    end
+    startDir = defaultWeatherPickerDir(state);
+    [file, path] = uigetfile({'*.json','JSON weather files'}, ...
+        'Change weather region config', startDir);
+    if isequal(file, 0); return; end
+    full = fullfile(path, file);
+    relPath = extractConfigRelPath(full, state, "weather");
+    try
+        state.loadWeatherRegionConfig(relPath);
+    catch ME
+        setStatus(state, sprintf('Change config failed: %s', ME.message));
+        uialert(state.fig, ME.message, 'Change config failed');
+        return;
+    end
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf('Loaded "%s" into active weather region.', relPath));
+end
+
+
+%% ------------------------------------------------------------------------
+%  5c.3 — POLYGON-EDIT COMMIT HELPER + UI LOCKDOWN
+%% ------------------------------------------------------------------------
+%  tryCommitPolygonEdit       — wraps state.commitPolygonEdit with the
+%                                <3-vertex refusal status message and
+%                                the panel-refresh / lockdown-release
+%                                cascade on success.
+%  applyPolygonEditLockdown   — toggles Enable on every widget that
+%                                could let the user navigate away from
+%                                the active edit. Called when entering
+%                                edit mode (lock down) AND when
+%                                committing/aborting (release).
+
+function tryCommitPolygonEdit(state)
+%tryCommitPolygonEdit  v3.5 §5c.3 — commit the in-progress polygon
+%                       edit. <3 vertices → refuse with status warning,
+%                       edit mode stays active. ≥3 vertices → commit,
+%                       refresh the relevant Regions panel, release
+%                       the UI lockdown.
+    nv = size(state.polygonEditDraft, 1);
+    if nv < 3
+        setStatus(state, sprintf( ...
+            ['Need at least 3 vertices (have %d) — keep clicking, ' ...
+             'or Esc to cancel.'], nv));
+        return;
+    end
+    target = char(state.polygonEditTarget);   % capture before commit clears
+    ok = state.commitPolygonEdit();
+    if ~ok
+        % Should not happen — the <3 guard above should have caught it.
+        % Defensive status message if commit refused for some other
+        % reason (e.g., stored polygon validation downstream).
+        setStatus(state, 'Polygon commit failed unexpectedly.');
+        return;
+    end
+    applyPolygonEditLockdown(state);   % releases the lock
+    switch target
+        case 'terrain'
+            refreshTerrainRegionsPanel(state);
+        case 'weather'
+            refreshWeatherRegionsPanel(state);
+    end
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf('Polygon committed (%d vertices).', nv));
+end
+
+
+function applyPolygonEditLockdown(state)
+%applyPolygonEditLockdown  v3.5 §5c.3 — lock or unlock the UI based on
+%                          state.polygonEditActive.
+%
+%  When ACTIVE: every UI control that could navigate away from the
+%  current edit gets disabled — mode toggle (Targets/Sensors/
+%  Environment), sub-mode toggle (Fallback/Regions), both Regions
+%  dropdowns, Add/Dup/Del/NameField/ChangeConfig in BOTH regions
+%  panels, Edit Polygon on BOTH regions (no value in keeping the
+%  active one enabled — Enter/Esc handle commit/abort), File panel
+%  buttons (Open Scenario / Export Scenario), Undo/Redo buttons.
+%
+%  When INACTIVE: each gated widget is restored to whatever the normal
+%  enable rule would set it to. Cleanest way to do this is to just
+%  re-run applyEditMode — it knows the right rules for the current
+%  editMode/envSubMode/active-region state. The recursive call is
+%  guarded by polygonEditActive==false here, so we don't re-enter.
+%
+%  Idempotent on repeat calls in the same direction — safe to call
+%  defensively from refresh paths.
+    if state.polygonEditActive
+        % Lock down. Top-level mode toggle.
+        setEnableIfGraphics(state.modeTargetsBtn,     false);
+        setEnableIfGraphics(state.modeSensorsBtn,     false);
+        setEnableIfGraphics(state.modeEnvironmentBtn, false);
+        % Sub-mode toggle.
+        setEnableIfGraphics(state.envSubModeFallbackBtn, false);
+        setEnableIfGraphics(state.envSubModeRegionsBtn,  false);
+        % Both regions panels' interactive controls.
+        regionWidgets = { ...
+            state.terrainRegionsDD, ...
+            state.terrainRegionsBtnAdd, ...
+            state.terrainRegionsBtnDuplicate, ...
+            state.terrainRegionsBtnDelete, ...
+            state.terrainRegionsNameField, ...
+            state.terrainRegionsBtnEditPolygon, ...
+            state.terrainRegionsBtnChangeConfig, ...
+            state.weatherRegionsDD, ...
+            state.weatherRegionsBtnAdd, ...
+            state.weatherRegionsBtnDuplicate, ...
+            state.weatherRegionsBtnDelete, ...
+            state.weatherRegionsNameField, ...
+            state.weatherRegionsBtnEditPolygon, ...
+            state.weatherRegionsBtnChangeConfig};
+        for k = 1:numel(regionWidgets)
+            setEnableIfGraphics(regionWidgets{k}, false);
+        end
+        % Walk the File panel children (Open Scenario, Export Scenario).
+        % These are buttons inside a uipanel we don't have a handle for,
+        % so search via fig descendants. Cheap — only ~8 buttons total.
+        if isgraphics(state.fig)
+            allBtns = findall(state.fig, 'Type', 'uibutton');
+            for k = 1:numel(allBtns)
+                txt = '';
+                try; txt = char(allBtns(k).Text); catch; end %#ok<NOSEMI>
+                if any(strcmp(txt, {'Open Scenario…', 'Export Scenario', ...
+                                    'Undo (Ctrl+Z)', 'Redo (Ctrl+Y)'}))
+                    allBtns(k).Enable = 'off';
+                end
+            end
+        end
+    else
+        % Release. v3.5 §5c.3 fix — the lock branch disables widgets
+        % across THREE distinct enable-domains: (a) mode + sub-mode
+        % toggles, which applyEditMode never re-enables (it only
+        % handles panel visibility and the region widgets); (b) the
+        % regions widgets, which refreshTerrain/WeatherRegionsPanel
+        % handles correctly; (c) File panel + Undo/Redo buttons,
+        % which nothing else touches. Pre-fix this branch only called
+        % applyEditMode, leaving (a) and (c) stuck at disabled — user
+        % could still use Ctrl+Z/Y keyboard shortcuts but couldn't
+        % switch modes or click File-panel buttons. The trap.
+        %
+        % Fix: explicitly re-enable everything the lock branch
+        % disabled, then delegate to applyEditMode for the fine-
+        % grained mode/state rules (which may legitimately disable
+        % some of them again, e.g. EditPolygon when n==0 regions).
+        setEnableIfGraphics(state.modeTargetsBtn,     true);
+        setEnableIfGraphics(state.modeSensorsBtn,     true);
+        setEnableIfGraphics(state.modeEnvironmentBtn, true);
+        setEnableIfGraphics(state.envSubModeFallbackBtn, true);
+        setEnableIfGraphics(state.envSubModeRegionsBtn,  true);
+        regionWidgets = { ...
+            state.terrainRegionsDD, ...
+            state.terrainRegionsBtnAdd, ...
+            state.terrainRegionsBtnDuplicate, ...
+            state.terrainRegionsBtnDelete, ...
+            state.terrainRegionsNameField, ...
+            state.terrainRegionsBtnEditPolygon, ...
+            state.terrainRegionsBtnChangeConfig, ...
+            state.weatherRegionsDD, ...
+            state.weatherRegionsBtnAdd, ...
+            state.weatherRegionsBtnDuplicate, ...
+            state.weatherRegionsBtnDelete, ...
+            state.weatherRegionsNameField, ...
+            state.weatherRegionsBtnEditPolygon, ...
+            state.weatherRegionsBtnChangeConfig};
+        for k = 1:numel(regionWidgets)
+            setEnableIfGraphics(regionWidgets{k}, true);
+        end
+        if isgraphics(state.fig)
+            allBtns = findall(state.fig, 'Type', 'uibutton');
+            for k = 1:numel(allBtns)
+                txt = '';
+                try; txt = char(allBtns(k).Text); catch; end %#ok<NOSEMI>
+                if any(strcmp(txt, {'Open Scenario…', 'Export Scenario', ...
+                                    'Undo (Ctrl+Z)', 'Redo (Ctrl+Y)'}))
+                    allBtns(k).Enable = 'on';
+                end
+            end
+        end
+        % Now delegate to applyEditMode for fine-grained rules.
+        applyEditMode(state);
+    end
+end
+
+
+%% ========================================================================
+%  v3.5 §5c.6 — Region vertex drag / edge-insert helpers
+%% ========================================================================
+%
+%  Four local helpers split out of onAxesClick/onMouseMove/onMouseUp to
+%  keep those handlers readable. All four take state (the EditorState
+%  handle) as the first argument and mutate it in place; none return
+%  values. Status messages are posted via setStatus.
+%
+%  beginRegionVertexDrag        — mousedown-on-vertex sequence: auto-
+%                                 promote, pushUndo, set drag/selection
+%                                 state, refresh region panels, draw.
+%  insertRegionVertexFromClick  — shift+mousedown-on-edge sequence:
+%                                 insertRegionVertex (which auto-promotes
+%                                 + pushUndo internally), select the new
+%                                 vertex, refresh, draw.
+%  isRegionReadOnly             — guard for both above: bail if the
+%                                 target region's inner record is
+%                                 readOnly (status nag posted by caller).
+%  getRegionName                — short helper for status messages.
+%                                 Returns "?" on out-of-range to keep
+%                                 sprintf safe in transient drag states.
+
+function beginRegionVertexDrag(state, kind, regionIdx, vertexIdx)
+    % Auto-promote the picked region to active so:
+    %   * drawRegionPolygons highlights it (vertex circles + thicker outline)
+    %   * the regions sub-panel dropdown selection follows the drag
+    %   * subsequent moveRegionVertex(commit=false) calls in onMouseMove
+    %     just write polygon updates without re-pushing undo
+    %
+    % Auto-promote happens BEFORE pushUndo so the undo snapshot captures
+    % the pre-drag active-idx — a single Ctrl+Z reverts both polygon and
+    % active-idx together.
+    if kind == "terrain" && state.activeTerrainRegionIdx ~= regionIdx
+        state.activeTerrainRegionIdx = regionIdx;
+    elseif kind == "weather" && state.activeWeatherRegionIdx ~= regionIdx
+        state.activeWeatherRegionIdx = regionIdx;
+    end
+    state.pushUndo();
+    state.vertexDragActive    = true;
+    state.vertexDragKind      = kind;
+    state.vertexDragRegionIdx = regionIdx;
+    state.vertexDragVertexIdx = vertexIdx;
+    % Selection tracks the dragged vertex so Delete-key targeting works
+    % after drag-end without an extra click.
+    state.selectedRegionKind = kind;
+    state.selectedRegionIdx  = regionIdx;
+    state.selectedVertexIdx  = vertexIdx;
+    refreshTerrainRegionsPanel(state);
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rname = getRegionName(state, kind, regionIdx);
+    setStatus(state, sprintf( ...
+        'Selected %s region "%s" vertex #%d (drag to move, Del to remove).', ...
+        kind, rname, vertexIdx));
+end
+
+function insertRegionVertexFromClick(state, kind, regionIdx, edgeIdx, projXY)
+    % insertRegionVertex auto-promotes + pushes undo internally, so we
+    % don't repeat that work here. The new vertex sits at row (edgeIdx+1)
+    % — selection follows it so Delete can immediately revert if the user
+    % regrets the insert.
+    state.insertRegionVertex(kind, regionIdx, edgeIdx, projXY(1), projXY(2));
+    newVtx = edgeIdx + 1;
+    state.selectedRegionKind = kind;
+    state.selectedRegionIdx  = regionIdx;
+    state.selectedVertexIdx  = newVtx;
+    refreshTerrainRegionsPanel(state);
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    rname = getRegionName(state, kind, regionIdx);
+    setStatus(state, sprintf( ...
+        'Inserted vertex #%d into %s region "%s" at (%.0f, %.0f).', ...
+        newVtx, kind, rname, projXY(1), projXY(2)));
+end
+
+function tf = isRegionReadOnly(state, kind, regionIdx)
+    tf = false;
+    if kind == "terrain"
+        if regionIdx >= 1 && regionIdx <= numel(state.terrainRegions)
+            tf = state.terrainRegions(regionIdx).readOnly;
+        end
+    elseif kind == "weather"
+        if regionIdx >= 1 && regionIdx <= numel(state.weatherRegions)
+            tf = state.weatherRegions(regionIdx).readOnly;
+        end
+    end
+end
+
+function name = getRegionName(state, kind, regionIdx)
+    name = "?";
+    if kind == "terrain"
+        if regionIdx >= 1 && regionIdx <= numel(state.terrainRegions)
+            name = state.terrainRegions(regionIdx).name;
+        end
+    elseif kind == "weather"
+        if regionIdx >= 1 && regionIdx <= numel(state.weatherRegions)
+            name = state.weatherRegions(regionIdx).name;
+        end
+    end
+end
+
+function handleRegionVertexDelete(state)
+%handleRegionVertexDelete  v3.5 §5c.6 — Delete-key dispatch for region
+%                          vertex deletion. Reads current selection,
+%                          calls deleteRegionVertex (which auto-promotes
+%                          + pushes undo + refuses if polygon would
+%                          drop below 3 vertices), then refreshes the
+%                          UI. Status nag on refuse.
+    kind = state.selectedRegionKind;
+    rIdx = state.selectedRegionIdx;
+    vIdx = state.selectedVertexIdx;
+    if vIdx < 1 || rIdx < 1 || kind == ""
+        return;  % defensive: caller already checked, but be safe
+    end
+    if isRegionReadOnly(state, kind, rIdx)
+        setStatus(state, sprintf( ...
+            '%s region is read-only — cannot delete vertices.', kind));
+        return;
+    end
+    rname = getRegionName(state, kind, rIdx);
+    ok = state.deleteRegionVertex(kind, rIdx, vIdx);
+    if ~ok
+        setStatus(state, sprintf( ...
+            'Refused: %s region "%s" already has the minimum 3 vertices.', ...
+            kind, rname));
+        return;
+    end
+    % Successful delete — selection is now stale (vertex it pointed to
+    % no longer exists). Clear it so the next Delete-key press doesn't
+    % chain into another deletion of whatever vertex got shifted into
+    % the same index slot.
+    state.selectedRegionKind = "";
+    state.selectedRegionIdx  = 0;
+    state.selectedVertexIdx  = 0;
+    refreshTerrainRegionsPanel(state);
+    refreshWeatherRegionsPanel(state);
+    trackbench.editor.drawMap(state);
+    setStatus(state, sprintf( ...
+        'Deleted vertex #%d from %s region "%s".', vIdx, kind, rname));
+end
+
+function rotate3DView(state, dAz, dEl, shift)
+%rotate3DView  v3.5 fix — keyboard camera orbit for 3D view. dAz / dEl
+%              are degrees of azimuth / elevation change. Shift
+%              multiplier triples the step for fast traversal.
+%              Elevation clamped to [-90, 90] (MATLAB's valid range).
+%              Setting ax.View directly triggers MATLAB's renderer to
+%              redraw without us calling drawMap — cheap, and avoids
+%              the cla-and-restore round-trip drawMap3D does on every
+%              redraw.
+    ax = state.ax;
+    if ~isgraphics(ax); return; end
+    if shift
+        dAz = dAz * 3;
+        dEl = dEl * 3;
+    end
+    v = ax.View;
+    newAz = v(1) + dAz;
+    newEl = max(-90, min(90, v(2) + dEl));
+    ax.View = [newAz, newEl];
+    setStatus(state, sprintf( ...
+        '3D view: az=%.0f° el=%.0f°  (←/→ az, ↑/↓ el, Shift=fast, R=reset)', ...
+        newAz, newEl));
 end

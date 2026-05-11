@@ -78,11 +78,14 @@ end
 
 function drawMap2D(state, ax)
     % Capture current 2D axis limits so we don't jump on every redraw
-    % once the user has zoomed/panned. On the very first draw (limits
-    % still at MATLAB's default [0 1]), we fall back to autoFit.
+    % once the user has zoomed/panned. has2DViewState is the
+    % authoritative "have we autofit this 2D session yet?" flag (v3.5
+    % fix — the old XLim==[0,1] heuristic broke after a 3D session
+    % corrupted ax.XLim/YLim, leaving stale 3D limits leaking into the
+    % 2D view).
     prevXLim = ax.XLim;
     prevYLim = ax.YLim;
-    firstDraw = isequal(prevXLim, [0 1]) && isequal(prevYLim, [0 1]);
+    firstDraw = ~state.has2DViewState;
 
     cla(ax, 'reset');
     % Patch C: cla(ax,'reset') wipes ax.ButtonDownFcn back to ''. Re-
@@ -102,13 +105,28 @@ function drawMap2D(state, ax)
     % it off here; the altitude-color branch re-enables when appropriate.
     colorbar(ax, 'off');
 
-    % ── M7 §3.3 — terrain tint (drawn FIRST so it lives behind all
-    %     other graphics). Only renders when the Environment panel's
-    %     "Overlay on map" checkbox is ticked. Skipped in 3D (handoff
-    %     §3.3 rationale — 3D already has a ground plane).
+    % ── v3.5 §5e — procedural heightmap (drawn FIRST so it lives
+    %     behind all other graphics). Hypsometric tint shows actual
+    %     elevation across the scenario, including any per-region
+    %     terrain stamps (mountain / desert cuts inside region
+    %     polygons). Calls the same generator the sim uses
+    %     (trackbench.environment.generateTerrain + composeHeightmap),
+    %     so what the editor previews matches what runs produce.
+    %     Falls back to drawTerrainTint2D's flat color tint when
+    %     generation fails (e.g. environment helpers off path).
     if isgraphics(state.terrainOverlayCB) && state.terrainOverlayCB.Value
-        drawTerrainTint2D(ax, state);
+        if ~drawTerrainHeightmap2D(ax, state)
+            drawTerrainTint2D(ax, state);
+        end
     end
+
+    % ── v3.5 §5c.3b — region polygons (terrain + weather + draft) ──
+    %   Drawn after the terrain bg tint and before sensors/targets so
+    %   committed regions sit on top of the tint but below the user's
+    %   primary editing focus. The in-progress polygon-edit draft (when
+    %   active) renders in this same pass, so a vertex appended via
+    %   onAxesClick is visible after the next drawMap call.
+    drawRegionPolygons(ax, state);
 
     % ── Radar site marker (editable position, M3.5) ──────────────────
     rx = state.radarEastM;
@@ -240,6 +258,7 @@ function drawMap2D(state, ax)
         % M5 §3.1: pass the union of all targets' waypoints so
         % autofit frames every visible path on first draw.
         applyAutoFit2D(ax, allTargetsWaypoints(state), state);
+        state.has2DViewState = true;
     else
         ax.XLim = prevXLim;
         ax.YLim = prevYLim;
@@ -350,6 +369,17 @@ function drawMap3D(state, ax)
         'Color', [0.6 0.1 0.1], ...
         'PickableParts', 'none', ...
         'Interpreter', 'none');
+
+    % ── v3.5 §5e — procedural heightmap surface ─────────────────────
+    %     Renders the same Zterrain grid the sim engine uses, so the
+    %     editor preview matches the run-time visualization. Drawn
+    %     before sensors/targets so MATLAB's per-pixel depth sorting
+    %     keeps waypoints flying ABOVE terrain visible while terrain
+    %     occludes anything below it. Gated on the same checkbox as
+    %     the 2D heightmap (Environment panel "Overlay on map").
+    if isgraphics(state.terrainOverlayCB) && state.terrainOverlayCB.Value
+        drawTerrainHeightmap3D(ax, state);
+    end
 
     % ── M6 §3.3: sensor collection pass (flat-on-ground at z=0) ───────
     %   3D is view-only; the editor deliberately renders sensor geometry
@@ -462,6 +492,15 @@ function drawMap3D(state, ax)
         allWp = allTargetsWaypoints(state);
         apply3DLimits(ax, allWp, state);
         apply3DAspect(ax, allWp, state);
+        % v3.5 fix — reset CameraViewAngleMode to 'auto' so a wide
+        % perspective angle from the previous 3D session (e.g. user
+        % scroll-zoomed out to 60° then toggled to 2D and back) doesn't
+        % leak through and warp this autofit. axis vis3d freezes the
+        % aspect ratio against rotation so the box stays stable when the
+        % user orbits the camera — without it, daspect can re-stretch
+        % the box on each rotation and look like "the plot is breathing".
+        ax.CameraViewAngleMode = 'auto';
+        axis(ax, 'vis3d');
         state.has3DViewState = true;
     else
         % Restore the user's rotation / zoom / pan from before cla.
@@ -540,6 +579,28 @@ function apply3DLimits(ax, wp, state)
     xSpan = max(xMax - xMin, 2000);
     ySpan = max(yMax - yMin, 2000);
     zSpan = max(zMax - zMin, 500);
+
+    % v3.5 fix — degenerate horizontal aspect guard. apply3DAspect uses
+    % daspect [1 1 1/zExag] (1:1 in X:Y), so if one horizontal span is
+    % much narrower than the other (e.g. single waypoint at far east, or
+    % a strictly east-west route at y≈0), the narrow axis collapses to
+    % a thin sliver. Pad the smaller span to at least 1/5 of the larger
+    % so the 3D box has reasonable dimensions in all directions.
+    horizMax = max(xSpan, ySpan);
+    minHoriz = horizMax / 5;
+    if xSpan < minHoriz
+        xMid = (xMin + xMax) / 2;
+        xMin = xMid - minHoriz / 2;
+        xMax = xMid + minHoriz / 2;
+        xSpan = minHoriz;
+    end
+    if ySpan < minHoriz
+        yMid = (yMin + yMax) / 2;
+        yMin = yMid - minHoriz / 2;
+        yMax = yMid + minHoriz / 2;
+        ySpan = minHoriz;
+    end
+
     pad = 0.10;
     ax.XLim = [xMin - pad*xSpan, xMax + pad*xSpan];
     ax.YLim = [yMin - pad*ySpan, yMax + pad*ySpan];
@@ -1666,4 +1727,655 @@ function [arcX, arcY] = sectorArc(pos, r, sectorDeg, nSeg)
     t = linspace(a1, a2, nSeg + 1);
     arcX = pos(1) + r * cos(t);
     arcY = pos(2) + r * sin(t);
+end
+
+
+%% ========================================================================
+%  v3.5 §5e — TERRAIN HEIGHTMAP PREVIEW
+%             (procedural elevation grid in 2D + 3D editor views)
+%% ========================================================================
+%
+%  Renders the procedural terrain heightmap that the sim engine uses
+%  (trackbench.environment.generateTerrain + composeHeightmap), so what
+%  the editor previews matches what runs produce.
+%
+%  COMPOSITION
+%    1. generateTerrain(state.terrain.terrainType, bounds, scale) builds
+%       the fallback layer — same procedural functions, same rng seed
+%       (42), same hilltop clearing tweak as the sim.
+%    2. If state.terrainRegions is non-empty, composeHeightmap stamps
+%       each region's heightmap into its polygon (first-listed-wins
+%       resolution rule, identical to runDetections/loadRunFile §9).
+%    3. Result is cached, keyed on (terrain type, terrain scale, region
+%       hash, scenario bounds). Recompute only when the key changes —
+%       generation is ~50ms for a single terrain, ~50ms × N for N
+%       regions, so caching matters for interactive responsiveness
+%       (drag a waypoint → drawMap fires repeatedly).
+%
+%  RENDERING
+%    2D: image() with truecolor RGB (MxNx3), bypassing the axes
+%        colormap so this never fights with drawWaypointsByAltitude2D
+%        which sets parula on the same axes. Hypsometric tint: deep
+%        blue (water) → green (lowlands) → tan/brown (foothills) →
+%        white (snow caps). YDir forced to 'normal' since image()
+%        flips it by default.
+%    3D: surf() with truecolor CData and FaceAlpha 0.7, so waypoints/
+%        sensors above stay readable. EdgeColor='none' for a smooth
+%        terrain look (the 200x200 grid would otherwise be lined out
+%        by every cell edge).
+%
+%  BOUNDS
+%    Mirrors loadRunFile/computeScenarioBounds: max extent of radar +
+%    all targets' waypoints, padded 15%, floored at 130km. Matches the
+%    sim exactly so editor preview equals run output.
+%
+%  GATED BY state.terrainOverlayCB
+%    The existing 2D "Overlay on map" checkbox now controls both 2D
+%    and 3D heightmap rendering. Default ON so users see terrain
+%    immediately on first open; uncheck to disable if it ever lags.
+
+
+function ok = drawTerrainHeightmap2D(ax, state)
+%drawTerrainHeightmap2D  Render the procedural heightmap as a hypsometric
+%                        background image. Returns true on success, false
+%                        if generation failed (caller falls back to
+%                        drawTerrainTint2D for a flat color tint).
+    ok = false;
+    try
+        [Z, Xg, Yg, ~] = getOrComputeEditorHeightmap(state);
+    catch ME
+        warning('drawMap:heightmap2D', 'Heightmap generation failed: %s', ME.message);
+        return;
+    end
+    if isempty(Z); return; end
+
+    elev = -Z;   % NED → +Z up so peaks are positive
+    rgb  = elevationToRgb(elev, hypsometricColormap());
+    xData = [Xg(1, 1), Xg(1, end)];
+    yData = [Yg(1, 1), Yg(end, 1)];
+    image('Parent', ax, ...
+        'XData', xData, 'YData', yData, ...
+        'CData', rgb, ...
+        'AlphaData', 0.85, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'terrainHeightmap2D');
+    set(ax, 'YDir', 'normal');   % image() inverts Y by default
+    ok = true;
+end
+
+
+function drawTerrainHeightmap3D(ax, state)
+%drawTerrainHeightmap3D  Render the procedural heightmap as a 3D surface
+%                        with hypsometric coloring and partial transparency
+%                        so waypoints/sensors above stay readable.
+%                        Silently no-ops on generation failure — the 3D
+%                        view stays usable without terrain (matches
+%                        pre-§5e behavior where 3D had no terrain at all).
+    try
+        [Z, Xg, Yg, ~] = getOrComputeEditorHeightmap(state);
+    catch ME
+        warning('drawMap:heightmap3D', 'Heightmap generation failed: %s', ME.message);
+        return;
+    end
+    if isempty(Z); return; end
+
+    elev = -Z;
+    rgb  = elevationToRgb(elev, hypsometricColormap());
+    surf(ax, Xg, Yg, elev, rgb, ...
+        'EdgeColor', 'none', ...
+        'FaceAlpha', 0.7, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'terrainHeightmap3D');
+end
+
+
+function [Z, Xg, Yg, bounds] = getOrComputeEditorHeightmap(state)
+%getOrComputeEditorHeightmap  Cached heightmap retrieval. Recomputes only
+%                             when terrain type, scale, regions, or
+%                             scenario bounds change. Persistent variable
+%                             survives across drawMap calls within the
+%                             same MATLAB session — `clear classes` wipes
+%                             it, which is the right behavior on edits.
+    persistent cache;
+
+    bounds = computeEditorScenBounds(state);
+    key = computeHeightmapCacheKey(state, bounds);
+    if ~isempty(cache) && strcmp(cache.key, key)
+        Z  = cache.Z;
+        Xg = cache.Xg;
+        Yg = cache.Yg;
+        return;
+    end
+
+    [tType, tScale] = currentTerrainSettings(state);
+    [Z, ~, Xg, Yg] = trackbench.environment.generateTerrain(tType, bounds, tScale);
+
+    % Stamp regions on top via the same merger the sim uses (5b §i).
+    if isprop(state, 'terrainRegions') && ~isempty(state.terrainRegions)
+        regions = editorRegionsToConfigRegions(state.terrainRegions);
+        if ~isempty(regions)
+            Z = trackbench.environment.composeHeightmap(Z, regions, Xg, Yg, bounds);
+        end
+    end
+
+    cache = struct('key', key, 'Z', Z, 'Xg', Xg, 'Yg', Yg);
+end
+
+
+function key = computeHeightmapCacheKey(state, bounds)
+%computeHeightmapCacheKey  Compact string fingerprint of every input that
+%                          affects the heightmap. Cheap to compute per
+%                          draw, exact to compare. Includes a polygon
+%                          "hash" (sum of vertex coordinates + count) so
+%                          a single dragged vertex invalidates correctly.
+    [tType, tScale] = currentTerrainSettings(state);
+    parts = {sprintf('FB|%s|%g', tType, tScale)};
+    if isprop(state, 'terrainRegions')
+        for k = 1:numel(state.terrainRegions)
+            rec = state.terrainRegions(k);
+            rType = 'water';
+            rScale = 1.0;
+            if ~isempty(rec.terrain)
+                rType = char(rec.terrain.terrainType);
+                if isprop(rec.terrain, 'terrainScale')
+                    rScale = rec.terrain.terrainScale;
+                end
+            end
+            polyN = size(rec.polygonXY, 1);
+            polyHash = 0;
+            if polyN > 0
+                polyHash = sum(rec.polygonXY(:));
+            end
+            parts{end+1} = sprintf('R%d|%s|%g|%d|%g', ...
+                k, rType, rScale, polyN, polyHash); %#ok<AGROW>
+        end
+    end
+    parts{end+1} = sprintf('B|%g', bounds(1, 2));
+    key = strjoin(parts, '||');
+end
+
+
+function [tType, tScale] = currentTerrainSettings(state)
+%currentTerrainSettings  Pull terrain type + scale from state.terrain
+%                        with safe defaults if state.terrain is empty.
+    tType = 'water';
+    tScale = 1.0;
+    if ~isempty(state.terrain)
+        tType = char(state.terrain.terrainType);
+        if isprop(state.terrain, 'terrainScale')
+            tScale = state.terrain.terrainScale;
+        end
+    end
+end
+
+
+function bounds = computeEditorScenBounds(state)
+%computeEditorScenBounds  Mirror of loadRunFile/computeScenarioBounds.
+%                         Uses radar position + every target's waypoints
+%                         (NOT polygon vertices — matches the sim, where
+%                         polygons can extend past bounds without issue).
+%                         maxExtent × 1.15, floored at 130km.
+    pts = [state.radarEastM, state.radarNorthM];
+    if ~isempty(state.targets)
+        for k = 1:numel(state.targets)
+            wp = state.targets(k).waypoints;
+            if ~isempty(wp)
+                pts = [pts; wp(:, 1:2)]; %#ok<AGROW>
+            end
+        end
+    end
+    if isempty(pts)
+        pts = [0, 0];
+    end
+    maxExtent = max(vecnorm(pts, 2, 2));
+    halfSpan = max(maxExtent * 1.15, 130000);
+    bounds = [-halfSpan, halfSpan; -halfSpan, halfSpan];
+end
+
+
+function regions = editorRegionsToConfigRegions(terrainRegions)
+%editorRegionsToConfigRegions  Adapter from editor's TerrainRegionRecord
+%                              array to the cell-array-of-structs format
+%                              that composeHeightmap expects.
+%
+%  Each output element has:
+%    .config_path  reference path string (informational, used in log)
+%    .name         display name (informational, used in log)
+%    .polygon_xy   Nx2 polygon vertices in NED (East, North) metres
+%    .def          inner struct {terrain_type, terrain_scale}
+%
+%  Skips records with malformed polygons (<3 vertices) so composeHeightmap
+%  never sees a degenerate region. Returns 1x0 cell when nothing valid.
+    n = numel(terrainRegions);
+    out = cell(1, n);
+    keep = false(1, n);
+    for k = 1:n
+        rec = terrainRegions(k);
+        if size(rec.polygonXY, 1) < 3
+            continue;
+        end
+        s = struct();
+        s.config_path = char(rec.configPath);
+        s.name = char(rec.name);
+        s.polygon_xy = rec.polygonXY;
+        s.def = struct();
+        if ~isempty(rec.terrain)
+            s.def.terrain_type = char(rec.terrain.terrainType);
+            s.def.terrain_scale = 1.0;
+            if isprop(rec.terrain, 'terrainScale')
+                s.def.terrain_scale = rec.terrain.terrainScale;
+            end
+        else
+            s.def.terrain_type = 'water';
+            s.def.terrain_scale = 1.0;
+        end
+        out{k} = s;
+        keep(k) = true;
+    end
+    regions = out(keep);
+end
+
+
+function rgb = elevationToRgb(elev, cmap)
+%elevationToRgb  Map an MxN elevation grid to MxNx3 truecolor via a
+%                colormap. Bypasses the axes colormap entirely so the
+%                heightmap render doesn't fight with drawWaypointsByAltitude
+%                which sets parula on the same axes.
+%
+%  Uniform-elevation case (all-water z=0) → solid color from row 1 of
+%  the colormap (deep water blue for the hypsometric ramp).
+    elevMin = min(elev(:));
+    elevMax = max(elev(:));
+    [H, W] = size(elev);
+    if (elevMax - elevMin) < 1
+        idx = ones(H, W);
+    else
+        nrm = (elev - elevMin) / (elevMax - elevMin);
+        idx = round(nrm * (size(cmap, 1) - 1)) + 1;
+        idx = max(1, min(size(cmap, 1), idx));
+    end
+    rgb = zeros(H, W, 3);
+    flatIdx = idx(:);
+    rgb(:,:,1) = reshape(cmap(flatIdx, 1), H, W);
+    rgb(:,:,2) = reshape(cmap(flatIdx, 2), H, W);
+    rgb(:,:,3) = reshape(cmap(flatIdx, 3), H, W);
+end
+
+
+function cm = hypsometricColormap()
+%hypsometricColormap  Standard topographic-map color ramp:
+%                       deep blue (water) → light blue → light green →
+%                       yellow-green → tan → brown → dark brown →
+%                       rocky → white (snow caps). 256-entry pchip
+%                       interpolation so adjacent elevation bins blend
+%                       smoothly with no visible banding.
+    keyColors = [
+        0.20 0.40 0.65;   % 0%   — deep water
+        0.35 0.60 0.80;   % 12%  — shallow water
+        0.45 0.70 0.45;   % 25%  — lowland green
+        0.65 0.75 0.40;   % 38%  — grassland
+        0.80 0.70 0.40;   % 50%  — tan
+        0.65 0.50 0.30;   % 62%  — brown earth
+        0.55 0.40 0.30;   % 75%  — dark brown
+        0.75 0.65 0.55;   % 87%  — rocky
+        0.95 0.95 0.95];  % 100% — snow caps
+    keyPts = linspace(0, 1, size(keyColors, 1));
+    qPts = linspace(0, 1, 256);
+    cm = interp1(keyPts, keyColors, qPts, 'pchip');
+    cm = max(0, min(1, cm));
+end
+
+
+%% ========================================================================
+%  v3.5 §5c.3b — REGION POLYGON RENDERING
+%                (terrain regions + weather regions + in-progress draft)
+%% ========================================================================
+%
+%  Called from drawMap2D between the terrain background tint and the
+%  radar marker. Three layers, drawn in order:
+%
+%    1. Committed terrain regions — semi-transparent fills tinted by
+%       terrain type (mountain=brown, water=blue, urban=grey, rural=
+%       green, desert=tan), darkened ~30% relative to the existing bg
+%       tint so they read against a same-type background.
+%    2. Committed weather regions — semi-transparent blue fills (single
+%       palette for all weather types, matches the storm timeline).
+%    3. In-progress draft — dashed open polyline + vertex markers in
+%       the active region's color. Most-recent vertex highlighted with
+%       a green ring. Replaces the active region's committed rendering
+%       during edit-in-place (Q1 = seeded from existing polygon).
+%
+%  Active region (DD-selected, env mode + regions sub-mode) gets a
+%  thicker outline at LineWidth 2.0 (vs 1.2 for inactive) and small
+%  vertex circles. Inactive committed regions render with no vertex
+%  markers — just the filled patch.
+%
+%  3D mode skipped — same rationale as drawTerrainTint2D being skipped
+%  in 3D (the 3D view has its own ground plane and editing happens in
+%  2D anyway).
+%
+%  PickableParts='none' on every graphics child, matching the rest of
+%  the file. Click handling for polygon-edit lives in onAxesClick.
+
+
+function drawRegionPolygons(ax, state)
+%drawRegionPolygons  Render every committed region + the in-progress
+%                    draft (if any). No-op when there are no regions
+%                    and no active edit.
+    % --- Defensive guards (pre-5c snapshots may lack these props) ----
+    hasTerrainRegions = isprop(state, 'terrainRegions') && ...
+                        ~isempty(state.terrainRegions);
+    hasWeatherRegions = isprop(state, 'weatherRegions') && ...
+                        ~isempty(state.weatherRegions);
+    polyEdit = isprop(state, 'polygonEditActive') && state.polygonEditActive;
+    if ~hasTerrainRegions && ~hasWeatherRegions && ~polyEdit
+        return;
+    end
+
+    % "Active region" only if the user is currently in the regions
+    % sub-panel of environment mode — outside that context the regions
+    % are still visible (they're part of the scenario) but no single
+    % region is highlighted as the editing focus.
+    inRegionsContext = (state.editMode == "environment") && ...
+                       (state.envSubMode == "regions");
+
+    % --- 1. Committed terrain regions ----------------------------------
+    if hasTerrainRegions
+        for k = 1:numel(state.terrainRegions)
+            isActive = inRegionsContext && ...
+                       (k == state.activeTerrainRegionIdx);
+            % During an active polygon edit on THIS region, suppress the
+            % committed render so the draft (which was seeded from the
+            % committed polygon) takes its place. Otherwise the user
+            % would see two stacked polygons that disagree as they edit.
+            if isActive && polyEdit && state.polygonEditTarget == "terrain"
+                continue;
+            end
+            drawCommittedRegion(ax, state.terrainRegions(k), 'terrain', isActive);
+        end
+    end
+
+    % --- 2. Committed weather regions ----------------------------------
+    if hasWeatherRegions
+        for k = 1:numel(state.weatherRegions)
+            isActive = inRegionsContext && ...
+                       (k == state.activeWeatherRegionIdx);
+            if isActive && polyEdit && state.polygonEditTarget == "weather"
+                continue;
+            end
+            drawCommittedRegion(ax, state.weatherRegions(k), 'weather', isActive);
+        end
+    end
+
+    % --- 3. In-progress polygon-edit draft -----------------------------
+    if polyEdit
+        drawDraftPolygon(ax, state);
+    end
+
+    % --- 4. v3.5 §5c.6 — Selection + hover overlays --------------------
+    %  Drawn LAST so they sit on top of the active-region vertex circles.
+    %  Only active in 2D (3D click hit-tests don't make sense, so 5c.6
+    %  bails on 3D in onAxesClick + onMouseMove). drawSelectedRegionVertex
+    %  guards on a valid selection internally; same for drawHoveredEdge.
+    if isprop(state, 'selectedVertexIdx') && state.selectedVertexIdx > 0
+        drawSelectedRegionVertex(ax, state);
+    end
+    if isprop(state, 'hoverVertexIdx') && state.hoverVertexIdx > 0 && ...
+            ~(state.hoverRegionKind == state.selectedRegionKind && ...
+              state.hoverRegionIdx  == state.selectedRegionIdx && ...
+              state.hoverVertexIdx  == state.selectedVertexIdx)
+        % Don't double-paint hover ON TOP of selection — selection's
+        % ring is more prominent and "hover === selected" is the common
+        % case right after a click, where the cursor is still on the
+        % just-clicked vertex.
+        drawHoveredRegionVertex(ax, state);
+    end
+    if isprop(state, 'hoverEdgeIdx') && state.hoverEdgeIdx > 0
+        drawHoveredRegionEdge(ax, state);
+    end
+end
+
+
+function drawCommittedRegion(ax, rec, kind, isActive)
+%drawCommittedRegion  Render one TerrainRegionRecord or WeatherRegionRecord
+%                     as a filled polygon with an outline. Active region
+%                     gets a thicker outline + small vertex circles.
+%                     Records with <3 vertices are skipped (they cannot
+%                     enclose area — freshly-added regions before any
+%                     polygon has been drawn fall here).
+    poly = rec.polygonXY;
+    if size(poly, 1) < 3
+        return;
+    end
+    fillCol = regionFillColor(rec, kind);
+    edgeCol = fillCol * 0.6;     % darker tone for a readable outline
+    if isActive
+        lw = 2.0;
+    else
+        lw = 1.2;
+    end
+    tagFill   = sprintf('%sRegionFill2D',   kind);
+    tagVertex = sprintf('%sRegionVertex2D', kind);
+    if isActive
+        tagFill   = [tagFill,   'Active'];
+        tagVertex = [tagVertex, 'Active'];
+    end
+    % Filled polygon — patch closes the polyline implicitly so we don't
+    % need to repeat the first vertex at the end.
+    patch(ax, poly(:,1), poly(:,2), fillCol, ...
+        'FaceAlpha', 0.30, ...
+        'EdgeColor', edgeCol, ...
+        'LineWidth', lw, ...
+        'LineStyle', '-', ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', tagFill);
+    % Vertex markers only for the active region (would clutter
+    % otherwise when several regions are visible).
+    if isActive
+        plot(ax, poly(:,1), poly(:,2), 'o', ...
+            'MarkerSize', 6, ...
+            'MarkerFaceColor', fillCol, ...
+            'MarkerEdgeColor', [0.10 0.10 0.10], ...
+            'LineWidth', 1.0, ...
+            'PickableParts', 'none', ...
+            'HitTest', 'off', ...
+            'Tag', tagVertex);
+    end
+end
+
+
+function drawDraftPolygon(ax, state)
+%drawDraftPolygon  Render the in-progress polygon-edit draft.
+%
+%  Visual contract:
+%    * Open dashed polyline connecting the appended vertices in the
+%      active region's color (no closing edge until commit — the user
+%      sees they have not yet "closed" the polygon).
+%    * Vertex marker at every appended point (filled circle, region
+%      color).
+%    * Most-recent vertex highlighted with a green hollow ring — same
+%      green as the existing waypoint selection halo — so the user
+%      can see exactly where their last click landed.
+    draft = state.polygonEditDraft;
+    n = size(draft, 1);
+    if n < 1
+        return;
+    end
+    col = draftPolygonColor(state);
+
+    % Dashed open polyline (only meaningful at ≥2 vertices).
+    if n >= 2
+        plot(ax, draft(:,1), draft(:,2), '--', ...
+            'Color', col, ...
+            'LineWidth', 1.6, ...
+            'PickableParts', 'none', ...
+            'HitTest', 'off', ...
+            'Tag', 'polygonDraftLine2D');
+    end
+
+    % All vertex markers.
+    plot(ax, draft(:,1), draft(:,2), 'o', ...
+        'MarkerSize', 6, ...
+        'MarkerFaceColor', col, ...
+        'MarkerEdgeColor', [0.10 0.10 0.10], ...
+        'LineWidth', 1.0, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'polygonDraftVertex2D');
+
+    % Most-recent vertex highlight — green hollow ring on top.
+    plot(ax, draft(end,1), draft(end,2), 'o', ...
+        'MarkerSize', 10, ...
+        'MarkerFaceColor', 'none', ...
+        'MarkerEdgeColor', [0.10 0.55 0.25], ...   % matches selectedHalo
+        'LineWidth', 2.0, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'polygonDraftLatest2D');
+end
+
+
+function rgb = regionFillColor(rec, kind)
+%regionFillColor  Per-record region fill color.
+%
+%  Terrain → reuse terrainTintColor() lookup, darkened by 30% so the
+%  region reads against an underlying same-type background tint.
+%  Weather → single canonical blue (matches the storm timeline
+%  patch and the path line).
+    switch kind
+        case 'terrain'
+            % Inner record's terrain field carries the terrainType.
+            if isprop(rec, 'terrain')
+                rgb = terrainTintColor(rec.terrain.terrainType) * 0.7;
+            else
+                rgb = [0.50 0.50 0.50];
+            end
+        case 'weather'
+            rgb = [0.20 0.45 0.85];
+        otherwise
+            rgb = [0.50 0.50 0.50];
+    end
+end
+
+
+function rgb = draftPolygonColor(state)
+%draftPolygonColor  Color used for the in-progress polygon-edit draft.
+%                    Matches the active region's color so the user
+%                    sees what they're committing to. Defensive
+%                    fallback to neutral grey if the active region
+%                    somehow vanished during edit (should not happen —
+%                    beginPolygonEdit guards on hasActive*Region, and
+%                    the lockdown prevents Add/Del during edit).
+    rgb = [0.50 0.50 0.50];
+    target = state.polygonEditTarget;
+    if target == "terrain" && state.hasActiveTerrainRegion()
+        rec = state.terrainRegions(state.activeTerrainRegionIdx);
+        rgb = regionFillColor(rec, 'terrain');
+    elseif target == "weather" && state.hasActiveWeatherRegion()
+        rec = state.weatherRegions(state.activeWeatherRegionIdx);
+        rgb = regionFillColor(rec, 'weather');
+    end
+end
+
+
+function drawSelectedRegionVertex(ax, state)
+%drawSelectedRegionVertex  v3.5 §5c.6 — Highlight the currently-
+%                          selected region vertex with a yellow ring.
+%                          Sized larger than the per-vertex circles in
+%                          drawCommittedRegion so it's visible on top.
+    poly = regionPolygonByKind(state, state.selectedRegionKind, state.selectedRegionIdx);
+    if isempty(poly); return; end
+    vIdx = state.selectedVertexIdx;
+    if vIdx < 1 || vIdx > size(poly, 1); return; end
+    plot(ax, poly(vIdx, 1), poly(vIdx, 2), 'o', ...
+        'MarkerSize', 14, ...
+        'MarkerFaceColor', 'none', ...
+        'MarkerEdgeColor', [1.00 0.85 0.20], ...   % bright amber
+        'LineWidth', 2.0, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'regionVertexSelected');
+end
+
+
+function drawHoveredRegionVertex(ax, state)
+%drawHoveredRegionVertex  v3.5 §5c.6 — Subtle highlight on the vertex
+%                         the cursor is hovering over. Sized SMALLER
+%                         than the selected-vertex ring so the two
+%                         are distinguishable when next to each other.
+    poly = regionPolygonByKind(state, state.hoverRegionKind, state.hoverRegionIdx);
+    if isempty(poly); return; end
+    vIdx = state.hoverVertexIdx;
+    if vIdx < 1 || vIdx > size(poly, 1); return; end
+    plot(ax, poly(vIdx, 1), poly(vIdx, 2), 'o', ...
+        'MarkerSize', 11, ...
+        'MarkerFaceColor', 'none', ...
+        'MarkerEdgeColor', [0.30 0.85 1.00], ...   % cyan
+        'LineWidth', 1.5, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'regionVertexHover');
+end
+
+
+function drawHoveredRegionEdge(ax, state)
+%drawHoveredRegionEdge  v3.5 §5c.6 — Render a bright green line over
+%                       the polygon edge currently under shift+hover,
+%                       plus a "+" marker at the projection point
+%                       telling the user where the new vertex would
+%                       land if they click. Edge i connects poly(i,:)
+%                       to poly(i+1,:), wrapping N → 1 for the closing
+%                       edge — same convention as pickClosestEdge.
+    poly = regionPolygonByKind(state, state.hoverRegionKind, state.hoverRegionIdx);
+    if isempty(poly); return; end
+    eIdx = state.hoverEdgeIdx;
+    n = size(poly, 1);
+    if eIdx < 1 || eIdx > n; return; end
+    eNext = eIdx + 1;
+    if eNext > n; eNext = 1; end
+    p1 = poly(eIdx,  :);
+    p2 = poly(eNext, :);
+    plot(ax, [p1(1), p2(1)], [p1(2), p2(2)], '-', ...
+        'Color', [0.20 1.00 0.30], ...   % bright green
+        'LineWidth', 3.0, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'regionEdgeHover');
+    % Projection point: cursor-on-edge "insert here" marker. The cursor
+    % isn't exactly on the edge but the projection IS — use the midpoint
+    % of the edge for the marker if the cursor's projection isn't
+    % readily available (drawMap doesn't receive cursor coords). A
+    % follow-up could store the projection in state.hoverEdgeProj for
+    % pixel-precise placement, but mid-edge is good enough for the
+    % "insert vertex here" affordance.
+    midX = 0.5 * (p1(1) + p2(1));
+    midY = 0.5 * (p1(2) + p2(2));
+    plot(ax, midX, midY, '+', ...
+        'MarkerSize', 12, ...
+        'MarkerEdgeColor', [0.20 1.00 0.30], ...
+        'LineWidth', 2.0, ...
+        'PickableParts', 'none', ...
+        'HitTest', 'off', ...
+        'Tag', 'regionEdgeHoverPlus');
+end
+
+
+function poly = regionPolygonByKind(state, kind, idx)
+%regionPolygonByKind  v3.5 §5c.6 helper — fetch the polygonXY of a
+%                     terrain or weather region by index. Returns []
+%                     for out-of-range or unknown kind so callers can
+%                     bail with isempty().
+    poly = [];
+    if kind == "terrain"
+        if idx >= 1 && idx <= numel(state.terrainRegions)
+            poly = state.terrainRegions(idx).polygonXY;
+        end
+    elseif kind == "weather"
+        if idx >= 1 && idx <= numel(state.weatherRegions)
+            poly = state.weatherRegions(idx).polygonXY;
+        end
+    end
 end

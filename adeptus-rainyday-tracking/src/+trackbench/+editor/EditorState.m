@@ -57,6 +57,93 @@ classdef EditorState < handle
         activeSensorIdx (1,1) double = 0    % 0 ⇒ no active sensor
         editMode (1,1) string = "targets"    % "targets" | "sensors" | "environment"
 
+        % v3.5 §5c.2 — Environment-mode sub-mode ("fallback" | "regions").
+        % Only meaningful when editMode == "environment". Setter
+        % (setEnvSubMode) is view state — does not push undo, mirrors
+        % setEditMode. The fallback sub-mode (default) shows the
+        % existing Terrain + Weather panels bound to state.terrain /
+        % state.weather. The regions sub-mode shows two new panels
+        % (Terrain Regions, Weather Regions) bound to the typed
+        % collections. applyEditMode collapses unused rows to 0 in
+        % the parent grid — same pattern as the top-level mode
+        % switch.
+        envSubMode (1,1) string = "fallback"
+
+        % v3.5 §5c.3 — Polygon-edit transient state.
+        %  When polygonEditActive is true, the user is in the middle of
+        %  drawing/editing a polygon for the active region of
+        %  polygonEditTarget ("terrain"/"weather"). Map clicks append to
+        %  polygonEditDraft (Nx2, NED meters). Enter / double-click
+        %  commits via commitPolygonEdit() — writes the draft into the
+        %  active region's polygonXY via setActive*RegionPolygon(…,
+        %  commit=true) and exits edit mode. Escape aborts via
+        %  abortPolygonEdit() — clears the draft, no undo entry created
+        %  (the stored polygon was never touched).
+        %
+        %  ON Q1 ("existing polygon when entering edit mode"): we seed
+        %  polygonEditDraft with the active region's existing
+        %  polygonXY in beginPolygonEdit — user edits in place, doesn't
+        %  redraw from scratch. Vertex-by-vertex undo / mid-draw vertex
+        %  delete arrives in 5c.6.
+        %
+        %  ON Q2 ("can user switch regions mid-edit"): no — the UI is
+        %  locked while polygonEditActive (sub-mode toggle, dropdown,
+        %  Add/Dup/Del/NameField/ChangeConfig all disabled). User must
+        %  Enter to commit or Esc to abort first. Lockdown is enforced
+        %  in buildUI.applyPolygonEditLockdown.
+        %
+        %  These three fields are NOT in snapshot()/restore() — transient
+        %  editing state, not part of the document. An interrupted edit
+        %  vanishes if the editor is closed mid-draw; that's intentional
+        %  (autosave of in-progress edits is out-of-scope).
+        polygonEditActive (1,1) logical = false
+        polygonEditTarget (1,1) string  = ""      % "terrain" | "weather"
+        polygonEditDraft  (:,2) double  = zeros(0,2)
+
+        % v3.5 §5c.6 — Vertex-level region polygon editing transient state.
+        %
+        %  Three groups of transient state, all parallel to the existing
+        %  waypoint drag pattern. NONE of these are in snapshot/restore —
+        %  matches polygonEdit* semantics: an interrupted drag vanishes if
+        %  the editor is closed mid-gesture; an undo while a drag is in
+        %  flight does the right thing because pushUndo() was called at
+        %  drag-start so the pre-drag polygon is on the undo stack.
+        %
+        %  VERTEX DRAG — active while the user is dragging a polygon
+        %  vertex with the left mouse button. Set on mousedown over a
+        %  vertex via moveRegionVertex(..., commit=true) (which also
+        %  pushes undo + auto-promotes the region to active). Cleared
+        %  on mouseup. Live mousemoves use commit=false so they don't
+        %  burn an undo slot per frame.
+        vertexDragActive    (1,1) logical = false
+        vertexDragKind      (1,1) string  = ""     % "terrain" | "weather"
+        vertexDragRegionIdx (1,1) double  = 0
+        vertexDragVertexIdx (1,1) double  = 0
+
+        %  VERTEX SELECTION — the most recently clicked vertex stays
+        %  "selected" after the click/drag so the Delete key knows which
+        %  vertex to remove. Cleared on click in empty space. selectedIndex
+        %  already exists for waypoints; this is the parallel slot for
+        %  region vertices and lives independently (a waypoint can be
+        %  selected at the same time as a region vertex, in different
+        %  modes — we don't try to enforce mutual exclusion).
+        selectedRegionKind    (1,1) string = ""     % "terrain" | "weather"
+        selectedRegionIdx     (1,1) double = 0
+        selectedVertexIdx     (1,1) double = 0
+
+        %  HOVER STATE — updated on every mousemove that lands inside
+        %  the axes (parallel to hoverIndex for waypoints). Used for the
+        %  shift+hover edge highlight in drawMap (5c.6 step 6c) and for
+        %  cursor changes (5c.6 polish, deferred). hoverEdgeIdx > 0 means
+        %  the mouse is near edge i (between vertex i and vertex i+1,
+        %  wrapping vertex N → vertex 1). hoverVertexIdx takes priority
+        %  over hoverEdgeIdx (vertex pick beats edge pick when both
+        %  apply).
+        hoverRegionKind  (1,1) string = ""
+        hoverRegionIdx   (1,1) double = 0
+        hoverVertexIdx   (1,1) double = 0
+        hoverEdgeIdx     (1,1) double = 0
+
         % ── Environment state (M7 §3.1) ─────────────────────────────
         %  Every scenario owns exactly one TerrainRecord (terrain is
         %  never empty; water is the "no terrain effect" baseline, not
@@ -114,6 +201,15 @@ classdef EditorState < handle
         weatherRegions (1,:) trackbench.editor.WeatherRegionRecord = ...
                        trackbench.editor.WeatherRegionRecord.empty
 
+        % v3.5 §5c — active-index pointers into the region collections.
+        % Mirror the activeIdx / activeSensorIdx pattern: 0 means "no
+        % active region" (the collection may still be non-empty —
+        % e.g. user just deleted the last region in a list of three
+        % and we haven't yet picked a replacement). The Regions sub-
+        % panel binds its dropdown selection to these indices.
+        activeTerrainRegionIdx (1,1) double = 0
+        activeWeatherRegionIdx (1,1) double = 0
+
         % ── File-level / editor-wide scenario fields ─────────────────
         description      (1,1) string = ""
         timingMode       (1,1) string = "auto"     % "auto" | "manual" (deferred)
@@ -126,6 +222,7 @@ classdef EditorState < handle
         radarEastM       (1,1) double = 0
         radarNorthM      (1,1) double = 0
         has3DViewState   (1,1) logical = false
+        has2DViewState   (1,1) logical = false   % v3.5 fix — parallel to has3DViewState. False forces drawMap2D's firstDraw branch (autofit). Reset on view-mode toggle and on R-key reset so the destination view always autofits cleanly. Replaces the old XLim==[0,1] heuristic which broke after a 3D session corrupted the axis limits.
 
         % ── Selection + drag state ───────────────────────────────────
         selectedIndex    (1,1) double = 0          % 0 = none, else 1..N within active target
@@ -345,6 +442,47 @@ classdef EditorState < handle
         weatherStormSparkline = gobjects(1)
         weatherLoadBtn        = gobjects(1)
         weatherSaveBtn        = gobjects(1)   % v3.5 step 4c
+
+        % v3.5 §5c.2 — Sub-mode toggle (Fallback / Regions).
+        % envSubModePanel is the host uipanel; its Visible flips with
+        % the top-level Environment mode. The two state-buttons act
+        % as a radio pair (mutually exclusive); their callbacks call
+        % setEnvSubMode and trigger applyEditMode.
+        envSubModePanel       = gobjects(1)
+        envSubModeFallbackBtn = gobjects(1)
+        envSubModeRegionsBtn  = gobjects(1)
+
+        % v3.5 §5c.2 — Terrain Regions sub-panel (visible only when
+        % editMode=="environment" AND envSubMode=="regions"). Mirrors
+        % the Targets/Sensors panel pattern: dropdown + Add/Dup/Del,
+        % an editable name field, and a config/polygon read-out.
+        % The Edit Polygon button is greyed in 5c.2 — activates in
+        % 5c.3 when the polygon-edit sub-mode lands. The Change Config
+        % button is wired to loadTerrainRegionConfig (cheap to do here).
+        terrainRegionsPanel               = gobjects(1)
+        terrainRegionsDD                  = gobjects(1)
+        terrainRegionsBtnAdd              = gobjects(1)
+        terrainRegionsBtnDuplicate        = gobjects(1)
+        terrainRegionsBtnDelete           = gobjects(1)
+        terrainRegionsNameField           = gobjects(1)
+        terrainRegionsConfigLabel         = gobjects(1)
+        terrainRegionsPolygonStatusLabel  = gobjects(1)
+        terrainRegionsBtnEditPolygon      = gobjects(1)
+        terrainRegionsBtnChangeConfig     = gobjects(1)
+
+        % v3.5 §5c.2 — Weather Regions sub-panel. Mirror of
+        % terrainRegions* handles above for the weatherRegions
+        % collection.
+        weatherRegionsPanel               = gobjects(1)
+        weatherRegionsDD                  = gobjects(1)
+        weatherRegionsBtnAdd              = gobjects(1)
+        weatherRegionsBtnDuplicate        = gobjects(1)
+        weatherRegionsBtnDelete           = gobjects(1)
+        weatherRegionsNameField           = gobjects(1)
+        weatherRegionsConfigLabel         = gobjects(1)
+        weatherRegionsPolygonStatusLabel  = gobjects(1)
+        weatherRegionsBtnEditPolygon      = gobjects(1)
+        weatherRegionsBtnChangeConfig     = gobjects(1)
 
         % ── M7 §3.3 — storm-window timeline axes (main map column) ──
         %  A second uiaxes placed below the main map axes and above the
@@ -605,6 +743,137 @@ classdef EditorState < handle
                 return;
             end
             obj.editMode = mode;
+        end
+
+        function setEnvSubMode(obj, mode)
+            %setEnvSubMode  Switch the Environment-mode sub-mode between
+            %               "fallback" (edit state.terrain / state.weather)
+            %               and "regions" (edit terrainRegions /
+            %               weatherRegions). View state only — does not
+            %               push undo, mirrors setEditMode. Unrecognized
+            %               modes are ignored.
+            %
+            %  v3.5 §5c.2 NOTE  This setter is meaningful regardless of
+            %  the current top-level editMode. The actual visibility of
+            %  the affected panels is decided by applyEditMode, which
+            %  consults BOTH editMode and envSubMode. Allowing the sub-
+            %  mode to be set even when not in environment mode keeps
+            %  the snapshot/restore path simple (no cross-checks needed)
+            %  and matches how setEditMode itself doesn't validate
+            %  against the current sensor/target collection state.
+            mode = lower(string(mode));
+            if mode ~= "fallback" && mode ~= "regions"
+                return;
+            end
+            obj.envSubMode = mode;
+        end
+
+        function beginPolygonEdit(obj, target)
+            %beginPolygonEdit  v3.5 §5c.3 — enter polygon-edit mode for
+            %                  the active region of the chosen collection.
+            %
+            %   target : "terrain" | "weather"
+            %
+            %  Seeds polygonEditDraft with the active region's existing
+            %  polygonXY (Q1 = B — edit in place, don't redraw from
+            %  scratch). Errors if there's no active region for the
+            %  requested target collection — the caller in buildUI
+            %  guards on hasActive*Region first, but the throw catches
+            %  programming errors / button-state drift.
+            %
+            %  No undo entry is pushed here. The stored polygon won't
+            %  be touched until commitPolygonEdit, and abortPolygonEdit
+            %  is a clean rollback.
+            target = lower(string(target));
+            switch target
+                case "terrain"
+                    if ~obj.hasActiveTerrainRegion()
+                        error('trackbench:editor:noActiveRegion', ...
+                            'Cannot start polygon edit — no active terrain region.');
+                    end
+                    seed = obj.terrainRegions(obj.activeTerrainRegionIdx).polygonXY;
+                case "weather"
+                    if ~obj.hasActiveWeatherRegion()
+                        error('trackbench:editor:noActiveRegion', ...
+                            'Cannot start polygon edit — no active weather region.');
+                    end
+                    seed = obj.weatherRegions(obj.activeWeatherRegionIdx).polygonXY;
+                otherwise
+                    error('trackbench:editor:badTarget', ...
+                        'beginPolygonEdit target must be "terrain" or "weather" (got "%s").', target);
+            end
+            % Defensive: ensure seed is Nx2 double, not transposed/empty
+            % in some unexpected shape.
+            if isempty(seed)
+                obj.polygonEditDraft = zeros(0, 2);
+            else
+                obj.polygonEditDraft = double(seed);
+            end
+            obj.polygonEditTarget = target;
+            obj.polygonEditActive = true;
+        end
+
+        function appendPolygonDraftVertex(obj, x, y)
+            %appendPolygonDraftVertex  v3.5 §5c.3 — push (x, y) onto the
+            %                          polygon-edit draft buffer. Silent
+            %                          no-op when polygonEditActive is
+            %                          false (defense against stray click
+            %                          callbacks after abort).
+            if ~obj.polygonEditActive
+                return;
+            end
+            obj.polygonEditDraft(end+1, :) = [double(x), double(y)];
+        end
+
+        function ok = commitPolygonEdit(obj)
+            %commitPolygonEdit  v3.5 §5c.3 — finalize the polygon-edit
+            %                   session. Writes polygonEditDraft into
+            %                   the active region via
+            %                   setActive*RegionPolygon(…, commit=true)
+            %                   so undo captures one entry for the
+            %                   entire edit. Returns true on success.
+            %
+            %  REFUSES with ok=false when the draft has fewer than 3
+            %  vertices (matches isValidPolygon's threshold). Edit mode
+            %  STAYS ACTIVE so the caller can post a status warning and
+            %  let the user keep clicking. The draft is preserved.
+            %
+            %  No-op (returns true) when polygonEditActive is false —
+            %  defense against double-commit from rapid Enter+double-
+            %  click.
+            ok = false;
+            if ~obj.polygonEditActive
+                ok = true;   % nothing to do; degenerate caller, not an error
+                return;
+            end
+            if size(obj.polygonEditDraft, 1) < 3
+                return;   % refuse — caller posts the status warning
+            end
+            poly = obj.polygonEditDraft;
+            switch obj.polygonEditTarget
+                case "terrain"
+                    obj.setActiveTerrainRegionPolygon(poly, true);
+                case "weather"
+                    obj.setActiveWeatherRegionPolygon(poly, true);
+                otherwise
+                    % Defensive — shouldn't happen with the
+                    % polygonEditTarget guards in beginPolygonEdit.
+                    return;
+            end
+            obj.polygonEditActive = false;
+            obj.polygonEditTarget = "";
+            obj.polygonEditDraft  = zeros(0, 2);
+            ok = true;
+        end
+
+        function abortPolygonEdit(obj)
+            %abortPolygonEdit  v3.5 §5c.3 — cancel the polygon-edit
+            %                  session. Clears all transient state. The
+            %                  stored polygon was never touched, so
+            %                  there is no undo to push.
+            obj.polygonEditActive = false;
+            obj.polygonEditTarget = "";
+            obj.polygonEditDraft  = zeros(0, 2);
         end
 
         function idx = findSensorAt(obj, x, y, maxDistM)
@@ -880,6 +1149,553 @@ classdef EditorState < handle
                 end
                 rethrow(ME);
             end
+        end
+
+        %% ── Region collection mutators (v3.5 §5c) ─────────────────
+        %  Two parallel APIs: terrainRegions and weatherRegions. Both
+        %  follow the targets/sensors collection pattern (read-mutate-
+        %  writeback, undo on each mutator, environmentDirty flagged).
+        %
+        %  REGION INHERITANCE (v3.5 §5c Option B)
+        %    addTerrainRegion / addWeatherRegion seed the new region
+        %    with the scenario's FALLBACK record so the new region is
+        %    immediately resolvable (composeHeightmap stamps the same
+        %    terrain as fallback inside the polygon — visually a no-op
+        %    until the user changes configPath). User can then "Load
+        %    Region Config…" to differentiate. Rationale: matches the
+        %    duplicate pattern in targets/sensors and keeps Add from
+        %    creating an immediately-broken region with no inner
+        %    record. The fallback's configPath may be empty for a
+        %    cold-launch editor; we synthesize a reasonable one
+        %    ("<TYPE>/default_<TYPE>") so the configPath round-trips
+        %    cleanly through Save Scenario.
+
+        function tf = hasActiveTerrainRegion(obj)
+            tf = obj.activeTerrainRegionIdx >= 1 && ...
+                 obj.activeTerrainRegionIdx <= numel(obj.terrainRegions);
+        end
+
+        function tf = hasActiveWeatherRegion(obj)
+            tf = obj.activeWeatherRegionIdx >= 1 && ...
+                 obj.activeWeatherRegionIdx <= numel(obj.weatherRegions);
+        end
+
+        function newIdx = addTerrainRegion(obj, name)
+            %addTerrainRegion  Append a TerrainRegionRecord seeded with
+            %                  the scenario's fallback terrain. Polygon
+            %                  starts empty — user draws it via the
+            %                  upcoming §5c.3 polygon-edit sub-mode.
+            %
+            %  The new record is invalid (size(polygonXY,1) < 3) until
+            %  the user draws ≥3 vertices. resolveTerrainAt skips
+            %  invalid polygons via isValidPolygon(), so an empty new
+            %  region is harmless until populated — every detection
+            %  resolves to the fallback as before.
+            obj.pushUndo();
+            rec = trackbench.editor.TerrainRegionRecord();
+            if nargin < 2 || strlength(string(name)) == 0
+                rec.name = sprintf("region_%d", numel(obj.terrainRegions) + 1);
+            else
+                rec.name = sanitizeName(name);
+            end
+            rec.name = uniquifyTerrainRegionName(obj, rec.name);
+            % Seed inner record from fallback (Option B). Synthesize
+            % configPath if the fallback has none yet.
+            rec.terrain = obj.terrain;
+            if isprop(rec.terrain, 'configPath') && ...
+                    strlength(rec.terrain.configPath) > 0
+                rec.configPath = rec.terrain.configPath;
+            else
+                ttype = char(rec.terrain.terrainType);
+                if isempty(ttype); ttype = 'rural'; end
+                rec.configPath = string(sprintf("%s/default_%s", ttype, ttype));
+            end
+            obj.terrainRegions(end+1) = rec;
+            obj.activeTerrainRegionIdx = numel(obj.terrainRegions);
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+            newIdx = obj.activeTerrainRegionIdx;
+        end
+
+        function newIdx = addWeatherRegion(obj, name)
+            %addWeatherRegion  Append a WeatherRegionRecord seeded with
+            %                  the scenario's fallback weather. If the
+            %                  fallback is empty (no scenario-wide
+            %                  weather), seed with a fresh rain default
+            %                  — a region with no inner weather record
+            %                  is meaningless (the resolver would fall
+            %                  through to the empty fallback and treat
+            %                  the area as clear sky).
+            obj.pushUndo();
+            rec = trackbench.editor.WeatherRegionRecord();
+            if nargin < 2 || strlength(string(name)) == 0
+                rec.name = sprintf("region_%d", numel(obj.weatherRegions) + 1);
+            else
+                rec.name = sanitizeName(name);
+            end
+            rec.name = uniquifyWeatherRegionName(obj, rec.name);
+            % Seed inner record. Use the fallback when present;
+            % otherwise default to rain (most common region type for
+            % the "single storm cell over a defined area" use case).
+            if ~isempty(obj.weather)
+                rec.weather = obj.weather;
+                if isprop(rec.weather, 'configPath') && ...
+                        strlength(rec.weather.configPath) > 0
+                    rec.configPath = rec.weather.configPath;
+                else
+                    wtype = char(rec.weather.weatherType);
+                    if isempty(wtype); wtype = 'rain'; end
+                    rec.configPath = string(sprintf("%s/default_%s", wtype, wtype));
+                end
+            else
+                rec.weather    = trackbench.editor.weatherDefaults("rain");
+                rec.configPath = "rain/default_rain";
+            end
+            obj.weatherRegions(end+1) = rec;
+            obj.activeWeatherRegionIdx = numel(obj.weatherRegions);
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+            newIdx = obj.activeWeatherRegionIdx;
+        end
+
+        function newIdx = duplicateActiveTerrainRegion(obj)
+            %duplicateActiveTerrainRegion  Copy the active terrain
+            %                              region. Suffix "_copy" on
+            %                              name; offset polygon by
+            %                              +2km east so the copy doesn't
+            %                              render exactly on top of the
+            %                              original. Mirrors
+            %                              duplicateActiveSensor.
+            if ~obj.hasActiveTerrainRegion()
+                error('trackbench:editor:EditorState:noActiveTerrainRegion', ...
+                    'No terrain region to duplicate.');
+            end
+            obj.pushUndo();
+            src = obj.terrainRegions(obj.activeTerrainRegionIdx);
+            cp = src;                                  % value-class copy
+            cp.name     = uniquifyTerrainRegionName(obj, src.name + "_copy");
+            cp.readOnly = false;
+            if size(cp.polygonXY, 1) >= 3
+                cp.polygonXY(:, 1) = cp.polygonXY(:, 1) + 2000;
+            end
+            obj.terrainRegions(end+1) = cp;
+            obj.activeTerrainRegionIdx = numel(obj.terrainRegions);
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+            newIdx = obj.activeTerrainRegionIdx;
+        end
+
+        function newIdx = duplicateActiveWeatherRegion(obj)
+            %duplicateActiveWeatherRegion  Mirror of
+            %                              duplicateActiveTerrainRegion
+            %                              for weatherRegions.
+            if ~obj.hasActiveWeatherRegion()
+                error('trackbench:editor:EditorState:noActiveWeatherRegion', ...
+                    'No weather region to duplicate.');
+            end
+            obj.pushUndo();
+            src = obj.weatherRegions(obj.activeWeatherRegionIdx);
+            cp = src;
+            cp.name     = uniquifyWeatherRegionName(obj, src.name + "_copy");
+            cp.readOnly = false;
+            if size(cp.polygonXY, 1) >= 3
+                cp.polygonXY(:, 1) = cp.polygonXY(:, 1) + 2000;
+            end
+            obj.weatherRegions(end+1) = cp;
+            obj.activeWeatherRegionIdx = numel(obj.weatherRegions);
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+            newIdx = obj.activeWeatherRegionIdx;
+        end
+
+        function deleteActiveTerrainRegion(obj)
+            %deleteActiveTerrainRegion  Remove the active terrain region.
+            %                           If this was the last region,
+            %                           activeTerrainRegionIdx → 0.
+            %                           Mirrors deleteActiveSensor.
+            if ~obj.hasActiveTerrainRegion(); return; end
+            obj.pushUndo();
+            obj.terrainRegions(obj.activeTerrainRegionIdx) = [];
+            if isempty(obj.terrainRegions)
+                obj.activeTerrainRegionIdx = 0;
+            else
+                obj.activeTerrainRegionIdx = max(1, ...
+                    min(obj.activeTerrainRegionIdx, numel(obj.terrainRegions)));
+            end
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function deleteActiveWeatherRegion(obj)
+            %deleteActiveWeatherRegion  Mirror of deleteActiveTerrainRegion.
+            if ~obj.hasActiveWeatherRegion(); return; end
+            obj.pushUndo();
+            obj.weatherRegions(obj.activeWeatherRegionIdx) = [];
+            if isempty(obj.weatherRegions)
+                obj.activeWeatherRegionIdx = 0;
+            else
+                obj.activeWeatherRegionIdx = max(1, ...
+                    min(obj.activeWeatherRegionIdx, numel(obj.weatherRegions)));
+            end
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function renameActiveTerrainRegion(obj, newName)
+            %renameActiveTerrainRegion  Rename. Validates non-empty,
+            %                           alphanumeric, unique within the
+            %                           terrain regions collection.
+            %                           Read-only regions cannot be
+            %                           renamed — duplicate first.
+            if ~obj.hasActiveTerrainRegion(); return; end
+            rec = obj.terrainRegions(obj.activeTerrainRegionIdx);
+            if rec.readOnly
+                error('trackbench:editor:EditorState:readOnlyTerrainRegion', ...
+                    'Cannot rename a read-only terrain region. Duplicate it first.');
+            end
+            cleaned = sanitizeName(newName);
+            if strlength(cleaned) == 0
+                error('trackbench:editor:EditorState:badName', ...
+                    'Region name cannot be empty.');
+            end
+            if cleaned == rec.name; return; end   % no-op rename
+            if terrainRegionNameExists(obj, cleaned)
+                error('trackbench:editor:EditorState:duplicateName', ...
+                    'A terrain region named "%s" already exists.', cleaned);
+            end
+            obj.pushUndo();
+            rec.name = cleaned;
+            obj.terrainRegions(obj.activeTerrainRegionIdx) = rec;
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function renameActiveWeatherRegion(obj, newName)
+            %renameActiveWeatherRegion  Mirror of renameActiveTerrainRegion.
+            if ~obj.hasActiveWeatherRegion(); return; end
+            rec = obj.weatherRegions(obj.activeWeatherRegionIdx);
+            if rec.readOnly
+                error('trackbench:editor:EditorState:readOnlyWeatherRegion', ...
+                    'Cannot rename a read-only weather region. Duplicate it first.');
+            end
+            cleaned = sanitizeName(newName);
+            if strlength(cleaned) == 0
+                error('trackbench:editor:EditorState:badName', ...
+                    'Region name cannot be empty.');
+            end
+            if cleaned == rec.name; return; end
+            if weatherRegionNameExists(obj, cleaned)
+                error('trackbench:editor:EditorState:duplicateName', ...
+                    'A weather region named "%s" already exists.', cleaned);
+            end
+            obj.pushUndo();
+            rec.name = cleaned;
+            obj.weatherRegions(obj.activeWeatherRegionIdx) = rec;
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function loadTerrainRegionConfig(obj, relPath)
+            %loadTerrainRegionConfig  Re-point the active terrain
+            %                         region at a different terrain
+            %                         config file. relPath is relative
+            %                         to config/terrain/, e.g.
+            %                         "mountain/sharp_peaks". The inner
+            %                         TerrainRecord is reloaded; the
+            %                         polygon is preserved.
+            %
+            %  This is the editor-side counterpart to what 5b's
+            %  composeHeightmap does at sim time — the inner record
+            %  drives the heightmap stamp inside the polygon.
+            if ~obj.hasActiveTerrainRegion(); return; end
+            rec = obj.terrainRegions(obj.activeTerrainRegionIdx);
+            if rec.readOnly
+                error('trackbench:editor:EditorState:readOnlyTerrainRegion', ...
+                    'Cannot change config of a read-only region. Duplicate it first.');
+            end
+            obj.pushUndo();
+            try
+                rec.terrain    = trackbench.editor.loadTerrainFromJSON( ...
+                    obj.projectRoot, relPath);
+                rec.configPath = string(relPath);
+                obj.terrainRegions(obj.activeTerrainRegionIdx) = rec;
+                obj.anyDirty = true;
+                obj.environmentDirty = true;
+            catch ME
+                if ~isempty(obj.undoStack)
+                    obj.undoStack(end) = [];
+                end
+                rethrow(ME);
+            end
+        end
+
+        function loadWeatherRegionConfig(obj, relPath)
+            %loadWeatherRegionConfig  Mirror of loadTerrainRegionConfig.
+            if ~obj.hasActiveWeatherRegion(); return; end
+            rec = obj.weatherRegions(obj.activeWeatherRegionIdx);
+            if rec.readOnly
+                error('trackbench:editor:EditorState:readOnlyWeatherRegion', ...
+                    'Cannot change config of a read-only region. Duplicate it first.');
+            end
+            obj.pushUndo();
+            try
+                rec.weather    = trackbench.editor.loadWeatherFromJSON( ...
+                    obj.projectRoot, relPath);
+                rec.configPath = string(relPath);
+                obj.weatherRegions(obj.activeWeatherRegionIdx) = rec;
+                obj.anyDirty = true;
+                obj.environmentDirty = true;
+            catch ME
+                if ~isempty(obj.undoStack)
+                    obj.undoStack(end) = [];
+                end
+                rethrow(ME);
+            end
+        end
+
+        function setActiveTerrainRegionIdx(obj, newIdx)
+            %setActiveTerrainRegionIdx  Switch the active terrain region.
+            %                           View state — does not push undo,
+            %                           matches setActiveIdx /
+            %                           setActiveSensorIdx.
+            if isempty(obj.terrainRegions)
+                obj.activeTerrainRegionIdx = 0;
+                return;
+            end
+            newIdx = max(1, min(numel(obj.terrainRegions), round(newIdx)));
+            if newIdx == obj.activeTerrainRegionIdx; return; end
+            obj.activeTerrainRegionIdx = newIdx;
+        end
+
+        function setActiveWeatherRegionIdx(obj, newIdx)
+            %setActiveWeatherRegionIdx  Mirror of setActiveTerrainRegionIdx.
+            if isempty(obj.weatherRegions)
+                obj.activeWeatherRegionIdx = 0;
+                return;
+            end
+            newIdx = max(1, min(numel(obj.weatherRegions), round(newIdx)));
+            if newIdx == obj.activeWeatherRegionIdx; return; end
+            obj.activeWeatherRegionIdx = newIdx;
+        end
+
+        function setActiveTerrainRegionPolygon(obj, polyXY, commit)
+            %setActiveTerrainRegionPolygon  Write a polygon Nx2 array
+            %                               into the active terrain
+            %                               region. commit=true pushes
+            %                               undo (used at the start of a
+            %                               draw or a vertex-drag);
+            %                               commit=false is the live-
+            %                               update path that should not
+            %                               burn an undo slot per
+            %                               vertex move. Mirrors
+            %                               moveSelectedTo for waypoints.
+            %
+            %  Validation lives in TerrainRegionRecord.isValidPolygon —
+            %  this method accepts any Nx2 (even N<3) so the in-progress
+            %  draw state can be persisted as the user clicks. The
+            %  resolver skips invalid polygons at runtime, so a
+            %  partially-drawn polygon is harmless.
+            if ~obj.hasActiveTerrainRegion(); return; end
+            rec = obj.terrainRegions(obj.activeTerrainRegionIdx);
+            if rec.readOnly; return; end
+            if nargin < 3; commit = true; end
+            if isempty(polyXY)
+                polyXY = zeros(0, 2);
+            elseif size(polyXY, 2) ~= 2
+                error('trackbench:editor:EditorState:badPolygonShape', ...
+                    'Polygon must be Nx2 (got %dx%d).', size(polyXY,1), size(polyXY,2));
+            end
+            if commit; obj.pushUndo(); end
+            rec.polygonXY = polyXY;
+            obj.terrainRegions(obj.activeTerrainRegionIdx) = rec;
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function setActiveWeatherRegionPolygon(obj, polyXY, commit)
+            %setActiveWeatherRegionPolygon  Mirror of
+            %                               setActiveTerrainRegionPolygon.
+            if ~obj.hasActiveWeatherRegion(); return; end
+            rec = obj.weatherRegions(obj.activeWeatherRegionIdx);
+            if rec.readOnly; return; end
+            if nargin < 3; commit = true; end
+            if isempty(polyXY)
+                polyXY = zeros(0, 2);
+            elseif size(polyXY, 2) ~= 2
+                error('trackbench:editor:EditorState:badPolygonShape', ...
+                    'Polygon must be Nx2 (got %dx%d).', size(polyXY,1), size(polyXY,2));
+            end
+            if commit; obj.pushUndo(); end
+            rec.polygonXY = polyXY;
+            obj.weatherRegions(obj.activeWeatherRegionIdx) = rec;
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        %% ── Vertex-level region polygon mutators (v3.5 §5c.6) ────────
+        %
+        %  These three methods extend 5c.1's polygon mutation API from
+        %  "replace the whole polygon of the active region" to "edit a
+        %  single vertex of any region." The implementation reuses the
+        %  existing setActive*RegionPolygon machinery by AUTO-PROMOTING
+        %  the target region to active before mutating — so callers can
+        %  pass any regionIdx and the active-region invariants stay
+        %  consistent (drawMap highlights the right region, the regions
+        %  sub-panel's dropdown stays in sync, undo restores active-idx
+        %  alongside polygon state).
+        %
+        %  The auto-promote happens INSIDE the same pushUndo span as the
+        %  mutation, so undo rolls back both the active-idx change AND
+        %  the polygon edit in one step. (pushUndo snapshots all
+        %  active-idx fields plus terrainRegions/weatherRegions; see
+        %  snapshot()/restore() at the bottom of this file.)
+        %
+        %  Read-only guard: regions whose inner record is readOnly cannot
+        %  be edited — the mutator silently returns. Matches the existing
+        %  pattern in setActive*RegionPolygon.
+
+        function moveRegionVertex(obj, kind, regionIdx, vertexIdx, x, y, commit)
+            %moveRegionVertex  Update a single vertex of any region.
+            %                  commit=true at drag-start: auto-promote
+            %                  + pushUndo + write. commit=false: live
+            %                  drag update, no undo slot, no promotion
+            %                  (promotion already happened at drag-start).
+            if nargin < 7; commit = true; end
+            kind = string(kind);
+            if kind ~= "terrain" && kind ~= "weather"
+                error('trackbench:editor:EditorState:badRegionKind', ...
+                    'moveRegionVertex kind must be "terrain" or "weather" (got "%s").', kind);
+            end
+            if kind == "terrain"
+                if regionIdx < 1 || regionIdx > numel(obj.terrainRegions); return; end
+                if obj.terrainRegions(regionIdx).readOnly; return; end
+                rec = obj.terrainRegions(regionIdx);
+                if vertexIdx < 1 || vertexIdx > size(rec.polygonXY, 1); return; end
+                if commit
+                    if obj.activeTerrainRegionIdx ~= regionIdx
+                        obj.activeTerrainRegionIdx = regionIdx;
+                    end
+                    obj.pushUndo();
+                end
+                rec.polygonXY(vertexIdx, :) = [double(x), double(y)];
+                obj.terrainRegions(regionIdx) = rec;
+            else
+                if regionIdx < 1 || regionIdx > numel(obj.weatherRegions); return; end
+                if obj.weatherRegions(regionIdx).readOnly; return; end
+                rec = obj.weatherRegions(regionIdx);
+                if vertexIdx < 1 || vertexIdx > size(rec.polygonXY, 1); return; end
+                if commit
+                    if obj.activeWeatherRegionIdx ~= regionIdx
+                        obj.activeWeatherRegionIdx = regionIdx;
+                    end
+                    obj.pushUndo();
+                end
+                rec.polygonXY(vertexIdx, :) = [double(x), double(y)];
+                obj.weatherRegions(regionIdx) = rec;
+            end
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+        end
+
+        function ok = deleteRegionVertex(obj, kind, regionIdx, vertexIdx)
+            %deleteRegionVertex  Remove a single vertex from a region's
+            %                    polygon. Refuses (returns false) if the
+            %                    polygon would drop below 3 vertices —
+            %                    polygons with <3 vertices are invalid
+            %                    and would silently disappear from sim
+            %                    output. Caller posts the status nag.
+            %
+            %                    On success: auto-promotes region to
+            %                    active, pushes undo, removes the vertex.
+            ok = false;
+            kind = string(kind);
+            if kind ~= "terrain" && kind ~= "weather"
+                error('trackbench:editor:EditorState:badRegionKind', ...
+                    'deleteRegionVertex kind must be "terrain" or "weather" (got "%s").', kind);
+            end
+            if kind == "terrain"
+                if regionIdx < 1 || regionIdx > numel(obj.terrainRegions); return; end
+                if obj.terrainRegions(regionIdx).readOnly; return; end
+                rec = obj.terrainRegions(regionIdx);
+                if vertexIdx < 1 || vertexIdx > size(rec.polygonXY, 1); return; end
+                if size(rec.polygonXY, 1) <= 3; return; end   % refuse: would invalidate
+                if obj.activeTerrainRegionIdx ~= regionIdx
+                    obj.activeTerrainRegionIdx = regionIdx;
+                end
+                obj.pushUndo();
+                rec.polygonXY(vertexIdx, :) = [];
+                obj.terrainRegions(regionIdx) = rec;
+            else
+                if regionIdx < 1 || regionIdx > numel(obj.weatherRegions); return; end
+                if obj.weatherRegions(regionIdx).readOnly; return; end
+                rec = obj.weatherRegions(regionIdx);
+                if vertexIdx < 1 || vertexIdx > size(rec.polygonXY, 1); return; end
+                if size(rec.polygonXY, 1) <= 3; return; end
+                if obj.activeWeatherRegionIdx ~= regionIdx
+                    obj.activeWeatherRegionIdx = regionIdx;
+                end
+                obj.pushUndo();
+                rec.polygonXY(vertexIdx, :) = [];
+                obj.weatherRegions(regionIdx) = rec;
+            end
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
+            ok = true;
+        end
+
+        function insertRegionVertex(obj, kind, regionIdx, afterVertexIdx, x, y)
+            %insertRegionVertex  Insert a new vertex (x, y) immediately
+            %                    AFTER afterVertexIdx in the polygon.
+            %                    afterVertexIdx = i means the new vertex
+            %                    sits between vertex i and vertex i+1
+            %                    (or between vertex N and vertex 1 if
+            %                    i = N — the "closing edge" case).
+            %
+            %                    Designed for shift+click-on-edge: pass
+            %                    the edge's start-vertex index as
+            %                    afterVertexIdx and the projection-on-
+            %                    edge point as (x, y).
+            %
+            %                    Auto-promotes the region to active and
+            %                    pushes one undo step.
+            kind = string(kind);
+            if kind ~= "terrain" && kind ~= "weather"
+                error('trackbench:editor:EditorState:badRegionKind', ...
+                    'insertRegionVertex kind must be "terrain" or "weather" (got "%s").', kind);
+            end
+            if kind == "terrain"
+                if regionIdx < 1 || regionIdx > numel(obj.terrainRegions); return; end
+                if obj.terrainRegions(regionIdx).readOnly; return; end
+                rec = obj.terrainRegions(regionIdx);
+                n = size(rec.polygonXY, 1);
+                if afterVertexIdx < 1 || afterVertexIdx > n; return; end
+                if obj.activeTerrainRegionIdx ~= regionIdx
+                    obj.activeTerrainRegionIdx = regionIdx;
+                end
+                obj.pushUndo();
+                newRow = [double(x), double(y)];
+                rec.polygonXY = [rec.polygonXY(1:afterVertexIdx, :); ...
+                                 newRow; ...
+                                 rec.polygonXY(afterVertexIdx+1:end, :)];
+                obj.terrainRegions(regionIdx) = rec;
+            else
+                if regionIdx < 1 || regionIdx > numel(obj.weatherRegions); return; end
+                if obj.weatherRegions(regionIdx).readOnly; return; end
+                rec = obj.weatherRegions(regionIdx);
+                n = size(rec.polygonXY, 1);
+                if afterVertexIdx < 1 || afterVertexIdx > n; return; end
+                if obj.activeWeatherRegionIdx ~= regionIdx
+                    obj.activeWeatherRegionIdx = regionIdx;
+                end
+                obj.pushUndo();
+                newRow = [double(x), double(y)];
+                rec.polygonXY = [rec.polygonXY(1:afterVertexIdx, :); ...
+                                 newRow; ...
+                                 rec.polygonXY(afterVertexIdx+1:end, :)];
+                obj.weatherRegions(regionIdx) = rec;
+            end
+            obj.anyDirty = true;
+            obj.environmentDirty = true;
         end
 
         %% ── Targets-collection mutators (M5) ──────────────────────
@@ -1320,6 +2136,130 @@ classdef EditorState < handle
             end
         end
 
+        function [kind, regionIdx, vertexIdx] = findRegionVertexAt(obj, x, y, maxDistM)
+            %findRegionVertexAt  v3.5 §5c.6 — hit-test all visible region
+            %                    polygon vertices. Returns ("", 0, 0) on
+            %                    miss. Priority order (first match wins):
+            %                      1. Active terrain region
+            %                      2. Other terrain regions (1..N)
+            %                      3. Active weather region
+            %                      4. Other weather regions (1..N)
+            %                    Matches drawRegionPolygons' z-order so
+            %                    the visually-topmost vertex is picked
+            %                    first when polygons overlap.
+            %
+            %                    maxDistM defaults to hitRadiusM() — the
+            %                    same zoom-aware radius used for waypoint
+            %                    pick, so vertex pick feels consistent
+            %                    with waypoint pick.
+            if nargin < 4 || isempty(maxDistM); maxDistM = obj.hitRadiusM(); end
+            kind = "";
+            regionIdx = 0;
+            vertexIdx = 0;
+
+            nT = numel(obj.terrainRegions);
+            nW = numel(obj.weatherRegions);
+            aT = obj.activeTerrainRegionIdx;
+            aW = obj.activeWeatherRegionIdx;
+
+            % Pass 1: active terrain region
+            if aT >= 1 && aT <= nT
+                v = pickClosestVertex(obj.terrainRegions(aT).polygonXY, x, y, maxDistM);
+                if v > 0
+                    kind = "terrain"; regionIdx = aT; vertexIdx = v; return;
+                end
+            end
+            % Pass 2: other terrain regions
+            for k = 1:nT
+                if k == aT; continue; end
+                v = pickClosestVertex(obj.terrainRegions(k).polygonXY, x, y, maxDistM);
+                if v > 0
+                    kind = "terrain"; regionIdx = k; vertexIdx = v; return;
+                end
+            end
+            % Pass 3: active weather region
+            if aW >= 1 && aW <= nW
+                v = pickClosestVertex(obj.weatherRegions(aW).polygonXY, x, y, maxDistM);
+                if v > 0
+                    kind = "weather"; regionIdx = aW; vertexIdx = v; return;
+                end
+            end
+            % Pass 4: other weather regions
+            for k = 1:nW
+                if k == aW; continue; end
+                v = pickClosestVertex(obj.weatherRegions(k).polygonXY, x, y, maxDistM);
+                if v > 0
+                    kind = "weather"; regionIdx = k; vertexIdx = v; return;
+                end
+            end
+        end
+
+        function [kind, regionIdx, edgeIdx, projXY] = findRegionEdgeAt(obj, x, y, maxDistM)
+            %findRegionEdgeAt  v3.5 §5c.6 — hit-test polygon edges.
+            %                  Returns ("", 0, 0, []) on miss.
+            %
+            %                  Vertex pick ALWAYS wins: if any vertex is
+            %                  within maxDistM, edge hit is rejected.
+            %                  This is the safety net for shift+click
+            %                  near a vertex — the caller's normal pick
+            %                  ordering already tries vertex first, but
+            %                  this guarantees correctness even if the
+            %                  caller skips that step.
+            %
+            %                  Edge i connects vertex i to vertex i+1
+            %                  (wrapping N → 1 for the closing edge).
+            %                  Returns the edge index, the projection
+            %                  point on that edge (use as insert
+            %                  location), and discards the distance.
+            %
+            %                  Same priority order as findRegionVertexAt.
+            if nargin < 4 || isempty(maxDistM); maxDistM = obj.hitRadiusM(); end
+            kind = "";
+            regionIdx = 0;
+            edgeIdx = 0;
+            projXY = [];
+
+            % Vertex always wins — reject edge pick if a vertex is in range.
+            [vKind, ~, vVtx] = obj.findRegionVertexAt(x, y, maxDistM); %#ok<ASGLU>
+            if vVtx > 0; return; end
+
+            nT = numel(obj.terrainRegions);
+            nW = numel(obj.weatherRegions);
+            aT = obj.activeTerrainRegionIdx;
+            aW = obj.activeWeatherRegionIdx;
+
+            % Pass 1: active terrain region
+            if aT >= 1 && aT <= nT
+                [e, p] = pickClosestEdge(obj.terrainRegions(aT).polygonXY, x, y, maxDistM);
+                if e > 0
+                    kind = "terrain"; regionIdx = aT; edgeIdx = e; projXY = p; return;
+                end
+            end
+            % Pass 2: other terrain regions
+            for k = 1:nT
+                if k == aT; continue; end
+                [e, p] = pickClosestEdge(obj.terrainRegions(k).polygonXY, x, y, maxDistM);
+                if e > 0
+                    kind = "terrain"; regionIdx = k; edgeIdx = e; projXY = p; return;
+                end
+            end
+            % Pass 3: active weather region
+            if aW >= 1 && aW <= nW
+                [e, p] = pickClosestEdge(obj.weatherRegions(aW).polygonXY, x, y, maxDistM);
+                if e > 0
+                    kind = "weather"; regionIdx = aW; edgeIdx = e; projXY = p; return;
+                end
+            end
+            % Pass 4: other weather regions
+            for k = 1:nW
+                if k == aW; continue; end
+                [e, p] = pickClosestEdge(obj.weatherRegions(k).polygonXY, x, y, maxDistM);
+                if e > 0
+                    kind = "weather"; regionIdx = k; edgeIdx = e; projXY = p; return;
+                end
+            end
+        end
+
         %% ── Undo / redo ────────────────────────────────────────────
         function pushUndo(obj)
             snap = obj.snapshot();
@@ -1372,6 +2312,7 @@ classdef EditorState < handle
             snap.sensors         = obj.sensors;
             snap.activeSensorIdx = obj.activeSensorIdx;
             snap.editMode        = obj.editMode;
+            snap.envSubMode      = obj.envSubMode;   % v3.5 §5c.2
             % M7 additions — terrain/weather/degradation participate in
             % undo/redo. Value-class records copy by assignment so the
             % snapshot is independent of live state (same pattern as
@@ -1386,6 +2327,11 @@ classdef EditorState < handle
             % copy (same contract as targets/sensors).
             snap.terrainRegions    = obj.terrainRegions;
             snap.weatherRegions    = obj.weatherRegions;
+            % v3.5 §5c — active-region indices. Capture parallel to
+            % activeIdx/activeSensorIdx so undo across an Add/Delete
+            % restores both the collection and the user's selection.
+            snap.activeTerrainRegionIdx = obj.activeTerrainRegionIdx;
+            snap.activeWeatherRegionIdx = obj.activeWeatherRegionIdx;
         end
 
         function restore(obj, snap)
@@ -1442,6 +2388,14 @@ classdef EditorState < handle
                      snap.editMode == "environment")
                 obj.editMode = snap.editMode;
             end
+            % v3.5 §5c.2 — envSubMode. Backward compatible with pre-5c.2
+            % snapshots (missing field → "fallback" default, identical
+            % to a freshly-constructed editor).
+            if isfield(snap, 'envSubMode') && ...
+                    (snap.envSubMode == "fallback" || ...
+                     snap.envSubMode == "regions")
+                obj.envSubMode = snap.envSubMode;
+            end
             % M7 additions — backward compatible with pre-M7 snapshots.
             % A pre-M7 snapshot is missing all four fields; we fall
             % back to fresh defaults (rural terrain, no weather, all
@@ -1479,6 +2433,30 @@ classdef EditorState < handle
                 obj.weatherRegions = snap.weatherRegions;
             else
                 obj.weatherRegions = trackbench.editor.WeatherRegionRecord.empty;
+            end
+            % v3.5 §5c — active-region indices. Backward compatible
+            % with pre-5c snapshots (missing fields → 0 = no active
+            % region, identical to a freshly-constructed editor).
+            % Clamp to the restored collection size so a snapshot
+            % captured with 5 regions and restored after a delete
+            % can't index past the array end.
+            if isfield(snap, 'activeTerrainRegionIdx') && ...
+                    snap.activeTerrainRegionIdx >= 1 && ...
+                    snap.activeTerrainRegionIdx <= numel(obj.terrainRegions)
+                obj.activeTerrainRegionIdx = snap.activeTerrainRegionIdx;
+            elseif ~isempty(obj.terrainRegions)
+                obj.activeTerrainRegionIdx = 1;
+            else
+                obj.activeTerrainRegionIdx = 0;
+            end
+            if isfield(snap, 'activeWeatherRegionIdx') && ...
+                    snap.activeWeatherRegionIdx >= 1 && ...
+                    snap.activeWeatherRegionIdx <= numel(obj.weatherRegions)
+                obj.activeWeatherRegionIdx = snap.activeWeatherRegionIdx;
+            elseif ~isempty(obj.weatherRegions)
+                obj.activeWeatherRegionIdx = 1;
+            else
+                obj.activeWeatherRegionIdx = 0;
             end
             obj.anyDirty = true;
         end
@@ -1721,6 +2699,56 @@ function [d, proj, t] = pointToSegmentDistance(p, a, b)
 end
 
 
+function vtxIdx = pickClosestVertex(poly, x, y, maxDistM)
+%pickClosestVertex  v3.5 §5c.6 — nearest-vertex hit test for a single
+%                   polygon. Returns 0 on miss, vertex index 1..N on hit.
+%                   Used by EditorState.findRegionVertexAt.
+    vtxIdx = 0;
+    if size(poly, 1) == 0; return; end
+    dx = poly(:, 1) - x;
+    dy = poly(:, 2) - y;
+    d  = sqrt(dx.*dx + dy.*dy);
+    [minD, k] = min(d);
+    if minD <= maxDistM
+        vtxIdx = k;
+    end
+end
+
+
+function [edgeIdx, projXY] = pickClosestEdge(poly, x, y, maxDistM)
+%pickClosestEdge  v3.5 §5c.6 — nearest-edge hit test for a single closed
+%                 polygon. Returns 0 / [] on miss, edge index 1..N and
+%                 projection point on hit. Edge i connects vertex i to
+%                 vertex i+1 (wraps N → 1). Used by
+%                 EditorState.findRegionEdgeAt.
+%
+%                 t > 0.05 && t < 0.95 rejects near-corner clicks —
+%                 within 5%% of either endpoint we'd rather the caller
+%                 grab the adjacent vertex than insert a tiny new
+%                 vertex nearby. The findRegionVertexAt guard already
+%                 covers this in the EditorState.findRegionEdgeAt
+%                 caller, but this local check makes the helper safe
+%                 to use in isolation.
+    edgeIdx = 0;
+    projXY = [];
+    n = size(poly, 1);
+    if n < 3; return; end  % degenerate polygon, no edges to test
+    bestDist = maxDistM;
+    for k = 1:n
+        kNext = k + 1;
+        if kNext > n; kNext = 1; end   % wrap N → 1 for closing edge
+        p1 = poly(k,     :);
+        p2 = poly(kNext, :);
+        [d, proj, t] = pointToSegmentDistance([x y], p1, p2);
+        if d <= bestDist && t > 0.05 && t < 0.95
+            bestDist = d;
+            edgeIdx = k;
+            projXY = proj;
+        end
+    end
+end
+
+
 function s = sanitizeName(raw)
 %sanitizeName  Strip whitespace, replace disallowed chars with '_'.
     s = strtrim(string(raw));
@@ -1836,6 +2864,104 @@ function tf = anySensorHasName(obj, name)
             return;
         end
     end
+end
+
+
+% v3.5 §5c — region-collection name helpers. Pattern mirrors
+% sensorNameExists / uniquifySensorName above. The collections are
+% INDEPENDENT — a terrain region named "storm1" does not collide with a
+% weather region named "storm1" — so each side gets its own helper pair
+% rather than sharing one generic implementation. Keeps callers
+% unambiguous and matches how runtime uniqueness is enforced (per-
+% collection in JSON, never cross-collection).
+
+function tf = terrainRegionNameExists(obj, name)
+%terrainRegionNameExists  True if any terrain region OTHER than the
+%                          active one already has this name.
+    tf = false;
+    for k = 1:numel(obj.terrainRegions)
+        if k == obj.activeTerrainRegionIdx; continue; end
+        if obj.terrainRegions(k).name == name
+            tf = true;
+            return;
+        end
+    end
+end
+
+
+function tf = weatherRegionNameExists(obj, name)
+%weatherRegionNameExists  Mirror of terrainRegionNameExists for the
+%                          weatherRegions collection.
+    tf = false;
+    for k = 1:numel(obj.weatherRegions)
+        if k == obj.activeWeatherRegionIdx; continue; end
+        if obj.weatherRegions(k).name == name
+            tf = true;
+            return;
+        end
+    end
+end
+
+
+function tf = anyTerrainRegionHasName(obj, name)
+    tf = false;
+    for k = 1:numel(obj.terrainRegions)
+        if obj.terrainRegions(k).name == name
+            tf = true;
+            return;
+        end
+    end
+end
+
+
+function tf = anyWeatherRegionHasName(obj, name)
+    tf = false;
+    for k = 1:numel(obj.weatherRegions)
+        if obj.weatherRegions(k).name == name
+            tf = true;
+            return;
+        end
+    end
+end
+
+
+function unique = uniquifyTerrainRegionName(obj, base)
+%uniquifyTerrainRegionName  If base collides with an existing terrain
+%                            region's name, append _2, _3, … Mirrors
+%                            uniquifySensorName.
+    unique = sanitizeName(base);
+    if strlength(unique) == 0
+        unique = "region";
+    end
+    if ~anyTerrainRegionHasName(obj, unique)
+        return;
+    end
+    k = 2;
+    candidate = sprintf("%s_%d", unique, k);
+    while anyTerrainRegionHasName(obj, candidate)
+        k = k + 1;
+        candidate = sprintf("%s_%d", unique, k);
+    end
+    unique = candidate;
+end
+
+
+function unique = uniquifyWeatherRegionName(obj, base)
+%uniquifyWeatherRegionName  Mirror of uniquifyTerrainRegionName.
+    unique = sanitizeName(base);
+    if strlength(unique) == 0
+        unique = "region";
+    end
+    if ~anyWeatherRegionHasName(obj, unique)
+        return;
+    end
+    k = 2;
+    candidate = sprintf("%s_%d", unique, k);
+    while anyWeatherRegionHasName(obj, candidate)
+        k = k + 1;
+        candidate = sprintf("%s_%d", unique, k);
+    end
+    unique = candidate;
 end
 
 
