@@ -61,8 +61,16 @@ fprintf('  %s\n', char(datetime('now','Format','yyyy-MM-dd HH:mm')));
 fprintf('================================================================\n\n');
 
 %% 1. Locate paths
-root = fileparts(fileparts(mfilename('fullpath')));
-addpath(genpath(fullfile(root, 'src')));
+%  Deployed-safe path resolution: in compiled mode mfilename('fullpath')
+%  points into the read-only CTF cache, not the writable per-user data
+%  dir that mainMenu seeded and cd'd into. resolveRootFromThisFile falls
+%  back to pwd when isdeployed (mainMenu has set pwd to
+%  %LOCALAPPDATA%\RainyDay). The +trackbench package is baked into the
+%  CTF, so addpath is a dev-mode-only call.
+root = resolveRootFromThisFile();
+if ~isdeployed
+    addpath(genpath(fullfile(root, 'src')));
+end
 
 runFileName = runName;
 if ~endsWith(runFileName, ".json"); runFileName = runFileName + ".json"; end
@@ -127,7 +135,10 @@ trkGlobalBase = config.tracker_global;
 trkFilterBase = config.filter_params;
 pd = config.active_params.pd;
 nSensors = countSensors(sensors);
-maxRange = 111120;  % 60 nm normalization for posRMS term in score
+% Derive maxRange from truth positions (matches runTracker's definition:
+% max distance any target travels from the radar origin). Replaces the
+% old hardcoded 60nm constant, which over-normalized short-range scenarios.
+maxRange = computeMaxRangeFromTruth(dataLog);
 w = opts.weights;
 
 %% 5. Run each listed tracker
@@ -321,4 +332,42 @@ function n = countSensors(sensors)
         n = n + numel(sensors.(pNames{i}));
     end
     n = max(n, 1);
+end
+
+
+function r = computeMaxRangeFromTruth(dataLog)
+%computeMaxRangeFromTruth  Match runTracker's maxRange definition.
+%  Returns the maximum distance any target travels from the origin (the
+%  radar reference frame), matching the maxRange computed inside
+%  runTracker for its adaptive assignment/divergence thresholds. Falls
+%  back to 60nm PSR range when truth data is missing.
+    allPos = [];
+    if isfield(dataLog, 'Truth') && ~isempty(dataLog.Truth)
+        for ss = 1:size(dataLog.Truth, 2)
+            tgts = dataLog.Truth(:, ss);
+            for kk = 1:numel(tgts)
+                allPos = [allPos; tgts(kk).Position(:)']; %#ok<AGROW>
+            end
+        end
+    end
+    if isempty(allPos)
+        r = 111120;
+    else
+        r = max(vecnorm(allPos, 2, 2));
+    end
+end
+
+
+function root = resolveRootFromThisFile()
+%resolveRootFromThisFile  Deployed-safe project root resolution.
+%  In compiled mode (isdeployed), mfilename('fullpath') points into the
+%  CTF cache (read-only), not the per-user data dir that mainMenu seeded
+%  and cd'd into. pwd is the source of truth in that case. In dev mode,
+%  we resolve from this file's location (scripts/ folder, two levels up).
+    if isdeployed
+        root = pwd;
+    else
+        thisFile = mfilename('fullpath');
+        root = fileparts(fileparts(thisFile));
+    end
 end

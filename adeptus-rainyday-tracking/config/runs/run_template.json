@@ -33,12 +33,13 @@
         "doppler_fade": true,
         "_doppler_fade": "Tangential targets fade in clutter notch (MTI effect).",
 
+        "rcs_range_filter": false,
+        "_rcs_range_filter": "OPT-IN (default false). Extra R_eff cutoff on top of fusionRadarSensor's native Swerling RCS — enable for RCS validation only (causes R^4 double-counting on normal runs).",
+
         "weather": "none",
         "_weather": "Weather config from config/weather/<TYPE>/<file>, or 'none' for clear skies.",
         "_weather_examples": "rain/default_rain | rain/heavy_rain | snow/default_snow | fog/default_fog | icing/default_icing | none"
     },
-
-    "_REMOVED_FIELDS": "rcs_range_filter removed in v3.4.1 — fusionRadarSensor handles RCS natively via platform.Signatures per R2025b; external filter caused R^4 double-counting.",
 
     "cache": { "use_cached_detections": false, "save_detections": true },
     "platforms": {},

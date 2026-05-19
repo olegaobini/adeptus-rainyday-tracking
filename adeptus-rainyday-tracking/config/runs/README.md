@@ -20,12 +20,10 @@ runSingleScenario("my_run")                       %% Your custom run
   - `horizon_masking` — 4/3 Earth radius model
   - `ground_clutter` — terrain-dependent false returns
   - `doppler_fade` — tangential targets fade in MTI clutter notch
+  - `rcs_range_filter` *(opt-in, default off)* — extra R_eff cutoff on top of fusionRadarSensor's native Swerling RCS; enable for RCS validation only (causes R^4 double-counting on normal runs)
   - `weather` — config from `config/weather/<TYPE>/<file>`, or `"none"` for clear
 - **platforms**: moving platforms (aircraft, ship). Leave `{}` for all stationary.
 - **cache**: `{ use_cached_detections, save_detections }` — set `use_cached_detections: true` to skip detection generation and reuse cached results (faster tracker tuning).
 - **output**: visuals, save, diagnostics
 
 See `run_template.json` for a fully documented example.
-
-## Removed fields (v3.4.1)
-- `rcs_range_filter` — RCS is now handled natively by `fusionRadarSensor` via `platform.Signatures` per R2025b best practice. External filter caused double-counting and has been removed.

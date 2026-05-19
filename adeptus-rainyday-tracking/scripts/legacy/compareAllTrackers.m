@@ -43,8 +43,16 @@ fprintf('  %s\n', char(datetime('now','Format','yyyy-MM-dd HH:mm')));
 fprintf('================================================================\n\n');
 
 %% 1. Load cached detections
-root = fileparts(fileparts(mfilename('fullpath')));
-addpath(genpath(fullfile(root, 'src')));
+%  Deployed-safe path resolution: in compiled mode mfilename('fullpath')
+%  points into the read-only CTF cache, not the writable per-user data
+%  dir that mainMenu seeded and cd'd into. resolveRootFromThisFile falls
+%  back to pwd when isdeployed (mainMenu has set pwd to
+%  %LOCALAPPDATA%\RainyDay). The +trackbench package is baked into the
+%  CTF, so addpath is a dev-mode-only call.
+root = resolveRootFromThisFile();
+if ~isdeployed
+    addpath(genpath(fullfile(root, 'src')));
+end
 
 cacheFile = fullfile(root, 'cache', runName + ".mat");
 if ~isfile(cacheFile)
@@ -337,4 +345,20 @@ function n = countSensors(sensors)
         n = n + numel(sensors.(pNames{i}));
     end
     n = max(n, 1);
+end
+
+
+%% ========================================================================
+function root = resolveRootFromThisFile()
+%resolveRootFromThisFile  Deployed-safe project root resolution.
+%  In compiled mode (isdeployed), mfilename('fullpath') points into the
+%  CTF cache (read-only), not the per-user data dir that mainMenu seeded
+%  and cd'd into. pwd is the source of truth in that case. In dev mode,
+%  we resolve from this file's location (scripts/ folder, two levels up).
+    if isdeployed
+        root = pwd;
+    else
+        thisFile = mfilename('fullpath');
+        root = fileparts(fileparts(thisFile));
+    end
 end

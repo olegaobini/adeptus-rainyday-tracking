@@ -696,6 +696,13 @@ function varargout = runSimGUI(projectRoot)
             uialert(fig, 'Select a tracker to tune.', 'No Tracker Selected');
             return;
         end
+        if numel(sel) > 1
+            uialert(fig, sprintf( ...
+                ['Auto-Tune needs exactly one tracker selected; you have %d. ' ...
+                 'Narrow the list selection to a single tracker and try again.'], ...
+                numel(sel)), 'Too Many Selected');
+            return;
+        end
         if isDirty
             saveCurrent();
             if isDirty, return; end
@@ -708,12 +715,60 @@ function varargout = runSimGUI(projectRoot)
                 'Cache Required');
             return;
         end
-        % Use the first selected tracker's algorithm class
-        % ("GNN/default_GNN" → "GNN") matching runScenarioGUI.
+
+        % Read the selected tracker's JSON so the tune target matches the
+        % config the user is actually running. tracker_type and filter_model
+        % are required fields in any well-formed tracker JSON; if either is
+        % missing we fall back to the path-derived type and IMM (matching
+        % autoTuneTracker's own default).
         parts = split(sel{1}, '/');
-        trackerType = parts{1};
+        if numel(parts) ~= 2
+            uialert(fig, sprintf('Invalid tracker reference "%s".', sel{1}), ...
+                'Auto-Tune'); return;
+        end
+        trackerType    = char(parts{1});
+        stem           = char(parts{2});
+        declaredFilter = 'IMM';
+        jsonPath = fullfile(projectRoot, 'config', 'trackers', trackerType, [stem '.json']);
         try
-            autoTuneTracker(currentRunName, trackerType);
+            tc = jsondecode(fileread(jsonPath));
+            if isfield(tc, 'tracker_type'); trackerType = char(string(tc.tracker_type)); end
+            if isfield(tc, 'filter_model'); declaredFilter = upper(char(string(tc.filter_model))); end
+        catch
+            % JSON read/parse failure — fall through with path-derived type
+            % and the IMM default. autoTuneTracker will surface any further
+            % issue with a clear error.
+        end
+        if strcmp(declaredFilter, 'CV')
+            altFilter = 'IMM';
+        else
+            altFilter = 'CV';
+        end
+
+        % Three-way confirm: tune with the declared filter (default),
+        % switch to the alternate filter, or cancel. Solves the earlier
+        % "no choice" issue where Auto-Tune silently used IMM regardless
+        % of what the selected tracker actually used.
+        optTune   = sprintf('Tune %s+%s', trackerType, declaredFilter);
+        optSwitch = sprintf('Switch to %s', altFilter);
+        optCancel = 'Cancel';
+        choice = uiconfirm(fig, sprintf( ...
+            ['Auto-Tune sweeps gate / volume / beta / filter params using ' ...
+             'cached detections for "%s".' newline newline ...
+             'Selected tracker: %s' newline ...
+             'Declared filter: %s'], ...
+            currentRunName, sel{1}, declaredFilter), ...
+            'Confirm Auto-Tune', ...
+            'Options', {optTune, optSwitch, optCancel}, ...
+            'DefaultOption', optTune, 'CancelOption', optCancel);
+        switch choice
+            case optTune;   filterModel = declaredFilter;
+            case optSwitch; filterModel = altFilter;
+            otherwise;      return;  % Cancel or window closed
+        end
+
+        try
+            autoTuneTracker(currentRunName, trackerType, filterModel);
         catch ME
             uialert(fig, ME.message, 'Auto-Tune Error');
         end
@@ -1176,36 +1231,157 @@ function varargout = runSimGUI(projectRoot)
     end
 
     function onEditGlobals()
-        %onEditGlobals  v3.5 §Step2 — open the tracker_globals.json editor.
-        %   STEP 2.1 (this commit): skeleton modal only — real fields
-        %   in 2.4.
+        %onEditGlobals  v3.5 §Step2.4 — open the tracker_globals.json editor.
+        %
+        %   Edits config/trackers/tracker_globals.json in place — single
+        %   fixed file, no Save-As. Affects ALL trackers when they next
+        %   load globals (see loadRunFile.m "Load shared tracker globals").
+        %
+        %   Sections (matching the on-disk schema):
+        %     - Tracking Limits:        max_num_tracks
+        %     - Detection Probability:  ideal, degraded
+        %     - Filter Initialization:  init_speed_kmh, imm_transition_prob,
+        %                               scale_accel_horz, scale_accel_vert,
+        %                               scale_omega_dot
+        %
+        %   INSTRUCTIONS / PARAM_DOCS blocks in the source JSON are
+        %   preserved verbatim on save. volume / beta are NOT exposed here
+        %   because they live per-tracker (GNN/TOMHT vs JPDA use them with
+        %   opposite scales — see tracker_globals.json INSTRUCTIONS).
+
+        globalsPath = fullfile(projectRoot, 'config', 'trackers', ...
+            'tracker_globals.json');
+        cfg = struct();
+        if exist(globalsPath, 'file')
+            try
+                cfg = jsondecode(fileread(globalsPath));
+            catch err
+                uialert(fig, sprintf( ...
+                    'Failed to read tracker_globals.json:\n%s', err.message), ...
+                    'Edit Globals'); return;
+            end
+        end
+
+        % Current values — fallbacks match loadRunFile.m's built-in
+        % defaults so a missing file still seeds a sensible form.
+        curMaxTracks  = getFieldOrDefault(cfg, 'max_num_tracks', 500);
+        curPdIdeal    = getNested(cfg, 'detection_probability', 'ideal',    0.9);
+        curPdDeg      = getNested(cfg, 'detection_probability', 'degraded', 0.7);
+        filterStruct  = getFieldOrDefault(cfg, 'filter', struct());
+        curInitSpeed  = getFieldOrDefault(filterStruct, 'init_speed_kmh',      900);
+        curImmProb    = getFieldOrDefault(filterStruct, 'imm_transition_prob', 0.97);
+        curAccelHorz  = getFieldOrDefault(filterStruct, 'scale_accel_horz',    30);
+        curAccelVert  = getFieldOrDefault(filterStruct, 'scale_accel_vert',    20);
+        curOmegaDot   = getFieldOrDefault(filterStruct, 'scale_omega_dot',     30);
+
+        % ---- Build modal -------------------------------------------------
         editorFig = uifigure('Name', 'Edit Tracker Globals', ...
-            'Position', [220 220 480 380], ...
+            'Position', [220 160 520 540], ...
             'WindowStyle', 'modal');
-        gl = uigridlayout(editorFig, [2 1]);
-        gl.RowHeight = {'1x', 40};
-        gl.Padding = [16 16 16 16];
-        gl.RowSpacing = 12;
-        uilabel(gl, ...
-            'Text', ['Globals editor (tracker_globals.json).' newline newline ...
-                     '(fields land in step 2.4: max tracks, Pd ' ...
-                     'ideal/degraded, filter init params)'], ...
-            'HorizontalAlignment', 'left', ...
-            'VerticalAlignment',   'top');
+        gl = uigridlayout(editorFig, [4 1]);
+        gl.RowHeight  = {76, 104, 222, 40};
+        gl.RowSpacing = 10;
+        gl.Padding    = [14 14 14 14];
+
+        % ---- Tracking Limits ---------------------------------------------
+        pnlLim = uipanel(gl, 'Title', 'Tracking Limits', 'FontWeight', 'bold');
+        glLim = uigridlayout(pnlLim, [1 2]);
+        glLim.ColumnWidth = {260, '1x'};
+        glLim.RowHeight   = {26};
+        glLim.RowSpacing  = 4;
+        uilabel(glLim, 'Text', 'Max simultaneous tracks:');
+        editMaxTracks = uieditfield(glLim, 'numeric', 'Value', curMaxTracks, ...
+            'Limits', [1 Inf], 'RoundFractionalValues', 'on', ...
+            'Tooltip', 'Hard cap on tracks the tracker can maintain at once.');
+
+        % ---- Detection Probability ---------------------------------------
+        pnlPd = uipanel(gl, 'Title', 'Detection Probability', 'FontWeight', 'bold');
+        glPd = uigridlayout(pnlPd, [2 2]);
+        glPd.ColumnWidth = {260, '1x'};
+        glPd.RowHeight   = {26, 26};
+        glPd.RowSpacing  = 4;
+        uilabel(glPd, 'Text', 'Pd ideal (clear weather):');
+        editPdIdeal = uieditfield(glPd, 'numeric', 'Value', curPdIdeal, ...
+            'Limits', [0 1], ...
+            'Tooltip', 'Detection probability in clear weather. 0.9 typical for PSR.');
+        uilabel(glPd, 'Text', 'Pd degraded (rain/snow/fog):');
+        editPdDeg = uieditfield(glPd, 'numeric', 'Value', curPdDeg, ...
+            'Limits', [0 1], ...
+            'Tooltip', 'Detection probability in degraded weather. 0.5-0.7 typical.');
+
+        % ---- Filter Initialization ---------------------------------------
+        pnlFlt = uipanel(gl, 'Title', 'Filter Initialization', ...
+            'FontWeight', 'bold', 'Scrollable', 'on');
+        glFlt = uigridlayout(pnlFlt, [5 2]);
+        glFlt.ColumnWidth = {260, '1x'};
+        glFlt.RowHeight   = repmat({26}, 1, 5);
+        glFlt.RowSpacing  = 4;
+        uilabel(glFlt, 'Text', 'Init speed (km/h):');
+        editInitSpeed = uieditfield(glFlt, 'numeric', 'Value', curInitSpeed, ...
+            'Limits', [0 Inf], ...
+            'Tooltip', 'Expected target speed for Kalman filter initialization.');
+        uilabel(glFlt, 'Text', 'IMM transition probability:');
+        editImmProb = uieditfield(glFlt, 'numeric', 'Value', curImmProb, ...
+            'Limits', [0 1], ...
+            'Tooltip', 'IMM model switching probability. 0.97 default.');
+        uilabel(glFlt, 'Text', 'Process noise accel horz (m/s^2):');
+        editAccelHorz = uieditfield(glFlt, 'numeric', 'Value', curAccelHorz, ...
+            'Limits', [0 Inf], ...
+            'Tooltip', 'Horizontal process noise acceleration. 30 default.');
+        uilabel(glFlt, 'Text', 'Process noise accel vert (m/s^2):');
+        editAccelVert = uieditfield(glFlt, 'numeric', 'Value', curAccelVert, ...
+            'Limits', [0 Inf], ...
+            'Tooltip', ['Vertical process noise acceleration. 20 default. ' ...
+                        'Increase for climbing/descending targets.']);
+        uilabel(glFlt, 'Text', 'Process noise omega dot (deg/s^2):');
+        editOmegaDot = uieditfield(glFlt, 'numeric', 'Value', curOmegaDot, ...
+            'Limits', [0 Inf], ...
+            'Tooltip', 'Process noise turn rate. 30 default.');
+
+        % ---- Buttons row -------------------------------------------------
         glBtns = uigridlayout(gl, [1 3]);
-        glBtns.Layout.Row = 2;
+        glBtns.Layout.Row = 4;
         glBtns.ColumnWidth = {'1x', 100, 100};
         glBtns.ColumnSpacing = 8;
         glBtns.Padding = [0 0 0 0];
         uilabel(glBtns);  % spacer
         uibutton(glBtns, 'Text', 'Cancel', ...
             'ButtonPushedFcn', @(~,~) delete(editorFig));
-        btnSaveModal = uibutton(glBtns, 'Text', 'Save', ...
+        uibutton(glBtns, 'Text', 'Save', ...
             'FontWeight', 'bold', ...
-            'Enable', 'off', ...
-            'Tooltip', 'Save lights up in step 2.4 once fields exist.', ...
-            'ButtonPushedFcn', @(~,~) delete(editorFig)); %#ok<NASGU>
+            'ButtonPushedFcn', @(~,~) onSave());
+
         uiwait(editorFig);
+
+        % ---- Nested: Save callback ---------------------------------------
+        function onSave()
+            % Preserve all unedited fields verbatim (notably INSTRUCTIONS
+            % and PARAM_DOCS) by starting from the loaded cfg and only
+            % overwriting the editable fields.
+            outCfg = cfg;
+            outCfg.max_num_tracks = editMaxTracks.Value;
+            if ~isfield(outCfg, 'detection_probability') || ...
+                    ~isstruct(outCfg.detection_probability)
+                outCfg.detection_probability = struct();
+            end
+            outCfg.detection_probability.ideal    = editPdIdeal.Value;
+            outCfg.detection_probability.degraded = editPdDeg.Value;
+            if ~isfield(outCfg, 'filter') || ~isstruct(outCfg.filter)
+                outCfg.filter = struct();
+            end
+            outCfg.filter.init_speed_kmh      = editInitSpeed.Value;
+            outCfg.filter.imm_transition_prob = editImmProb.Value;
+            outCfg.filter.scale_accel_horz    = editAccelHorz.Value;
+            outCfg.filter.scale_accel_vert    = editAccelVert.Value;
+            outCfg.filter.scale_omega_dot     = editOmegaDot.Value;
+            try
+                writeJsonFile(globalsPath, outCfg);
+            catch err
+                uialert(editorFig, sprintf('Write failed:\n%s', err.message), ...
+                    'Save failed', 'Icon', 'error'); return;
+            end
+            delete(editorFig);
+        end
     end
 end
 
@@ -1259,8 +1435,46 @@ function tf = degEqual(a, b)
                  logical(getFieldOrDefault(b, 'doppler_fade',      true))) && ...
          isequal(logical(getFieldOrDefault(a, 'rcs_range_filter',  false)), ...
                  logical(getFieldOrDefault(b, 'rcs_range_filter',  false))) && ...
-         isequal(char(string(getFieldOrDefault(a, 'weather', 'none'))), ...
-                 char(string(getFieldOrDefault(b, 'weather', 'none'))));
+         weatherEqual(getFieldOrDefault(a, 'weather', 'none'), ...
+                      getFieldOrDefault(b, 'weather', 'none'));
+end
+
+function tf = weatherEqual(a, b)
+    % v3.5 §5c.5 — weather is polymorphic: either a legacy string scalar
+    % ('none', 'rain/default_rain', etc.) OR a struct {fallback, regions[]}
+    % when the run carries per-region weather. Compare the fallback string
+    % and the regions array separately so the dirty check handles either
+    % shape without choking on string(struct).
+    aFallback = weatherFallbackOf(a);
+    bFallback = weatherFallbackOf(b);
+    aRegions  = weatherRegionsOf(a);
+    bRegions  = weatherRegionsOf(b);
+    tf = strcmp(aFallback, bFallback) && isequal(aRegions, bRegions);
+end
+
+function s = weatherFallbackOf(w)
+    % Extract the fallback string from either shape. Defaults to 'none'.
+    if isstruct(w)
+        if isfield(w, 'fallback') && ~isempty(w.fallback)
+            s = char(string(w.fallback));
+        else
+            s = 'none';
+        end
+    elseif ischar(w) || isstring(w)
+        s = char(string(w));
+    else
+        s = 'none';
+    end
+    if isempty(s); s = 'none'; end
+end
+
+function r = weatherRegionsOf(w)
+    % Extract the regions array (or empty if the shape doesn't carry one).
+    if isstruct(w) && isfield(w, 'regions')
+        r = w.regions;
+    else
+        r = [];
+    end
 end
 
 function writeJsonFile(path, cfg)

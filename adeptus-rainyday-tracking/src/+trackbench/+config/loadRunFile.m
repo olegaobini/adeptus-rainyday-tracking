@@ -623,6 +623,9 @@ function [fallbackDef, regions] = parseTerrainField(field, configDir)
             if isstruct(regs); regs = num2cell(regs); end
             for i = 1:numel(regs)
                 rec = parseRegion(regs{i});
+                if rec.degenerate
+                    continue;  % warning already emitted in parseRegion
+                end
                 rec.def = loadTerrainFile(char(rec.config_path), configDir);
                 regions{end+1} = rec; %#ok<AGROW>
                 fprintf('[RUN] Terrain region %d: "%s" -> %s (%d pts)\n', ...
@@ -671,6 +674,9 @@ function [fallbackDef, regions] = parseWeatherField(field, configDir)
             if isstruct(regs); regs = num2cell(regs); end
             for i = 1:numel(regs)
                 rec = parseRegion(regs{i});
+                if rec.degenerate
+                    continue;  % warning already emitted in parseRegion
+                end
                 rec.def = loadWeatherFile(char(rec.config_path), configDir);
                 regions{end+1} = rec; %#ok<AGROW>
                 fprintf('[RUN] Weather region %d: "%s" -> %s (%d pts)\n', ...
@@ -718,9 +724,15 @@ function rec = parseRegion(rDef)
             rec.polygon_xy = pxy;   % let validation below catch it
         end
     end
-    if size(rec.polygon_xy, 1) < 3 || size(rec.polygon_xy, 2) ~= 2
+    % A polygon needs >=3 distinct points in an Nx2 array to enclose any
+    % area. parseTerrainField / parseWeatherField check rec.degenerate and
+    % skip the region (with no .def load) when this flag is set, so the
+    % per-detection resolver never sees a bad polygon and the region count
+    % printed downstream reflects the actually usable set.
+    rec.degenerate = size(rec.polygon_xy, 1) < 3 || size(rec.polygon_xy, 2) ~= 2;
+    if rec.degenerate
         warning('loadRunFile:degeneratePolygon', ...
-            'Region "%s" has degenerate polygon (%dx%d) — will be skipped at resolve time.', ...
+            'Region "%s" has degenerate polygon (%dx%d) — skipping (needs >=3 points in an Nx2 array).', ...
             rec.name, size(rec.polygon_xy, 1), size(rec.polygon_xy, 2));
     end
     if strlength(rec.config_path) == 0

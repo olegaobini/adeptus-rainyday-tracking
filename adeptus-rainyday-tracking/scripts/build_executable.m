@@ -72,21 +72,34 @@ function build_executable()
     % Run the MATLAB compiler (mcc)
     %   -m : build standalone executable
     %   -a : add files/folders to the package (config JSONs, src package,
-    %        scripts dir for the sibling GUI .m files mainMenu launches)
+    %        individual scripts that mainMenu launches at runtime)
     %   -d : output directory
     %
     % NOTE: mcc dependency analysis follows function calls statically,
     % so pathEditor / runSimGUI / validationDocsGUI are picked up from
     % mainMenu.m's launchPathEditor / launchRunSim / launchValidationDocs
-    % nested functions automatically. We still pass scriptsDir as -a so
-    % any runtime-only access (e.g. exist('validationDocsGUI','file'))
+    % nested functions automatically. We still pass scriptsDir contents
+    % as -a so any runtime-only access (e.g. exist('validationDocsGUI','file'))
     % succeeds inside the CTF.
+    %
+    % v3.5.x: enumerate TOP-LEVEL scripts/*.m only — a blanket `-a scriptsDir`
+    % is recursive and would pull scripts/legacy/ (archived dev artifacts)
+    % into the CTF, bloating the .exe with dead code that ships to end users.
+    scriptFiles = dir(fullfile(scriptsDir, '*.m'));
+    fprintf('Bundling %d active scripts (scripts/legacy/ excluded):\n', numel(scriptFiles));
+    scriptAddArgs = {};
+    for k = 1:numel(scriptFiles)
+        fprintf('  - %s\n', scriptFiles(k).name);
+        scriptAddArgs{end+1} = '-a'; %#ok<AGROW>
+        scriptAddArgs{end+1} = fullfile(scriptsDir, scriptFiles(k).name); %#ok<AGROW>
+    end
+
     disp(['Running mcc on ', mainScript, '...']);
     disp('This may take a few minutes.')
     mcc('-m', mainScript, ...
         '-a', configDir, ...
         '-a', srcDir, ...
-        '-a', scriptsDir, ...
+        scriptAddArgs{:}, ...
         '-d', outputDir);
 
     % Copy the config folder next to the .exe so users can edit JSON files
