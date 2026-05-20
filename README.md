@@ -7,7 +7,7 @@ under real-world degraded conditions (weather, terrain, sensor limits).
 
 ---
 
-## 👤 Just here to test the app? → **[`TESTING.md`](TESTING.md)**
+## Just here to test the app? → **[`TESTING.md`](TESTING.md)**
 
 One-page guide. Download the .exe from this repo, install it, run the GUI,
 send feedback. No MATLAB needed.
@@ -17,7 +17,7 @@ The installer is right here in the repo at:
 
 ---
 
-## 👩‍💻 Working on the code?
+## Working on the code?
 
 Full developer documentation lives in the project subfolder:
 
