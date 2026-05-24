@@ -8,6 +8,12 @@ slprj/
 results/
 cache/
 
+# Final deliverable bundle (user manual + screenshots) — local staging
+# only. The final delivery is hand-carried / emailed to Boeing, not
+# version controlled. Files here change frequently and the screenshots
+# dir can balloon in size; don't push to GitHub.
+Final Deliverable/
+
 # Build outputs — mostly excluded from git (built locally by
 # build_executable / build_installer; the 1.5 GB offline installer would be
 # rejected by GitHub anyway).

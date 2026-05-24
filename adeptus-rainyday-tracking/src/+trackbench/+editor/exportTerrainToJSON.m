@@ -22,7 +22,7 @@ function outPath = exportTerrainToJSON(state, fullPath)
 %  SCHEMA (matches config/terrain/<TYPE>/default_<TYPE>.json)
 %    {
 %      "description":       "<text>",
-%      "terrain_type":      "rural" | "water" | "urban" | "mountain" | "desert",
+%      "terrain_type":      "none" | "water" | "rural" | "urban" | "mountain" | "desert",
 %      "terrain_scale":     <double>,
 %      "clutter_density":   <double>,
 %      "refraction_factor": <double>

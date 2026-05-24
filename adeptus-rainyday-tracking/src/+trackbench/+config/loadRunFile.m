@@ -587,9 +587,10 @@ function [fallbackDef, regions] = parseTerrainField(field, configDir)
 %parseTerrainField  Parse a runDef.terrain value (legacy string or
 %                   v3.5 multi-region struct). Returns:
 %    fallbackDef  struct from the fallback terrain config file. Always
-%                 populated when input is non-empty — terrain has no
-%                 "none" sentinel; every scenario must resolve to some
-%                 terrain to drive the heightmap.
+%                 populated when input is non-empty — every scenario
+%                 must resolve to some terrain to drive the heightmap.
+%                 For a featureless flat surface, point fallback to
+%                 "none/default_none" (terrain_type="none").
 %    regions      cell array of {config_path, name, polygon_xy, def}
 %                 structs. Empty for legacy single-terrain runs.
     fallbackDef = struct();
@@ -614,7 +615,8 @@ function [fallbackDef, regions] = parseTerrainField(field, configDir)
                 fbStr, fallbackDef.terrain_type);
         else
             error('loadRunFile:noFallbackTerrain', ...
-                'terrain.fallback is required (terrain has no "none" option).');
+                ['terrain.fallback is required. For a flat featureless ' ...
+                 'surface use "none/default_none" (terrain_type="none").']);
         end
         if isfield(field, 'regions') && ~isempty(field.regions)
             regs = field.regions;

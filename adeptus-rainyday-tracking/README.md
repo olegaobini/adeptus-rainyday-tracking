@@ -1,6 +1,6 @@
 # Rainy Day: Advanced Radar Tracking in Degraded Weather
 
-**Version 3.5.1** — Boeing-sponsored senior capstone project, University of Washington.
+**Version 3.5.2** — Boeing-sponsored senior capstone project, University of Washington.
 
 > **Just here to test the app?** See **`TESTING.md`** in the repo root. It's a one-page guide for installing the .exe and trying it out as an end user — no MATLAB required.
 
@@ -74,11 +74,11 @@ autoTuneTracker("my_run", "GNN")   % Two-pass GNN tuning on cached detections
 runTestPlan                    % All 9 test cases, 27 assertions
 verifySimulation               % 40+ diagnostic checks across 8 phases
 
-% Demo video (1080p MP4):
-recordDemoVideo
-
-% Interactive path editor (v3.5.0):
-pathEditor                     % click-and-drag target path drawing → JSON
+% GUI entry points (v3.5.0+):
+mainMenu                       % 3-button launcher (Path Editor / Run Sim / Validation)
+pathEditor                     % click-and-drag scenario builder → JSON
+runSimGUI                      % Run Simulation window with in-app Tracker Editor
+validationDocsGUI              % 27-assertion test plan + diagnostics + docs
 ```
 
 ## How It Works
@@ -170,7 +170,7 @@ config/
 │   └── PSR/ SSR/ AESA/ PAR/ TWS/ FIRE_CONTROL/ ARSR/ IRST/ FLIR/ MARITIME/ WEDGE/ ...
 ├── targets/                    ← Per-behavior folders
 │   └── crossing_pair/ gentle_turn/ s_maneuver/ orbit/ approach/ rcs_demo/ recorded_flight/ ...
-├── terrain/                    ← water / rural / urban / mountain / desert
+├── terrain/                    ← none / water / rural / urban / mountain / desert
 ├── trackers/                   ← GNN / JPDA / TOMHT + tracker_globals.json
 └── weather/                    ← rain / snow / fog / icing
 ```
@@ -202,19 +202,17 @@ config/
 |--------|--------------|
 | `mainMenu.m` | 3-button main menu (this is the EXE entry point) |
 | `pathEditor.m` | Interactive scenario builder (Path Editor window) |
-| `runSimGUI.m` | Run Simulation window with cache/dirty tracking |
+| `runSimGUI.m` | Run Simulation window with cache/dirty tracking and in-app Tracker Editor |
 | `validationDocsGUI.m` | Test plan + diagnostic suite + docs window |
 | `runSingleScenario.m` | Run a scenario from the MATLAB console |
 | `runTestPlan.m` | Validation suite (27 assertions across 9 test cases) |
 | `verifySimulation.m` | 40+ standalone diagnostic checks |
 | `autoTuneTracker.m` | Two-pass parameter sweep |
-| `runNASAFlight.m` | Real flight demo (uses Tail_687_1) |
-| `build_executable.m` | Compile mainMenu.exe via mcc |
-| `compareTrackers.m`, `compareAllTrackers.m`, `runComparisonDemo.m` | Tracker comparison tools |
-| `recordDemoVideo.m` | 1080p MP4 export |
+| `compareTrackers.m` | Side-by-side tracker comparison |
+| `runNASAFlight.m`, `scanNASAFlights.m`, `viewNASAFlightGlobe.m` | NASA real flight data tools |
+| `build_executable.m`, `build_installer.m` | Compile `mainMenu.exe` and the Web/Offline installer |
 | `diagBeamLimits.m`, `diagnoseBadDetections.m`, `diagVerifyTargetIndex.m` | Detection diagnostics |
-| `testPathEditor_M*.m` | Editor regression tests |
-| `verifyM*_endToEnd.m` | Milestone end-to-end checks |
+| `legacy/` | Milestone test scripts, presentation-prep helpers, superseded launchers (kept for archeology, excluded from CTF bundle) |
 
 ## Available Sensor Types (19)
 
@@ -287,6 +285,12 @@ Optional physical properties (v3.2.0+):
 
 Volume and beta live per-tracker because GNN and JPDA use them with opposite
 effects.
+
+Both per-tracker and global params can be edited directly from the Run
+Simulation window via *Edit Tracker* and *Edit Globals…* (v3.5.2) — no JSON
+editing required. The in-app editor enforces field constraints, shows
+typical-value tooltips, and emits save-time warnings for inverted
+thresholds or non-monotonic TOMHT multipliers.
 
 ### Auto-Tune Tracker (v3.4.0)
 
@@ -375,11 +379,16 @@ Each weather config carries a **storm window** with three profile types:
 
 | terrain_type | Occlusion | Masking | Clutter | Density | Max Elevation |
 |-------------|-----------|---------|---------|---------|--------------|
+| `none` | OFF | OFF | OFF | 0 | 0m |
 | `water` | OFF | OFF | OFF | 0 | 0m |
 | `rural` | ON | ON | ON | 0.3 | ~73m |
 | `urban` | ON | ON | ON | 0.6 | ~150m |
 | `mountain` | ON | ON | ON | 0.5 | ~1960m |
 | `desert` | ON | ON | ON | 0.2 | ~40m |
+
+`none` and `water` both produce a perfectly flat surface; `none` is the
+default for fresh editor sessions and is the right pick when you want a
+baseline clean run with no terrain contribution at all.
 
 ### Beam Envelope Visualization (v3.4.1)
 `drawBeamEnvelope.m` queries `coverageConfig()` for exact scan limits and
@@ -444,7 +453,7 @@ configuration.
 ## Validation & Testing
 
 `scripts/runTestPlan.m` executes 9 test cases containing 27 assertions.
-Current status (v3.4.2): **27/27 passing**. The Validation & Documentation
+Current status (v3.5.2): **27/27 passing**. The Validation & Documentation
 window in the main menu runs the same suite with an inline result grid.
 
 | TC | Name | What It Validates |
@@ -551,7 +560,50 @@ Boeing Proprietary.
 
 ## Change Log
 
-### v3.5.1 — April 25, 2026 (current)
+### v3.5.2 — May 2026 (current)
+
+**Tracker Editor, "none" terrain type, EXE bug-fix sweep, physics audit refresh.**
+
+- **Tracker Editor** in the Run Simulation window — click any tracker in the
+  list and press *Edit Tracker* to edit its full parameter set (gate, FAR,
+  beta, volume, confirm/delete thresholds, JPDA probabilities, TOMHT branch
+  multipliers, …) without touching JSON. Save As with name validation,
+  overwrite confirm, and round-trip preservation of cross-tracker fields.
+  *Edit Globals…* edits `tracker_globals.json` (max tracks, ideal/degraded
+  Pd, filter init params). Per-field tooltips with typical-value hints;
+  save-time cross-field warnings flag inverted threshold/probability
+  orderings or non-monotonic TOMHT multipliers.
+- **"none" terrain type** added as the default for fresh editor sessions.
+  Truly flat (no heightmap, no clutter, no occlusion). Lives at
+  `config/terrain/none/default_none.json` and round-trips through the
+  editor and run-file pipelines identically to the other terrain types.
+- **Deployed-executable bug fixes** — five separate issues fixed in the
+  `.exe` build:
+  - Path resolution: scripts using `mfilename('fullpath')` were writing
+    into the read-only CTF cache. Replaced with a deployed-mode-aware
+    helper.
+  - `degEqual` crash on polymorphic weather field (string vs. struct).
+  - Degenerate-polygon warning from `parseRegion` in `loadRunFile`.
+  - Auto-tune silently defaulting to IMM regardless of the JSON's
+    `filter_model`.
+  - Hardcoded `maxRange = 111120` over-normalized short-range scenarios.
+- **Path Editor polish** — 3D view toggle now reachable in Sensors and
+  Environment modes (was scenario-mode only), `V` shortcut documented in
+  the help overlay, `setIfGraphics` crash on map-click sensor placement
+  fixed.
+- **Physics validation audit refresh** — `docs/physics_validation_audit.md`
+  gained a v3.4+/v3.5 addendum covering ground clutter, horizon masking,
+  the snow/fog/icing weather dispatchers, and the full `runDetections`
+  orchestration (every toggle traced to its physics code path). Two
+  defensive doc-only notes added in source: ITU-R P.838-3 fallback table
+  caveat in `applyRainDegradation.m`, hardcoded-PRF caveat in
+  `applyDopplerFade.m`. No functional physics changes.
+- **Codebase cleanup** — milestone test scripts, presentation-prep helpers,
+  and superseded launchers moved to `scripts/legacy/` (excluded from the
+  CTF bundle). Active `scripts/` now contains only what end-users and
+  developers actually run.
+
+### v3.5.1 — April 25, 2026
 
 **Per-user data directory for installed builds.** Fixes a Windows permissions trap where standard users (no admin elevation) could not save anything when the app was installed to `C:\Program Files\` via the Web/Offline installer.
 
@@ -684,5 +736,5 @@ to per-component JSON files.
 
 ---
 
-**Last Updated:** April 25, 2026
-**Version:** 3.5.1
+**Last Updated:** May 24, 2026
+**Version:** 3.5.2

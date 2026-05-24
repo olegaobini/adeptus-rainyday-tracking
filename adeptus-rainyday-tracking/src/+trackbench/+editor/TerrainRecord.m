@@ -19,11 +19,19 @@ classdef TerrainRecord
 %    object. Do not change this.
 %
 %  SUPPORTED TYPES (M7 editing)
-%    water, rural, urban, mountain, desert. Anything else loads as
-%    UNKNOWN passthrough: readOnly=true, originalDef holds the
+%    none, water, rural, urban, mountain, desert. Anything else loads
+%    as UNKNOWN passthrough: readOnly=true, originalDef holds the
 %    verbatim parsed JSON so re-export round-trips it. The editor
 %    disables Terrain-panel fields in passthrough and renders the
 %    map with a neutral gray tint.
+%
+%    v3.5 §5e: "none" is the fresh-session default (was "rural" pre-5e).
+%    The on-disk default config for it is
+%    config/terrain/none/default_none.json. Semantically it means
+%    "this scenario does not model terrain" — flat z=0 ground, no
+%    occlusion, no terrain-derived clutter. Functionally equivalent
+%    to water for heightmap purposes but distinct so the editor map
+%    can render a truly blank background on first open.
 %
 %  ON-DISK FIELD NAMES (match config/terrain/<TYPE>/<file>.json)
 %    description      <-> description
@@ -43,10 +51,10 @@ classdef TerrainRecord
 
     properties
         % ── On-disk fields ────────────────────────────────────────
-        description      (1,1) string = "Rolling farmland, 80m peaks, light clutter."
-        terrainType      (1,1) string = "rural"    % water|rural|urban|mountain|desert
+        description      (1,1) string = "No terrain — flat ground at z=0. No occlusion, no clutter."
+        terrainType      (1,1) string = "none"     % none|water|rural|urban|mountain|desert
         terrainScale     (1,1) double = 1
-        clutterDensity   (1,1) double = 0.3
+        clutterDensity   (1,1) double = 0
         refractionFactor (1,1) double = 1.333
 
         % ── Editor-local / passthrough ─────────────────────────────
@@ -62,19 +70,20 @@ classdef TerrainRecord
 
     methods
         function tf = isFlat(obj)
-            %isFlat  True when the terrain has no elevation features —
-            %        only water qualifies. Used by the 2D map tint
-            %        renderer to decide whether to skip drawing the
-            %        tint at all (the sim's generateTerrain returns a
-            %        zero heightmap for water).
-            tf = strcmpi(obj.terrainType, "water");
+            %isFlat  True when the terrain has no elevation features.
+            %        Both "none" and "water" qualify — the sim's
+            %        generateTerrain returns a zero heightmap for
+            %        both. Used by the 2D map tint renderer to decide
+            %        whether to skip drawing the tint at all.
+            tf = strcmpi(obj.terrainType, "none") || ...
+                 strcmpi(obj.terrainType, "water");
         end
 
         function tf = isSupportedType(obj)
-            %isSupportedType  True iff terrainType is one of the five
+            %isSupportedType  True iff terrainType is one of the six
             %                 editor-editable types. False on UNKNOWN
             %                 passthrough — UI should disable fields.
-            supported = ["water","rural","urban","mountain","desert"];
+            supported = ["none","water","rural","urban","mountain","desert"];
             tf = any(strcmpi(obj.terrainType, supported));
         end
     end

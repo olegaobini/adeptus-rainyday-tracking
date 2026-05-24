@@ -146,8 +146,9 @@ classdef EditorState < handle
 
         % ── Environment state (M7 §3.1) ─────────────────────────────
         %  Every scenario owns exactly one TerrainRecord (terrain is
-        %  never empty; water is the "no terrain effect" baseline, not
-        %  absence). Weather is optional — empty array when the
+        %  never empty; "none" is the no-terrain-effect baseline, not
+        %  absence — it produces a flat z=0 heightmap with no occlusion
+        %  and no clutter). Weather is optional — empty array when the
         %  scenario has no weather configured, or a single WeatherRecord
         %  when it does. Readers MUST isempty()-guard on `weather`.
         %
@@ -232,10 +233,19 @@ classdef EditorState < handle
         selectHitRadiusM (1,1) double = 500
 
         % ── Middle-click pan state (2D only) ─────────────────────────
-        panActive        (1,1) logical = false
-        panStartFigPt    double = []
-        panStartXLim     double = []
-        panStartYLim     double = []
+        panActive          (1,1) logical = false
+        panStartFigPt      double = []
+        panStartXLim       double = []   % 2D pan only
+        panStartYLim       double = []   % 2D pan only
+        % v3.5 §5f — 3D pan extension. Camera transform captured at
+        % pan-begin (middle-click in 3D), then position+target are
+        % translated by the same offset in the camera's right/up plane
+        % during mousemove. 2D pan continues to operate on axis limits;
+        % the panActive flag is shared.
+        panStartCamPos     double = []   % 3D pan only [x y z]
+        panStartCamTarget  double = []   % 3D pan only [x y z]
+        panStartCamUp      double = []   % 3D pan only [x y z]
+        panStartCamVA      (1,1) double = 0   % 3D pan only (degrees)
 
         % ── Sensor interaction state (M6 §3.5) ───────────────────────
         %  sensorPlacePending  — set by Place-on-map button; next axes
