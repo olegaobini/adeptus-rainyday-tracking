@@ -64,6 +64,13 @@ function [keptDets, diagInfo] = applyDopplerFade(dets, sensorPos, targets, senso
     % For S-band (2.8 GHz), λ ≈ 0.107m, PRF ≈ 1000 Hz → MDV ≈ 27 m/s
     % For X-band (9 GHz), λ ≈ 0.033m, PRF ≈ 1000 Hz → MDV ≈ 8 m/s
     % Lower frequency = larger wavelength = wider blind zone
+    %
+    % NOTE (v3.4.x physics audit): prf_assumed is hardcoded to 1000 Hz.
+    % Real radars vary: PSR ≈1 kHz, ASR ≈1.5 kHz, X-band fire-control
+    % ≈3 kHz. For S-band PSR (the common Boeing demo case) this is
+    % correct. For X-band the true MDV is closer to 24 m/s, not 8 m/s.
+    % TODO post-demo: read PRF from sensorInfo (add PRF field to
+    % SensorRecord schema and loadSensors metadata).
     if nargin >= 4 && isfield(sensorInfo, 'radarFreq') && sensorInfo.radarFreq > 0
         freq = sensorInfo.radarFreq;
         lambda = physconst('LightSpeed') / freq;

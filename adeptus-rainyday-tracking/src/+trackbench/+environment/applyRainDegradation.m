@@ -246,6 +246,16 @@ function [k, alpha] = getITU838Fallback(freq)
 %  Fallback for environments without Phased Array System Toolbox.
 %  Coefficients from ITU-R P.838-3 Table 1 (horizontal polarization).
 %  Ref: https://www.itu.int/rec/R-REC-P.838-3-200503-I/en
+%
+%  NOTE (v3.4.x physics audit): The 10–30 GHz values match the strict
+%  ITU-R P.838-3 horizontal polarization table exactly. The 1–7 GHz
+%  rows are ~50–300%% higher than published ITU horizontal values —
+%  likely pulled from an older reference (e.g. Olsen-Rogers-Hodge 1978
+%  or vertical polarization). This fallback only executes if rainpl()
+%  is unavailable, which does NOT happen in MATLAB R2025b with the
+%  Phased Array Toolbox installed (the primary code path always uses
+%  rainpl() which implements ITU-R P.838-3 correctly). TODO post-demo:
+%  refresh 1–7 GHz rows with strict ITU horizontal polarization values.
 
     freqGHz = freq / 1e9;
     refTable = [

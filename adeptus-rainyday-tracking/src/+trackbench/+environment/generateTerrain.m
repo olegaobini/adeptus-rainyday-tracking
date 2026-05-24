@@ -10,6 +10,10 @@ function [Zterrain, boundary, Xg, Yg] = generateTerrain(terrainType, scenarioBou
 %  checks that replace the simpler 4/3 Earth horizon model.
 %
 %  TERRAIN PROFILES:
+%    none     — Flat ground (z=0). No occlusion, no terrain-derived clutter.
+%                Same heightmap as water, distinct semantically: "no terrain
+%                model in play" vs. "open ocean". Used as the editor's
+%                fresh-session default so new scenarios start clean.
 %    water    — Flat sea level (z=0). No terrain occlusion.
 %    rural    — Gentle rolling hills, 20-80m peaks. Minimal occlusion.
 %    urban    — Mostly flat with building-cluster bumps (50-150m).
@@ -17,7 +21,7 @@ function [Zterrain, boundary, Xg, Yg] = generateTerrain(terrainType, scenarioBou
 %    desert   — Flat with gentle dunes, 10-40m. Negligible occlusion.
 %
 %  INPUTS
-%    terrainType    : 'water'|'rural'|'urban'|'mountain'|'desert' (string)
+%    terrainType    : 'none'|'water'|'rural'|'urban'|'mountain'|'desert' (string)
 %    scenarioBounds : [xMin xMax; yMin yMax] bounding box (m), or empty
 %    elevScale      : elevation multiplier (default 1.0)
 %
@@ -45,6 +49,13 @@ function [Zterrain, boundary, Xg, Yg] = generateTerrain(terrainType, scenarioBou
     rng(42, 'twister');
     
     switch terrainType
+        case "none"
+            % No terrain model — truly flat ground at z=0. Same numeric
+            % grid as water but logged distinctly so console output makes
+            % it obvious the scenario opted out of terrain entirely
+            % (water is "open ocean"; none is "don't model terrain").
+            Zterrain = zeros(nPts);
+
         case "water"
             Zterrain = zeros(nPts);
             

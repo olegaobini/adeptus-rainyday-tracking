@@ -219,7 +219,7 @@ for pp = (numSensorPlats+1):numel(allPlats)
 end
 
 %% ---- 5. Terrain type valid ----
-validTerrains = ["water", "rural", "urban", "mountain", "desert"];
+validTerrains = ["none", "water", "rural", "urban", "mountain", "desert"];
 if isfield(config, 'environment') && isfield(config.environment, 'terrain_type')
     tt = lower(string(config.environment.terrain_type));
     if ~any(tt == validTerrains)
@@ -321,9 +321,9 @@ if isfield(config, 'environment')
     env = config.environment;
     tt = lower(string(env.terrain_type));
     
-    if tt == "water" && isfield(env, 'terrain_occlusion') && env.terrain_occlusion
-        issues{end+1} = makeIssue('INFO', 'Occlusion On Water', ...
-            'terrain_occlusion=true but terrain_type="water" — flat surface, no occlusion effect.', ...
+    if (tt == "water" || tt == "none") && isfield(env, 'terrain_occlusion') && env.terrain_occlusion
+        issues{end+1} = makeIssue('INFO', 'Occlusion On Flat Terrain', ...
+            sprintf('terrain_occlusion=true but terrain_type="%s" — flat surface, no occlusion effect.', tt), ...
             'This is harmless but unnecessary. Set terrain_occlusion=false or change terrain_type.');
     end
     

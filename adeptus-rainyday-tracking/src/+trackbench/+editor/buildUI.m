@@ -204,7 +204,10 @@ function buildUI(state)
     %     The sub-mode toggle is hidden entirely when not in environment
     %     mode (no greyed-out version) — matches existing top-level mode
     %     toggle behavior.
-    inner.RowHeight   = {85, 145, 378, 230, 378, 50, 280, 340, 250, 250, 240, 65, 60, 115};
+    % v3.5 §5d: Mode Toggle (row 1) grew 85 → 120 px to host the
+    % relocated 2D/3D view toggle; Scenario (row 5) shrank 378 → 350 px
+    % since that toggle is no longer one of its rows. Net +7 px overall.
+    inner.RowHeight   = {120, 145, 378, 230, 350, 50, 280, 340, 250, 250, 240, 65, 60, 115};
     inner.ColumnWidth = {'1x'};
     inner.RowSpacing  = 4;
     inner.Scrollable  = 'on';
@@ -321,13 +324,22 @@ end
 %% ========================================================================
 
 function buildModeTogglePanel(parent, state)
-%buildModeTogglePanel  M6 §3.2 — Mode toggle sub-panel (row 1, 85 px).
+%buildModeTogglePanel  M6 §3.2 — Mode toggle sub-panel (row 1, ~120 px).
+%
+%  v3.5 §5d (3D-toggle relocation): the 2D/3D view toggle used to
+%  live in the Scenario sub-panel (row 9). It was moved up here so it
+%  stays visible — and clickable — in Sensors and Environment edit
+%  modes too. View mode is global; it doesn't belong to any one
+%  edit mode.
 %
 %  Layout:
 %    ┌─ Edit mode ──────────────────────────────────┐
-%    │ ┌──────────────┐ ┌──────────────┐            │
-%    │ │   Targets    │ │   Sensors    │            │
-%    │ └──────────────┘ └──────────────┘            │
+%    │ ┌───────┐ ┌───────┐ ┌──────────────────┐     │
+%    │ │Targets│ │Sensors│ │   Environment    │     │
+%    │ └───────┘ └───────┘ └──────────────────┘     │
+%    │ ┌──────────────────────────────────────────┐ │
+%    │ │   View: 2D (click to switch to 3D)       │ │
+%    │ └──────────────────────────────────────────┘ │
 %    │ Click a button to switch editable sub-panels │
 %    └──────────────────────────────────────────────┘
 %
@@ -344,8 +356,8 @@ function buildModeTogglePanel(parent, state)
 %    replacement and also mirrors the existing curveModeBtn / viewModeBtn
 %    pattern elsewhere in this file.
     pnl = uipanel(parent, 'Title', 'Edit mode');
-    g = uigridlayout(pnl, [2 1]);
-    g.RowHeight   = {30, 22};
+    g = uigridlayout(pnl, [3 1]);
+    g.RowHeight   = {30, 28, 22};
     g.ColumnWidth = {'1x'};
     g.Padding     = [6 6 6 6];
     g.RowSpacing  = 2;
@@ -382,12 +394,25 @@ function buildModeTogglePanel(parent, state)
         'Tooltip', 'Edit terrain, weather, and physics degradation toggles.', ...
         'ValueChangedFcn', @(src, ~) onModeEnvironmentPressed(src, state));
 
-    % Row 2 — hint label
+    % Row 2 — 2D/3D view toggle. View applies to ALL edit modes (not
+    % just Targets), so this lives in the always-visible Mode Toggle
+    % panel rather than down inside the Scenario sub-panel (where it
+    % used to live in M3.3). State-button pattern matches curveModeBtn
+    % so the "you are HERE" affordance is consistent.
+    state.viewModeBtn = uibutton(g, 'state', ...
+        'Text', viewButtonText(state.viewMode), ...
+        'Value', strcmp(char(state.viewMode), '3d'), ...
+        'Tooltip', 'Toggle between 2D map view and 3D camera view (V key).', ...
+        'ValueChangedFcn', @(src, ~) onViewModeChanged(src, state));
+    state.viewModeBtn.Layout.Row    = 2;
+    state.viewModeBtn.Layout.Column = 1;
+
+    % Row 3 — hint label
     hint = uilabel(g, ...
         'Text', 'Click a button to switch editable sub-panels.', ...
         'FontColor', [0.4 0.4 0.4], ...
         'FontSize', 11);
-    hint.Layout.Row = 2;
+    hint.Layout.Row = 3;
     hint.Layout.Column = 1;
 end
 
@@ -838,17 +863,22 @@ function buildScenarioPanel(parent, state)
     % panel title between "Scenario" and the read-only banner text when
     % the active target is a reference.
     state.scenarioPanel = pnl;
-    % 13 rows: the five scenario-field pairs, waypoint count, M3.1
-    % colormap checkbox, M3.2 grid dropdown, M3.3 2D/3D toggle, the
-    % M4.3.2 curve-mode toggle, the M4.3.3 curve-tension dropdown,
-    % the Apply-altitude button, and the M3.4 preview button.
-    % Height: 13*24 + 12*4 + 2*6 = 372; the inner grid row for this
-    % panel in buildUI is 378.
+    % 12 rows: the five scenario-field pairs, waypoint count, M3.1
+    % colormap checkbox, M3.2 grid dropdown, the M4.3.2 curve-mode
+    % toggle, the M4.3.3 curve-tension dropdown, the Apply-altitude
+    % button, and the M3.4 preview button.
+    %
+    % v3.5 §5d: the M3.3 2D/3D toggle was moved up to the Mode Toggle
+    % panel so it stays visible in Sensors and Environment edit modes
+    % too. That dropped this panel from 13 rows to 12.
+    %
+    % Height: 12*24 + 11*4 + 2*6 = 344; the inner grid row for this
+    % panel in buildUI is 350.
     %
     % GOTCHA (M2 feedback): Do NOT use 'fit' for row heights here —
     % the parent is scrollable and 'fit' triggers MATLAB's layout
     % recursion. Explicit pixel heights are required.
-    nRows = 13;
+    nRows = 12;
     g = uigridlayout(pnl, [nRows 2]);
     g.RowHeight   = repmat({24}, 1, nRows);
     g.ColumnWidth = {120, '1x'};
@@ -904,16 +934,6 @@ function buildScenarioPanel(parent, state)
         'Value', state.gridSpacingKm, ...
         'ValueChangedFcn', @(src, ~) onGridSpacingChanged(src, state));
 
-    % M3.3 — 2D/3D view toggle. Uses a state-button so we can see at a
-    % glance which mode is active. 2D is the editing mode; 3D is view-
-    % only and disables click-to-add + drag.
-    state.viewModeBtn = uibutton(g, 'state', ...
-        'Text', viewButtonText(state.viewMode), ...
-        'Value', strcmp(char(state.viewMode), '3d'), ...
-        'ValueChangedFcn', @(src, ~) onViewModeChanged(src, state));
-    state.viewModeBtn.Layout.Row    = 9;
-    state.viewModeBtn.Layout.Column = [1 2];
-
     % M4.3.2 — Curve-mode toggle. Straight is the M3 default; flipping
     % this on enables a centripetal Catmull-Rom interpolation through
     % the control waypoints for rendering (and, once §3.4 lands, for
@@ -923,7 +943,7 @@ function buildScenarioPanel(parent, state)
         'Text', curveButtonText(state.curveMode), ...
         'Value', strcmp(char(state.curveMode), 'curved'), ...
         'ValueChangedFcn', @(src, ~) onCurveModeChanged(src, state));
-    state.curveModeBtn.Layout.Row    = 10;
+    state.curveModeBtn.Layout.Row    = 9;
     state.curveModeBtn.Layout.Column = [1 2];
 
     % M4.3.3 — Curve tension dropdown. Controls the Catmull-Rom alpha:
@@ -951,7 +971,7 @@ function buildScenarioPanel(parent, state)
         'Text', 'Apply default altitude to all waypoints', ...
         'ButtonPushedFcn', @(~, ~) onApplyDefaultAltitude(state));
     applyAltBtn.Layout.Column = [1 2];
-    applyAltBtn.Layout.Row    = 12;
+    applyAltBtn.Layout.Row    = 11;
 
     % M3.4 — Preview Animation button. Opens a secondary uifigure that
     % animates a marker along the current waypoint path using the
@@ -965,7 +985,7 @@ function buildScenarioPanel(parent, state)
                     'the current waypoint path (view-only).'], ...
         'ButtonPushedFcn', @(~, ~) onPreviewRequest(state));
     state.previewBtn.Layout.Column = [1 2];
-    state.previewBtn.Layout.Row    = 13;
+    state.previewBtn.Layout.Row    = 12;
 end
 
 
@@ -1044,7 +1064,7 @@ function buildTerrainPanel(parent, state)
     lblType = uilabel(g, 'Text', 'Type', 'HorizontalAlignment', 'right');
     lblType.Layout.Row = 1; lblType.Layout.Column = 1;
     state.terrainTypeDD = uidropdown(g, ...
-        'Items', {'water','rural','urban','mountain','desert'}, ...
+        'Items', {'none','water','rural','urban','mountain','desert'}, ...
         'Value', char(state.terrain.terrainType), ...
         'Tooltip', 'Terrain type. Changing this resets the fields below to that type''s disk defaults.', ...
         'ValueChangedFcn', @(src, ~) onTerrainTypeChanged(src, state));
@@ -1449,7 +1469,7 @@ function buildHelpPanel(parent)
          'Del: remove  |  Ctrl+Z/Y: undo/redo  |  Esc: clear selection' newline ...
          'V: 2D/3D  |  Arrows: nudge 100 m (Shift = 1 km)' newline ...
          'PgUp/PgDn: altitude ±100 m (Shift = ±1 km)' newline ...
-         'Wheel: zoom  |  Middle-drag: pan (2D)'], ...
+         'Wheel: zoom  |  Middle-drag: pan (2D; 3D via built-in)'], ...
         'WordWrap', 'on', 'FontColor', [0.3 0.3 0.3], 'FontSize', 11);
 end
 
@@ -1485,6 +1505,15 @@ function onAxesClick(~, evt, state)
 
     % Middle-click = pan-begin (2D only). In 3D the axes' built-in
     % interactivity owns middle-click-drag, so we just let it through.
+    %
+    % v3.5 §5f post-mortem: tried five iterations of custom 3D pan
+    % (camera translation, axis-limit shift with view projection,
+    % auto-mode forcing, camdolly) and each had bugs around either
+    % CameraPosition mutation from uifigure's built-in 3D interactions
+    % or wheel-zoom reversal afterward. Reverted to letting MATLAB's
+    % built-in pan tool own middle-click in 3D. Custom shortcuts
+    % (arrows = rotate, wheel = zoom, R = reset) cover the rest;
+    % the pan parity nice-to-have is parked as post-demo work.
     if isMiddleClick && ~in3D
         state.panActive     = true;
         state.panStartFigPt = state.fig.CurrentPoint;
@@ -1956,6 +1985,11 @@ function onMouseUp(~, state)
         state.panStartFigPt = [];
         state.panStartXLim  = [];
         state.panStartYLim  = [];
+        % v3.5 §5f — 3D pan camera-state cleanup
+        state.panStartCamPos    = [];
+        state.panStartCamTarget = [];
+        state.panStartCamUp     = [];
+        state.panStartCamVA     = 0;
         % Full redraw once at pan end so the scale bar label and minor
         % grid catch up to the new visible span. During the drag we
         % skipped drawMap for smoothness.
@@ -3406,6 +3440,11 @@ function onViewModeChanged(src, state)
     state.panStartFigPt = [];
     state.panStartXLim = [];
     state.panStartYLim = [];
+    % v3.5 §5f — also clear 3D pan camera state on view-mode switch
+    state.panStartCamPos    = [];
+    state.panStartCamTarget = [];
+    state.panStartCamUp     = [];
+    state.panStartCamVA     = 0;
     % Force autofit on the destination view so a mode switch always
     % frames the current scene cleanly. v3.5 fix — has2DViewState added
     % parallel to has3DViewState: stale axis limits from the
@@ -3416,7 +3455,7 @@ function onViewModeChanged(src, state)
     trackbench.editor.drawMap(state);
     if state.viewMode == "3d"
         setStatus(state, ...
-            '3D view: pan/zoom via the axes toolbar. Switch to 2D to edit.');
+            '3D view: middle-drag to pan, arrows to rotate, wheel to zoom. Switch to 2D to edit.');
     else
         setStatus(state, '2D view: click to add, drag to move.');
     end
@@ -4702,21 +4741,25 @@ function onSensorPlaceOnMap(state)
 %                     active sensor. Guarded on editMode + hasActiveSensor
 %                     so a stale Enable state (or keyboard-activated
 %                     button) can't place a ghost sensor.
+%
+%  v3.5 §5g fix: previous version called setIfGraphics(h, 'Text', …)
+%  to update the status label, but setIfGraphics is the 2-arg
+%  Value-setter (handle, value) — the 3-arg call raised "Too many
+%  input arguments" every time the user pressed Place-on-map. The
+%  canonical helper for statusLabel is setStatus(state, msg); use it.
     if state.editMode ~= "sensors"; return; end
     if ~state.hasActiveSensor()
-        setIfGraphics(state.statusLabel, 'Text', ...
-            'No active sensor to place — add one first.');
+        setStatus(state, 'No active sensor to place — add one first.');
         return;
     end
     if state.activeSensorIsReadOnly()
-        setIfGraphics(state.statusLabel, 'Text', ...
-            'Active sensor is read-only — duplicate it first.');
+        setStatus(state, 'Active sensor is read-only — duplicate it first.');
         return;
     end
     state.sensorPlacePending = true;
     sr = state.activeSensor();
-    setIfGraphics(state.statusLabel, 'Text', ...
-        sprintf('Click on map to place %s. (Esc to cancel.)', sr.sensorName));
+    setStatus(state, sprintf( ...
+        'Click on map to place %s. (Esc to cancel.)', sr.sensorName));
 end
 
 
@@ -5129,12 +5172,14 @@ function applyEditMode(state)
     end
 
     % ── Scenario panel gate ────────────────────────────────────────
+    %  v3.5 §5d: state.viewModeBtn was moved out of the Scenario panel
+    %  and up into the always-visible Mode Toggle panel, so it is no
+    %  longer in this gate list — it must stay enabled in every mode.
     scenarioFields = {state.nameField,       state.speedField, ...
                       state.altField,        state.rcsField, ...
                       state.rcsProfileDD,    state.curveModeBtn, ...
                       state.curveTensionDD,  state.colorByAltCheckbox, ...
-                      state.gridSpacingDD,   state.viewModeBtn, ...
-                      state.previewBtn};
+                      state.gridSpacingDD,   state.previewBtn};
     for k = 1:numel(scenarioFields)
         setEnableIfGraphics(scenarioFields{k}, targetsOn);
     end

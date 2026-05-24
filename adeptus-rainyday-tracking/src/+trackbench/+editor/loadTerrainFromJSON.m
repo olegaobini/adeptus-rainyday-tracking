@@ -25,7 +25,7 @@ function tr = loadTerrainFromJSON(projectRoot, relPath)
 %      terrainScale      ← terrain_scale
 %      clutterDensity    ← clutter_density
 %      refractionFactor  ← refraction_factor
-%    Any terrain_type NOT in {water, rural, urban, mountain, desert}
+%    Any terrain_type NOT in {none, water, rural, urban, mountain, desert}
 %    loads as UNKNOWN passthrough: readOnly=true, the TerrainRecord
 %    type field is left at the verbatim decoded type (string), and
 %    originalDef carries the full parsed struct so saveScenarioToJSON
@@ -73,7 +73,7 @@ function tr = loadTerrainFromJSON(projectRoot, relPath)
     if isfield(def, 'terrain_type') && ~isempty(def.terrain_type)
         rawType = lower(string(def.terrain_type));
     end
-    supported = ["water", "rural", "urban", "mountain", "desert"];
+    supported = ["none", "water", "rural", "urban", "mountain", "desert"];
     isSupported = any(rawType == supported);
 
     if isSupported

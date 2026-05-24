@@ -20,9 +20,9 @@ function tr = terrainDefaults(typeStr)
 %    rule.
 %
 %  SUPPORTED TYPES
-%    water, rural, urban, mountain, desert. Other inputs fall
-%    through to rural-shaped defaults — the Type dropdown restricts
-%    input, so the fall-through is belt-and-braces.
+%    none, water, rural, urban, mountain, desert. Other inputs
+%    fall through to rural-shaped defaults — the Type dropdown
+%    restricts input, so the fall-through is belt-and-braces.
 %
 %  See also: trackbench.editor.TerrainRecord,
 %            trackbench.editor.EditorState,
@@ -37,6 +37,10 @@ function tr = terrainDefaults(typeStr)
     tr.originalDef      = struct();
 
     switch lower(string(typeStr))
+        case "none"
+            tr.description    = "No terrain — flat ground at z=0. No occlusion, no clutter.";
+            tr.clutterDensity = 0;
+
         case "water"
             tr.description    = "Flat sea level. No effects. Open ocean / coastal.";
             tr.clutterDensity = 0;

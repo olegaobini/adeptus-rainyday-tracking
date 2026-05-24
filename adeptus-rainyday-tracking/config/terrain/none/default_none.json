@@ -1,0 +1,7 @@
+{
+  "description": "No terrain — flat ground at z=0. No occlusion, no clutter.",
+  "terrain_type": "none",
+  "terrain_scale": 1,
+  "clutter_density": 0,
+  "refraction_factor": 1.333
+}

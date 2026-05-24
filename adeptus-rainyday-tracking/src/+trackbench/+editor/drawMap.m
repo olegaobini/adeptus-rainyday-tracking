@@ -347,6 +347,14 @@ function drawMap3D(state, ax)
     % Re-enable default interactions so rotate/pan/zoom via the axes
     % toolbar works. Editing click/drag is blocked in onAxesClick, so
     % this does not conflict with M2 behavior.
+    %
+    % v3.5 §5f post-mortem: tried five iterations of replacing this
+    % with disableDefaultInteractivity + custom 3D pan and the
+    % uifigure 3D interaction internals fought every approach
+    % (camera translation, axis-limit shift, auto-mode forcing,
+    % camdolly). Reverted. 3D pan via middle-click goes through
+    % MATLAB's built-in mechanism here; custom shortcuts (arrows,
+    % wheel, R) own rotation, zoom, reset.
     enableDefaultInteractivity(ax);
 
     % Colorbar off by default; altitude branch re-enables it.
@@ -1148,6 +1156,7 @@ function drawTerrainTint2D(ax, state)
 %                    intercepts map clicks.
 %
 %  Per-type colors per handoff §3.3:
+%    none     → skip entirely (no tint — clean blank background)
 %    water    → pale blue
 %    rural    → pale green
 %    urban    → pale gray
@@ -1160,6 +1169,13 @@ function drawTerrainTint2D(ax, state)
 %  border. The patch is re-issued every drawMap call, so stale coverage
 %  from a prior viewport is cleared by cla(ax,'reset').
     tr = state.terrain;
+    % v3.5 §5e: "none" means "no terrain modelling" — render absolutely
+    % nothing so the editor opens with a blank canvas. Skipping the tint
+    % is the simplest way to keep the map clean without special-casing
+    % the heightmap renderer or the colorbar.
+    if strcmpi(tr.terrainType, "none")
+        return;
+    end
     tint = terrainTintColor(tr.terrainType);
 
     % Pick a rectangle at least as wide as the active XLim/YLim, with a
@@ -1180,7 +1196,11 @@ end
 function rgb = terrainTintColor(terrainType)
 %terrainTintColor  Per-type background tint. Unknown types get neutral
 %                   gray so UNKNOWN-passthrough terrain still renders.
+%                   "none" is included for completeness but callers
+%                   (drawTerrainTint2D) skip the patch entirely for
+%                   "none" — the returned color is never actually drawn.
     switch lower(string(terrainType))
+        case "none";     rgb = [1.00 1.00 1.00];  % never rendered; placeholder
         case "water";    rgb = [0.60 0.75 0.90];
         case "rural";    rgb = [0.60 0.75 0.50];
         case "urban";    rgb = [0.70 0.70 0.70];
@@ -1780,7 +1800,17 @@ function ok = drawTerrainHeightmap2D(ax, state)
 %                        background image. Returns true on success, false
 %                        if generation failed (caller falls back to
 %                        drawTerrainTint2D for a flat color tint).
+%
+%  v3.5 §5e: when terrain type is "none", returns true WITHOUT drawing.
+%  Returning true (not false) is intentional — it prevents the caller
+%  from falling back to drawTerrainTint2D, so the result is a truly
+%  blank background. drawTerrainTint2D ALSO bails early on "none" as a
+%  belt-and-braces measure.
     ok = false;
+    if ~isempty(state.terrain) && strcmpi(state.terrain.terrainType, "none")
+        ok = true;   % skip rendering, suppress tint fallback
+        return;
+    end
     try
         [Z, Xg, Yg, ~] = getOrComputeEditorHeightmap(state);
     catch ME
@@ -1812,6 +1842,12 @@ function drawTerrainHeightmap3D(ax, state)
 %                        Silently no-ops on generation failure — the 3D
 %                        view stays usable without terrain (matches
 %                        pre-§5e behavior where 3D had no terrain at all).
+%
+%  v3.5 §5e: when terrain type is "none", silently skips rendering so
+%  the 3D scene matches the 2D "clean canvas" default.
+    if ~isempty(state.terrain) && strcmpi(state.terrain.terrainType, "none")
+        return;
+    end
     try
         [Z, Xg, Yg, ~] = getOrComputeEditorHeightmap(state);
     catch ME
@@ -1900,7 +1936,10 @@ end
 function [tType, tScale] = currentTerrainSettings(state)
 %currentTerrainSettings  Pull terrain type + scale from state.terrain
 %                        with safe defaults if state.terrain is empty.
-    tType = 'water';
+%                        v3.5 §5e: defaults to 'none' (was 'water') so a
+%                        missing terrain produces no heightmap rather
+%                        than a flat sea-blue background.
+    tType = 'none';
     tScale = 1.0;
     if ~isempty(state.terrain)
         tType = char(state.terrain.terrainType);
@@ -1968,7 +2007,7 @@ function regions = editorRegionsToConfigRegions(terrainRegions)
                 s.def.terrain_scale = rec.terrain.terrainScale;
             end
         else
-            s.def.terrain_type = 'water';
+            s.def.terrain_type = 'none';
             s.def.terrain_scale = 1.0;
         end
         out{k} = s;

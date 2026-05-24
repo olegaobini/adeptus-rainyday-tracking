@@ -58,6 +58,16 @@ function clutterDets = generateGroundClutter(simTime, sensorPos, sensorIndex, se
     % noiseFloor      : measurement noise sigma (m)
     % scattererHeight : typical height of discrete scatterers (m above ground)
     switch terrainType
+        case 'none'
+            % Flat featureless terrain — no surface roughness, no discrete
+            % scatterers. Generates effectively zero clutter regardless of
+            % the user's clutter_density setting (intentional: "none" is
+            % the right pick when the user wants a baseline clean run).
+            surfaceLambda   = 0;
+            discreteLambda  = 0;
+            discreteMaxFrac = 0.10;
+            noiseFloor      = 50;
+            scattererHeight = 5;
         case 'water'
             surfaceLambda   = 0.5;
             discreteLambda  = 0.5;   % buoys, ships, offshore platforms
