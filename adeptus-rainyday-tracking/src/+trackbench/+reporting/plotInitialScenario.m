@@ -38,12 +38,43 @@ function plotInitialScenario(dataLog, animateFlag)
         trackbench.reporting.drawSensorCoverage(ax, dataLog.SensorCoverage, true);
     end
 
-    %% 1C. DRAW BEAM ELEVATION ENVELOPE (3D cone showing beam limits)
+    %% 1C. DRAW SENSOR COVERAGE VOLUMES (v3.7.5 — replaces drawBeamEnvelope cones)
+    % Faithful swept-volume rendering of each sensor's actual scan envelope:
+    % parametric (az, el, r) shell + cones + (sector only) side walls,
+    % patched in altitude-up display coordinates. Colors mirror
+    % drawSensorCoverage.m v3.6.15 conventions so each volume aligns with
+    % its existing ground ring. drawBeamEnvelope.m retained as fallback.
     if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
         try
-            trackbench.reporting.drawBeamEnvelope(ax, dataLog.SensorCoverage);
+            sf = 1/1000;  % NED meters -> display km
+            for kSensor = 1:numel(dataLog.SensorCoverage)
+                cov = dataLog.SensorCoverage(kSensor);
+                if ~cov.isRadar && ~cov.isIR; continue; end
+                if cov.isMSSR; continue; end
+
+                [V, F] = trackbench.reporting.computeSensorCoverageVolume(cov);
+
+                % NED -> display: scale m->km, negate Z so altitude points up
+                Vdisp = V * sf;
+                Vdisp(:, 3) = -Vdisp(:, 3);
+
+                % Per-type color matches drawSensorCoverage.m (FROZEN, v3.6.15)
+                if cov.isIR
+                    col = [0.9 0.2 0.8];                 % magenta — IR
+                elseif ~cov.isRotator && cov.isRadar
+                    col = [0.1 0.9 0.3];                 % green   — sector radar
+                else
+                    col = [0.2 0.6 1.0];                 % blue    — PSR / rotator
+                end
+
+                patch(ax, 'Vertices', Vdisp, 'Faces', F, ...
+                    'FaceColor', col, 'FaceAlpha', 0.18, ...
+                    'EdgeColor', col, 'EdgeAlpha', 0.10, ...
+                    'LineWidth', 0.3, ...
+                    'HandleVisibility', 'off');
+            end
         catch ME
-            fprintf('[WARN] Beam envelope skipped: %s\n', ME.message);
+            fprintf('[WARN] Coverage volume skipped: %s\n', ME.message);
         end
     end
 
@@ -114,7 +145,12 @@ function plotInitialScenario(dataLog, animateFlag)
                         if isprop(det, 'Measurement') || isfield(det, 'Measurement')
                             meas = det.Measurement(:);
                             if numel(meas) >= 3
-                                addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
+                                % v3.7.5: filter HasINS=false body-frame visualization artifact
+                                % (display altitude > -1m kept; root cause investigation deferred
+                                % to v3.7.4; this is viz-only mitigation).
+                                if meas(3) <= 1
+                                    addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
+                                end
                             elseif numel(meas) == 2
                                 addpoints(hDetect, meas(1)*s, meas(2)*s, 0);
                             end
@@ -124,7 +160,10 @@ function plotInitialScenario(dataLog, animateFlag)
                      for j = 1:numel(scanDets)
                          meas = scanDets(j).Measurement(:);
                          if numel(meas) >= 3
-                             addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
+                             % v3.7.5: see cell-array branch above for filter rationale.
+                             if meas(3) <= 1
+                                 addpoints(hDetect, meas(1)*s, meas(2)*s, -meas(3)*s);
+                             end
                          else
                              addpoints(hDetect, meas(1)*s, meas(2)*s, 0);
                          end

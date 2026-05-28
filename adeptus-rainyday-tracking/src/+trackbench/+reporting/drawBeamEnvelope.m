@@ -1,6 +1,12 @@
 function drawBeamEnvelope(ax, sensorCoverage, ~)
 %drawBeamEnvelope  Draw 3D beam elevation coverage cones on scenario plot.
 %
+%   DEPRECATED v3.7.5+ — superseded by computeSensorCoverageVolume in
+%   +reporting, which renders the full enclosed swept volume instead of
+%   the two open upper/lower beam edges. Retained as fallback only; no
+%   longer called by the primary plotting path (plotInitialScenario.m
+%   now patches coverage volumes inline).
+%
 %   Author:  Michael Harding (Team Adeptus)
 %   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
 %
