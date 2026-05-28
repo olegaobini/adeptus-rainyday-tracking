@@ -45,10 +45,10 @@ phase('1','Config Loading & Smoke Test');
 
 % 1.1 — Can we load a run file?
 try
-    [scenario, config, sensors, metas] = trackbench.config.loadRunFile("my_run");
-    results = check(results, true, '1.1 loadRunFile("my_run") succeeds');
+    [scenario, config, sensors, metas] = trackbench.config.loadRunFile("validation/tc02_baseline_clear");
+    results = check(results, true, '1.1 loadRunFile("validation/tc02_baseline_clear") succeeds');
 catch ME
-    results = check(results, false, '1.1 loadRunFile("my_run") succeeds', ME.message);
+    results = check(results, false, '1.1 loadRunFile("validation/tc02_baseline_clear") succeeds', ME.message);
 end
 
 % 1.2 — Scenario has platforms
@@ -153,11 +153,11 @@ catch ME
     results = check(results, false, '2.4 Radar hilltop clearing at origin', ME.message);
 end
 
-% 2.5 — SurfaceManager attaches to scenario (using my_run's terrain).
+% 2.5 — SurfaceManager attaches to scenario (using validation/tc02_baseline_clear's terrain).
 % Note: this used to load demo_first_run.json, which was retired. Any
 % run file with a non-water terrain works since occlusion is layer-1.
 try
-    [scen2, ~, ~, ~] = trackbench.config.loadRunFile("my_run");
+    [scen2, ~, ~, ~] = trackbench.config.loadRunFile("validation/tc02_baseline_clear");
     sm = scen2.SurfaceManager;
     hasSurfaces = ~isempty(sm) && ~isempty(sm.Surfaces);
     results = check(results, hasSurfaces, '2.5 SurfaceManager attached (terrain occlusion)', ...
@@ -304,7 +304,7 @@ end
 
 % 5.2 — Run detections with water terrain (no environment effects) — baseline
 try
-    [scWater, cfgWater, sensWater, metaWater] = trackbench.config.loadRunFile("my_run");
+    [scWater, cfgWater, sensWater, metaWater] = trackbench.config.loadRunFile("validation/tc02_baseline_clear");
     % Override to water (no effects) for clean baseline
     cfgWater.environment.terrain_type = 'water';
     cfgWater.environment.terrain_occlusion = false;
@@ -341,10 +341,10 @@ catch ME
     results = check(results, false, '5.3 Detection format', ME.message);
 end
 
-% 5.4 — Run detections with environment effects (terrain occlusion ON via my_run)
+% 5.4 — Run detections with environment effects (terrain occlusion ON via validation/tc02_baseline_clear)
 % Note: this used to load demo_first_run.json which was retired.
 try
-    [scMtn, cfgMtn, ~, metaMtn] = trackbench.config.loadRunFile("my_run");
+    [scMtn, cfgMtn, ~, metaMtn] = trackbench.config.loadRunFile("validation/tc02_baseline_clear");
     restart(scMtn);
     dataLogMtn = trackbench.detections.runDetections(scMtn, false, metaMtn, cfgMtn.environment);
     nScansMtn = numel(dataLogMtn.Time);
@@ -473,7 +473,7 @@ end
 %% ════════════════════════════════════════════════════════════════════════
 phase('7','Tracker Verification');
 
-% Use validation/tc02_baseline_clear for tracker tests. my_run with rural
+% Use validation/tc02_baseline_clear for tracker tests. validation/tc02_baseline_clear with rural
 % terrain only produces 3 detections — not enough M-of-N hits for
 % GNN/TOMHT to confirm tracks (only the softer JPDA could squeeze one
 % out). tc02 is specifically designed for tracker baseline testing and

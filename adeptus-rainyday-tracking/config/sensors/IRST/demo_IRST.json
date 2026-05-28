@@ -1,0 +1,14 @@
+{
+  "name": "Demo IRST (Forward-looking sector)",
+  "type": "IRST",
+  "platform": "tower",
+  "_frequency_hz": "N/A — IR sensor, not radar. IRST operates in infrared wavelengths (~3-12 μm). Not affected by rain attenuation but severely degraded by fog and clouds. The frequency_hz field is ignored for IR sensor types.",
+  "_demo_note": "Forward-looking sectored variant for poster session — ±60° az, ±5° to +15° el. More realistic geometry than the 360° smoke-test variant in default_IRST.json.",
+  "params": {
+    "fov": [120, 20],
+    "rangeLimits": [0, 100000],
+    "pd": 0.7,
+    "mountingLoc": [0, 0, -10],
+    "MechanicalScanLimits": [[-60, 60], [-5, 15]]
+  }
+}

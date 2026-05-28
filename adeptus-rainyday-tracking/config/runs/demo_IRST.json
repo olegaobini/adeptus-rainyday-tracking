@@ -1,0 +1,30 @@
+{
+  "description": "Demo IRST scenario — sectored forward-looking IRST for poster session visualization. Same target and tracker as test_IRST.",
+  "sensors": [
+    "IRST/demo_IRST"
+  ],
+  "targets": "ir_low_altitude_demo/default_ir_low_altitude_demo",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/test_IRST_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking":   false,
+    "ground_clutter":    false,
+    "doppler_fade":      false,
+    "weather":           "none",
+    "rcs_range_filter":  false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false,
+    "globe_view": false
+  }
+}
