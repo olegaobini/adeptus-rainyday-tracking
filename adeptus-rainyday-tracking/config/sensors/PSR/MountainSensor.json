@@ -1,0 +1,35 @@
+{
+  "name": "MountainSensor",
+  "type": "PSR",
+  "platform": "tower",
+  "frequency_hz": 2.8E+9,
+  "params": {
+    "rpm": 12.5,
+    "fov": [
+      1.4,
+      30
+    ],
+    "tilt": 2,
+    "sector": [
+      0,
+      360
+    ],
+    "pd": 0.9,
+    "far": 1E-6,
+    "rangeLimits": [
+      0,
+      111120
+    ],
+    "rangeRes": 93,
+    "mountingLoc": [
+      21065.053667744753,
+      73.187473262067215,
+      -4053
+    ],
+    "_display_color": [
+      0.85,
+      0.55,
+      0.2
+    ]
+  }
+}

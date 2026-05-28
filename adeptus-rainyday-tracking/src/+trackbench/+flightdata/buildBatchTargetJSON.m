@@ -1,0 +1,204 @@
+function jsonPath = buildBatchTargetJSON(batchEntries, flights, opts)
+% buildBatchTargetJSON  Emit a recorded_flight multi-target JSON.
+%
+%   Author:  Michael Harding (Team Adeptus)
+%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%
+%   jsonPath = buildBatchTargetJSON(batchEntries, flights, opts)
+%
+%   Writes a target-file JSON to config/targets/recorded_flight/<BatchName>.json
+%   matching the schema used by nasa_multi_target.json. Each row of
+%   batchEntries becomes one target with behavior="recorded_flight".
+%
+%   INPUTS
+%     batchEntries : struct array, one entry per target. Fields:
+%                       name, label, rcs_dbsm, max_duration_s,
+%                       waypoint_interval_s, start_offset_s, flightIdx
+%                    (flightIdx is a 1-based index into `flights`).
+%     flights      : struct array as returned by
+%                    trackbench.flightdata.scanFlightFolder. Must include
+%                    `fullPath` and `file` fields.
+%
+%   OPTIONS (name-value):
+%     ProjectRoot  - absolute path to the project root. Used both for the
+%                    output directory and for computing portable relative
+%                    paths in `flight_data_file`. Default: pwd.
+%     BatchName    - filename stem, without .json. Default: timestamped
+%                    'nasa_batch_YYYYMMDD_HHMM'.
+%     RefLat       - reference latitude written to every target.
+%     RefLon       - reference longitude written to every target.
+%     Description  - top-level description string. Default: auto-generated
+%                    from the entry count + ref origin.
+%     Overwrite    - logical; if false (default), errors when the file
+%                    already exists.
+%
+%   OUTPUT
+%     jsonPath - absolute path to the written .json file.
+%
+%   See also: trackbench.flightdata.scanFlightFolder,
+%             trackbench.flightdata.loadNASAFlight,
+%             trackbench.scenario.addTargetFromDef, flightDataManagerGUI
+
+    arguments
+        batchEntries (1,:) struct
+        flights (:,1) struct
+        opts.ProjectRoot (1,:) char = pwd
+        opts.BatchName (1,:) char = ''
+        opts.RefLat (1,1) double = 0
+        opts.RefLon (1,1) double = 0
+        opts.Description (1,:) char = ''
+        opts.Overwrite (1,1) logical = false
+    end
+
+    if isempty(batchEntries)
+        error('trackbench:flightdata:emptyBatch', ...
+            'batchEntries is empty — no targets to export.');
+    end
+
+    % Default batch name with timestamp.
+    if isempty(opts.BatchName)
+        opts.BatchName = char(datetime("now", ...
+            "Format", "'nasa_batch_'yyyyMMdd_HHmm"));
+    end
+
+    % Validate batch name — no path separators, no extension dots.
+    if any(opts.BatchName == filesep) || any(opts.BatchName == '/') || ...
+            any(opts.BatchName == '\') || any(opts.BatchName == '.')
+        error('trackbench:flightdata:badBatchName', ...
+            'BatchName must not contain path separators or dots: %s', ...
+            opts.BatchName);
+    end
+
+    % Resolve output path.
+    outDir = fullfile(opts.ProjectRoot, 'config', 'targets', 'recorded_flight');
+    if ~isfolder(outDir)
+        mkdir(outDir);
+    end
+    jsonPath = fullfile(outDir, [opts.BatchName '.json']);
+
+    if isfile(jsonPath) && ~opts.Overwrite
+        error('trackbench:flightdata:fileExists', ...
+            ['Target file already exists: %s\n' ...
+             'Pass Overwrite=true to replace it.'], jsonPath);
+    end
+
+    % Build the targets cell array. Cell-of-structs (not struct array)
+    % so each entry serializes as a JSON object even when nE == 1.
+    nE = numel(batchEntries);
+    targets = cell(nE, 1);
+    totalDuration = 0;
+
+    for k = 1:nE
+        e = batchEntries(k);
+        if e.flightIdx < 1 || e.flightIdx > numel(flights)
+            error('trackbench:flightdata:badFlightIdx', ...
+                'batchEntries(%d).flightIdx = %d is out of range (1..%d).', ...
+                k, e.flightIdx, numel(flights));
+        end
+        f = flights(e.flightIdx);
+
+        relPath = makeRelativeToProjectRoot(char(f.fullPath), opts.ProjectRoot);
+
+        tgt = struct();
+        tgt.name                = e.name;
+        tgt.label               = e.label;
+        tgt.behavior            = 'recorded_flight';
+        tgt.flight_data_file    = relPath;
+        tgt.rcs_dbsm            = e.rcs_dbsm;
+        tgt.waypoint_interval_s = e.waypoint_interval_s;
+        tgt.max_duration_s      = e.max_duration_s;
+        tgt.start_offset_s      = e.start_offset_s;
+        tgt.ref_lat             = opts.RefLat;
+        tgt.ref_lon             = opts.RefLon;
+        % Schema-required filler fields (ignored by addTargetFromDef for
+        % recorded_flight, but kept for shape compatibility with the
+        % existing nasa_*.json files).
+        tgt.altitude_m          = 0;
+        tgt.speed_kmh           = 0;
+        tgt.start_pos           = [0, 0, 0];
+        tgt.notes               = sprintf( ...
+            'Auto-generated by Flight Data Manager from %s', f.file);
+
+        targets{k} = tgt;
+
+        % Scenario duration needs to cover offset + flight duration so
+        % the trajectory has enough time to play out.
+        targetEndS = e.start_offset_s + e.max_duration_s;
+        if targetEndS > totalDuration
+            totalDuration = targetEndS;
+        end
+    end
+
+    % Top-level struct.
+    out = struct();
+    if isempty(opts.Description)
+        out.description = sprintf( ...
+            'Auto-generated batch of %d real flight(s); ref origin (%.4f, %.4f).', ...
+            nE, opts.RefLat, opts.RefLon);
+    else
+        out.description = opts.Description;
+    end
+    out.duration_s = totalDuration;
+    out.targets    = targets;
+
+    % Write JSON (pretty-printed for human readability + diffability).
+    jsonText = jsonencode(out, 'PrettyPrint', true);
+    fid = fopen(jsonPath, 'w');
+    if fid == -1
+        error('trackbench:flightdata:writeFailed', ...
+            'Could not open for writing: %s', jsonPath);
+    end
+    fprintf(fid, '%s', jsonText);
+    fclose(fid);
+end
+
+
+function rel = makeRelativeToProjectRoot(fullPath, projectRoot)
+%makeRelativeToProjectRoot  Best-effort relative path from project root.
+%
+%  Returns a forward-slash relative path like "../Tail_687_1/file.mat"
+%  if fullPath shares a common ancestor with projectRoot. Falls back to
+%  the original absolute path if there's no common ancestor (e.g. files
+%  on a different drive letter on Windows). resolveFlightPath in
+%  addTargetFromDef.m tolerates both forms.
+    fullPath = char(fullPath);
+    projectRoot = char(projectRoot);
+
+    % Normalize separators and split.
+    fullNorm = strrep(fullPath, '/', filesep);
+    rootNorm = strrep(projectRoot, '/', filesep);
+    fullParts = strsplit(fullNorm, filesep);
+    rootParts = strsplit(rootNorm, filesep);
+
+    % Drop empty leading parts (Unix absolute paths produce a leading '').
+    fullParts = fullParts(~cellfun(@isempty, fullParts));
+    rootParts = rootParts(~cellfun(@isempty, rootParts));
+
+    % Find common prefix length (case-insensitive on Windows).
+    if ispc
+        cmpFn = @strcmpi;
+    else
+        cmpFn = @strcmp;
+    end
+    nCommon = 0;
+    for k = 1:min(numel(fullParts), numel(rootParts))
+        if cmpFn(fullParts{k}, rootParts{k})
+            nCommon = k;
+        else
+            break;
+        end
+    end
+
+    if nCommon == 0
+        % No common ancestor (e.g. different drive letters on Windows).
+        % Return absolute path; addTargetFromDef's path resolver will
+        % find it via the "as-given" branch.
+        rel = fullPath;
+        return;
+    end
+
+    nUp = numel(rootParts) - nCommon;
+    downParts = fullParts(nCommon+1:end);
+    relParts = [repmat({'..'}, 1, nUp), downParts];
+    rel = strjoin(relParts, '/');
+end

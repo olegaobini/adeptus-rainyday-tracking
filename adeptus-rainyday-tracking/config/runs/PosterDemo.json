@@ -1,0 +1,30 @@
+{
+  "description": "Editor-exported scenario \"PosterDemo\" (2026-05-25)",
+  "sensors": [
+    "PSR/MountainSensor"
+  ],
+  "targets": "waypoints/PosterDemo",
+  "terrain": "mountain/PosterDemo_terrain",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "none",
+    "rcs_range_filter": true
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

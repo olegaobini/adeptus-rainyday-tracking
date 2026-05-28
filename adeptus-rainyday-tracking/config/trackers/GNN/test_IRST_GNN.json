@@ -1,0 +1,21 @@
+{
+  "description": "GNN tracker config for the IRST smoke-test (test_IRST, v3.6.15). Identical to default_GNN.json except for confirm_threshold: 5 (very lenient Score-mode scalar). NOTE on the threshold value: the 2026-05-26 dispatch specified ConfirmationThreshold [2 3] (history-based 'M of N' form), but the [M N] form requires TrackLogic='History'. buildTracker.m hardcodes TrackLogic='Score' for trackerGNN at line 67, so the [M N] vector form is blocked here. (trackerTOMHT inherits the SDK default 'Score' via lines 78–92 having no explicit TrackLogic; trackerJPDA at line 114 hardcodes 'Integrated' — a different mode using probability thresholds — also incompatible with [M N].) Score-mode threshold 5 used instead. Substantive intent (lenient confirmation for reliable smoke test) preserved. Detection-count math: gate-6 empirical (2026-05-26) observed 2 detections in 60s with comparable angle-only geometry; Score-mode threshold 5 confirms in ~3 detections at Pd≈0.99 (score ~1.5 per detection per MATLAB doc), so the gate is achievable even at the lower observed detection rate. BUGHUNT-side fix scope is per-tracker, not one-size-fits-all (different code paths for the three tracker types). Documented in the v3.6.15 README Process findings — out of demo-week scope.",
+  "tracker_type": "GNN",
+  "filter_model": "IMM",
+  "volume": 1e9,
+  "beta": 1e-14,
+  "params": {
+    "gate": 45,
+    "far_gnn": 1e-6,
+    "confirm_threshold": 5,
+    "delete_threshold": -5,
+    "gate_jpda": 45,
+    "far_jpda": 1e-6,
+    "far_mht": 1e-6,
+    "beta_jpda": 1e-14,
+    "time_tolerance_jpda": 0.05,
+    "num_tracks_jpda": 500,
+    "tomht_threshold_multiplier": [0.2, 1, 1],
+    "max_branches": 5
+  }
+}

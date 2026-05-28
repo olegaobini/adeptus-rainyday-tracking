@@ -1,4 +1,4 @@
-function plotTrackSwapAnalysis(swapReport, assignLog, figParent)
+function plotTrackSwapAnalysis(swapReport, assignLog, figParent, label)
 %plotTrackSwapAnalysis  Visualize track swap events and assignment stability.
 %
 %   Author:  Michael Harding (Team Adeptus)
@@ -13,14 +13,26 @@ function plotTrackSwapAnalysis(swapReport, assignLog, figParent)
 %   swapReport : struct from analyzeTrackSwaps
 %   assignLog  : table from helperRunTracker
 %   figParent  : (optional) axes or figure handle. If omitted, creates new figure.
+%   label      : (optional) tracker label like "GNN + CV", prepended to
+%                the figure name and the first subplot title so the user
+%                can tell which tracker the plot belongs to when more
+%                than one is open at once.
 
 if nargin < 3
     figParent = [];
 end
+if nargin < 4 || isempty(label)
+    label = '';
+end
 
 %% Create figure
 if isempty(figParent)
-    fig = figure('Name', 'Track Swap Analysis', 'Color', 'k', ...
+    if ~isempty(label)
+        figName = sprintf('Track Swap Analysis — %s', label);
+    else
+        figName = 'Track Swap Analysis';
+    end
+    fig = figure('Name', figName, 'Color', 'k', ...
         'NumberTitle', 'off', 'Position', [100 100 1000 700]);
 else
     fig = figParent;
@@ -37,7 +49,12 @@ ax1 = subplot(nPanels, 1, 1, 'Parent', fig);
 set(ax1, 'Color', [0.1 0.1 0.1], 'XColor', 'w', 'YColor', 'w', ...
     'GridColor', 'w', 'GridAlpha', 0.3);
 hold(ax1, 'on'); grid(ax1, 'on');
-title(ax1, 'Track-to-Truth Assignment Timeline', 'Color', 'w', 'FontSize', 12);
+if ~isempty(label)
+    timelineTitle = sprintf('%s — Track-to-Truth Assignment Timeline', label);
+else
+    timelineTitle = 'Track-to-Truth Assignment Timeline';
+end
+title(ax1, timelineTitle, 'Color', 'w', 'FontSize', 12);
 xlabel(ax1, 'Simulation Time (s)');
 ylabel(ax1, 'Truth ID');
 

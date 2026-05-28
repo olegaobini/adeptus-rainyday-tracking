@@ -1,85 +1,106 @@
 {
-    "_DESCRIPTION": "v3.5 §5a/5b smoke test — exercises the new multi-region terrain and multi-region weather shapes together in a single run.",
-    "_TEST_GOALS": [
-        "Verify loadRunFile parses {fallback, regions:[...]} struct shape for terrain (5a)",
-        "Verify loadRunFile parses fallback='none' + regions:[...] for weather (5a, region-only weather case)",
-        "Verify composeHeightmap stamps the mountain region over the rural fallback heightmap (5b)",
-        "Verify resolveRegionIdx fires per-detection so weather clutter only appears inside the rain polygon (5b)",
-        "Verify ground clutter density and terrain type swap inside the mountain polygon vs rural outside",
-        "Verify hasFallbackWeather=false suppresses Pass 2 weather clutter when fallback='none'"
-    ],
-    "_TARGET_PATH": "Single airliner flying due east along y=0 from x=-30km to x=+30km over 240s (~900 km/h).",
-    "_TIMING": [
-        "t=0    x=-30km    OUTSIDE both polygons — rural terrain, clear sky",
-        "t=60   x=-15km    ENTERS mountain polygon — heightmap step, terrain_type flips, clutter density 0.3 -> 0.5",
-        "t=140  x=+5km     ENTERS rain polygon — weather clutter starts (mountain still active)",
-        "t=180  x=+15km    EXITS mountain polygon — back to rural fallback (rain polygon still active)",
-        "t=240  x=+30km    end of scenario, target still in rain polygon"
-    ],
-    "_EXPECTED_CONSOLE_LINES": [
-        "[RUN] Terrain (fallback): rural/default_rural (rural)",
-        "[RUN] Terrain region 1: \"north_central_peaks\" -> mountain/default_mountain (4 pts)",
-        "[RUN] Weather: 1 region(s), no fallback (clear outside regions)",
-        "[RUN] Weather region 1: \"east_storm_cell\" -> rain/default_rain (4 pts)",
-        "(in runDetections summary): rain rate scales with storm_window severity"
-    ],
-    "_NOTE_ON_LEGACY_RUNS": "All 26 passing validation tests use the legacy single-string shape and will keep working unchanged. This is the first run file that uses the new struct shape end-to-end.",
-
-    "description": "v3.5 §5a/5b smoke test — rural fallback + mountain region + rain region (no weather fallback).",
-
-    "sensors": ["PSR/default_PSR"],
-    "targets": "crossing_pair/region_test_target",
-
-    "terrain": {
-        "fallback": "rural/default_rural",
-        "regions": [
-            {
-                "name": "north_central_peaks",
-                "config": "mountain/default_mountain",
-                "polygon_xy": [
-                    [-15000, -15000],
-                    [ 15000, -15000],
-                    [ 15000,  15000],
-                    [-15000,  15000]
-                ]
-            }
+  "x_DESCRIPTION": "v3.5 §5a/5b smoke test — exercises the new multi-region terrain and multi-region weather shapes together in a single run.",
+  "x_TEST_GOALS": [
+    "Verify loadRunFile parses {fallback, regions:[...]} struct shape for terrain (5a)",
+    "Verify loadRunFile parses fallback='none' + regions:[...] for weather (5a, region-only weather case)",
+    "Verify composeHeightmap stamps the mountain region over the rural fallback heightmap (5b)",
+    "Verify resolveRegionIdx fires per-detection so weather clutter only appears inside the rain polygon (5b)",
+    "Verify ground clutter density and terrain type swap inside the mountain polygon vs rural outside",
+    "Verify hasFallbackWeather=false suppresses Pass 2 weather clutter when fallback='none'"
+  ],
+  "x_TARGET_PATH": "Single airliner flying due east along y=0 from x=-30km to x=+30km over 240s (~900 km/h).",
+  "x_TIMING": [
+    "t=0    x=-30km    OUTSIDE both polygons — rural terrain, clear sky",
+    "t=60   x=-15km    ENTERS mountain polygon — heightmap step, terrain_type flips, clutter density 0.3 -> 0.5",
+    "t=140  x=+5km     ENTERS rain polygon — weather clutter starts (mountain still active)",
+    "t=180  x=+15km    EXITS mountain polygon — back to rural fallback (rain polygon still active)",
+    "t=240  x=+30km    end of scenario, target still in rain polygon"
+  ],
+  "x_EXPECTED_CONSOLE_LINES": [
+    "[RUN] Terrain (fallback): rural/default_rural (rural)",
+    "[RUN] Terrain region 1: \"north_central_peaks\" -> mountain/default_mountain (4 pts)",
+    "[RUN] Weather: 1 region(s), no fallback (clear outside regions)",
+    "[RUN] Weather region 1: \"east_storm_cell\" -> rain/default_rain (4 pts)",
+    "(in runDetections summary): rain rate scales with storm_window severity"
+  ],
+  "x_NOTE_ON_LEGACY_RUNS": "All 26 passing validation tests use the legacy single-string shape and will keep working unchanged. This is the first run file that uses the new struct shape end-to-end.",
+  "description": "v3.5 §5a/5b smoke test — rural fallback + mountain region + rain region (no weather fallback).",
+  "sensors": [
+    "PSR/default_PSR"
+  ],
+  "targets": "crossing_pair/region_test_target",
+  "terrain": {
+    "fallback": "rural/default_rural",
+    "regions": {
+      "name": "north_central_peaks",
+      "config": "mountain/default_mountain",
+      "polygon_xy": [
+        [
+          -15000,
+          -15000
+        ],
+        [
+          15000,
+          -15000
+        ],
+        [
+          15000,
+          15000
+        ],
+        [
+          -15000,
+          15000
         ]
-    },
-
-    "trackers": ["GNN/default_GNN"],
-
-    "degradation": {
-        "terrain_occlusion": true,
-        "horizon_masking":   true,
-        "ground_clutter":    true,
-        "doppler_fade":      true,
-        "weather": {
-            "fallback": "none",
-            "regions": [
-                {
-                    "name": "east_storm_cell",
-                    "config": "rain/default_rain",
-                    "polygon_xy": [
-                        [  5000, -15000],
-                        [ 35000, -15000],
-                        [ 35000,  15000],
-                        [  5000,  15000]
-                    ]
-                }
-            ]
-        },
-        "storm_start_s": 0,
-        "storm_end_s": 240,
-        "active_type": "step"
-    },
-
-    "cache": { "use_cached_detections": false, "save_detections": true },
-    "platforms": {},
-    "output": {
-        "show_visuals": true,
-        "animate_visuals": false,
-        "save_results": true,
-        "print_diagnostics": true,
-        "results_directory": "results"
+      ]
     }
+  },
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": {
+      "fallback": "none",
+      "regions": {
+        "name": "east_storm_cell",
+        "config": "rain/default_rain",
+        "polygon_xy": [
+          [
+            5000,
+            -15000
+          ],
+          [
+            35000,
+            -15000
+          ],
+          [
+            35000,
+            15000
+          ],
+          [
+            5000,
+            15000
+          ]
+        ]
+      }
+    },
+    "storm_start_s": 0,
+    "storm_end_s": 240,
+    "active_type": "step"
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": true,
+    "print_diagnostics": true,
+    "results_directory": "results"
+  }
 }

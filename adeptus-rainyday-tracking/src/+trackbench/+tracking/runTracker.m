@@ -187,13 +187,51 @@ fprintf('[runTracker] Metrics: posabserr, assignThresh=%.0fm, divergeThresh=%.0f
 
 % trackAssignmentMetrics: absolute position error, range-adaptive threshold
 % Ref: https://www.mathworks.com/help/fusion/ref/trackassignmentmetrics-system-object.html
-tam = trackAssignmentMetrics( ...
-    'MotionModel', 'constvel', ...
-    'AssignmentDistance', 'posabserr', ...
-    'DivergenceDistance', 'posabserr', ...
-    'AssignmentThreshold', assignThresh, ...
-    'DivergenceThreshold', divergeThresh, ...
-    'MaxUnreportedPeriod', maxGap);
+% v3.7.3 X-F7 patch — usingMSC must be defined BEFORE the tam construction
+% branch below. Full v3.7.3 MSC-RPEKF init block (prevPose, lastCorrectionTime,
+% currentPose, diagXF7Shots) remains in its original location just before the
+% main loop — those variables are loop-scoped and don't need to move.
+usingMSC = isfield(dataLog, 'UsingMSCTracking') && dataLog.UsingMSCTracking;
+
+if usingMSC
+    % v3.7.3 X-F7 patch — MSC-state-aware assignment metric. The built-in
+    % 'constvel' MotionModel + 'posabserr' AssignmentDistance reads track
+    % state elements [1,3,5] as Cartesian [x,y,z]. For an MSC-state track
+    % those are [az, el, 1/r] — dimensional gibberish (rad/rad/m⁻¹ vs m),
+    % producing distances that always exceed assignThresh → Tracked%=0%
+    % even when the filter is producing plausible MSC estimates (v3.7.3
+    % TEMP-DIAG X-F7 confirmed 1/r magnitudes consistent with truth range).
+    %
+    % Custom distance function reuses the same MSC→Cartesian conversion
+    % as the visualization shim getTrackPositionsMSC: cvmeasmsc(state,
+    % 'rectangular') returns position relative to observer in scenario
+    % frame, plus observer position gives world Cartesian. Euclidean
+    % distance to truth.Position then yields meters — same units as
+    % assignThresh/divergeThresh, so thresholds stay in meters.
+    %
+    % Observer position is a per-scan input but the (track,truth)
+    % distance fcn signature has no slot for it; nontunable property
+    % lock on the System object prevents re-binding the handle each
+    % scan. Standard escape hatch: a module-level persistent variable
+    % set via setter call before step(tam,...). Same function handle
+    % bound to both AssignmentDistanceFcn and DivergenceDistanceFcn
+    % — both express absolute position error in meters.
+    tam = trackAssignmentMetrics( ...
+        'DistanceFunctionFormat', 'custom', ...
+        'AssignmentDistanceFcn', @trackbenchMSCAssignmentDistance, ...
+        'DivergenceDistanceFcn', @trackbenchMSCAssignmentDistance, ...
+        'AssignmentThreshold', assignThresh, ...
+        'DivergenceThreshold', divergeThresh, ...
+        'MaxUnreportedPeriod', maxGap);
+else
+    tam = trackAssignmentMetrics( ...
+        'MotionModel', 'constvel', ...
+        'AssignmentDistance', 'posabserr', ...
+        'DivergenceDistance', 'posabserr', ...
+        'AssignmentThreshold', assignThresh, ...
+        'DivergenceThreshold', divergeThresh, ...
+        'MaxUnreportedPeriod', maxGap);
+end
 
 % trackErrorMetrics: built-in constvel error computation (posRMS, velRMS, posANEES)
 % Ref: https://www.mathworks.com/help/fusion/ref/trackerrormetrics-system-object.html
@@ -219,6 +257,25 @@ end
 
 allTracks = objectTrack.empty(0,1);
 
+% v3.7.3 — MSC-RPEKF state for moving-sensor angle-only passive ranging.
+% UsingMSCTracking branches:
+%   - The per-scan ObserverInput propagation block in the main scan loop
+%   - The getTrackPositionsMSC visualization shim at the confirmed-track
+%     plot call below (line ~352)
+% prevPose holds ownship pose at last correction (per canonical example).
+% lastCorrectionTime accumulates dT across prediction-only scans.
+% currentPose mirrors prevPose at init; updated per-scan inside the
+% propagation block when MSC is active. Also consumed by line ~352's
+% getTrackPositionsMSC call for the observer position.
+% Backward-compat: pre-v3.7.3 dataLogs (and stationary scenarios with no
+% MSC sensors) → usingMSC=false → block is a no-op, getTrackPositions
+% takes the Cartesian path. Stationary-tower MSC scenarios (PosterDemo
+% with hypothetical IR) → Velocity=[0,0,0] constant → maneuver=0 →
+% MSC-RPEKF degrades to plain MSC-EKF behavior (still correct).
+prevPose = readOwnshipPose(dataLog, 1);
+lastCorrectionTime = 0;
+currentPose = prevPose;
+
 %% Main loop
 while i < numSteps
     if showVisuals && ~isvalid(tpaxes)
@@ -238,6 +295,31 @@ while i < numSteps
     end
 
     scanCells = normalizeDetectionDimensions(scanCells);
+
+    % v3.7.3 — MSC-RPEKF ObserverInput propagation. The trackingMSCEKF
+    % bank's state-transition function @constvelmsc expects an
+    % ObserverInput vector capturing ownship maneuver since the last
+    % correction. For stationary tower scenarios this is zero by
+    % construction (constant zero Velocity → zero maneuver → no-op);
+    % for airborne ownship it's the load-bearing mechanism that lets
+    % the range-parameterized bank collapse to truth. Must fire BEFORE
+    % the tracker call so the predict step in the next correction uses
+    % the updated maneuver. Canonical: MathWorks "Passive Ranging Using
+    % a Single Maneuvering Sensor" example, MSC-RPEKF section.
+    if usingMSC
+        currentPose = readOwnshipPose(dataLog, i);
+        if ~isempty(allTracks)
+            dT = simTime - lastCorrectionTime;
+            observerManeuver = calculateManeuver(currentPose, prevPose, dT);
+            for ot = 1:numel(allTracks)
+                trackingFilters = getTrackFilterProperties(tracker, ...
+                    allTracks(ot).TrackID, 'TrackingFilters');
+                for m = 1:numel(trackingFilters{1})
+                    trackingFilters{1}{m}.ObserverInput = observerManeuver;
+                end
+            end
+        end
+    end
 
     % -------- Compute detectable track IDs --------
     if useDetectableIDs && isLocked(tracker)
@@ -262,9 +344,23 @@ while i < numSteps
     if trackerWants3Args
         [tracks, ~, allTracks] = tracker(scanCells, simTime, detectIDs);
     else
-        tracks = tracker(scanCells, simTime);
+        % v3.7.3 — 3-output form. Required so allTracks is populated
+        % for the MSC-RPEKF ObserverInput propagation block above. SDK
+        % supports the 3-output form on all three trackers (GNN, JPDA,
+        % TOMHT); bit-identical to the prior 2-output form for tracks
+        % consumption and metrics downstream.
+        [tracks, ~, allTracks] = tracker(scanCells, simTime);
     end
     time = time + toc;
+
+    % v3.7.3 — Update prevPose / lastCorrectionTime only on successful
+    % correction (non-empty scan). Mirrors canonical passive ranging
+    % example: maneuver accumulates across prediction-only scans, then
+    % collapses on the next correction. No-op when usingMSC=false.
+    if usingMSC && ~isempty(scanCells)
+        prevPose = currentPose;
+        lastCorrectionTime = simTime;
+    end
 
     % Build truths struct array
     targets = dataLog.Truth(:,i);
@@ -292,6 +388,15 @@ while i < numSteps
     % ---- Metrics update (always step every scan) ----
     if isempty(tracks)
         tracks = objectTrack.empty(0,1);
+    end
+
+    % v3.7.3 X-F7 patch — push current ownship position into the
+    % module-level persistent slot used by trackbenchMSCAssignmentDistance.
+    % Must fire BEFORE step(tam,...) so the System object's internal
+    % (track,truth) distance evaluations read the correct world-frame
+    % observer position for this scan. No-op when usingMSC=false.
+    if usingMSC
+        trackbenchMSCObsPos(currentPose.Position);
     end
 
     step(tam, tracks, truths);
@@ -326,15 +431,44 @@ while i < numSteps
         if isempty(scanCells)
             meas = zeros(3,0);
         else
-            meas = zeros(3, numel(scanCells));
+            % Filter angle-only [az;el] detections (IR sensors with
+            % Frame='Spherical' + HasRange=false). Their 2-vec Measurement
+            % can't be plotted as Cartesian XYZ here; the tracker has already
+            % consumed them via initrpekf (v3.7.0) and any resulting confirmed
+            % tracks render via getTrackPositions below.
+            keepDet = false(1, numel(scanCells));
             for jj = 1:numel(scanCells)
-                m = scanCells{jj}.Measurement(:);
-                meas(:,jj) = m(1:3);
+                if numel(scanCells{jj}.Measurement) >= 3
+                    keepDet(jj) = true;
+                end
+            end
+            plotCells = scanCells(keepDet);
+            if isempty(plotCells)
+                meas = zeros(3,0);
+            else
+                meas = zeros(3, numel(plotCells));
+                for jj = 1:numel(plotCells)
+                    m = plotCells{jj}.Measurement(:);
+                    meas(:,jj) = m(1:3);
+                end
             end
         end
 
-        [pos,cov] = getTrackPositions(tracks, ...
-            [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 0 1 0]);
+        % v3.7.3 — Branch on dataLog.UsingMSCTracking for the
+        % visualization position-extraction call. MSC tracks have
+        % state shape [az;azRate;el;elRate;1/r;rDot/r] — the Cartesian
+        % PositionSelector would extract az/el/1-over-r as if they were
+        % x/y/z (nonsense). getTrackPositionsMSC converts MSC state to
+        % Cartesian via cvmeasmsc(state,'rectangular') + observer
+        % position (currentPose.Position from this scan's MSC propagation
+        % block above). Mixed-sensor scenarios (radar + IR simultaneously)
+        % out of scope for v3.7.3; see README Process findings.
+        if usingMSC
+            [pos, cov] = getTrackPositionsMSC(tracks, currentPose.Position(:));
+        else
+            [pos,cov] = getTrackPositions(tracks, ...
+                [1 0 0 0 0 0; 0 0 1 0 0 0; 0 0 0 0 1 0]);
+        end
 
         if animateVisuals
             if ~isempty(meas)
@@ -420,7 +554,8 @@ if showVisuals
     axAssign = trackbench.reporting.tabbedAxes(string(plotTitle) + " | Assignment");
     trackbench.reporting.plotPlatformToTrackAssignment(axAssign, assignLog, "Platform to Track Assignment", swapReport);
     if ~swapReport.swapFree
-        trackbench.reporting.plotTrackSwapAnalysis(swapReport, assignLog);
+        trackbench.reporting.plotTrackSwapAnalysis(swapReport, assignLog, [], ...
+            sprintf('%s + %s', trackerType, filterType));
     end
 end
 
@@ -455,6 +590,24 @@ trackSummary = trackMetricsTable(tam);
 truthSummary = truthMetricsTable(tam);
 trackMetrics = cumulativeTrackMetrics(tem);
 truthMetrics = cumulativeTruthMetrics(tem);
+
+% Add a TrackedPct column to truthSummary so readers can see at a
+% glance how much of each truth's life was after its first track
+% association. Computed as 100*(TotalLength - EstablishmentLength) /
+% TotalLength, rounded to the nearest integer percent. This is an
+% UPPER BOUND on actual tracking time — it assumes no track breaks
+% after establishment, which is what the BreakCount column tracks.
+% For the authoritative "who was tracking what at each scan" view,
+% use plotPlatformToTrackAssignment.
+if ~isempty(truthSummary) && height(truthSummary) > 0 && ...
+        all(ismember({'TotalLength','EstablishmentLength'}, truthSummary.Properties.VariableNames))
+    totLen = truthSummary.TotalLength;
+    estLen = truthSummary.EstablishmentLength;
+    pctTracked = NaN(height(truthSummary), 1);
+    safe = totLen > 0;
+    pctTracked(safe) = round(100 * (totLen(safe) - estLen(safe)) ./ totLen(safe));
+    truthSummary.TrackedPct = pctTracked;
+end
 
 % Quality score: posRMS as percentage of max scenario range.
 % This is intuitive, universal, and doesn't depend on filter covariance.
@@ -625,4 +778,126 @@ function detsOut = normalizeDetectionDimensions(detsIn)
             detsOut{ii} = det;
         end
     end
+end
+
+function pose = readOwnshipPose(dataLog, scanIdx)
+% v3.7.3 — Read ownship pose for a given scan, with backward-compat
+% fallback. Pre-v3.7.3 dataLogs lack the OwnshipPose field; return a
+% zero-velocity stationary pose at origin so ObserverInput evaluates
+% to zeros(6,1) → no maneuver → MSC-RPEKF degrades to plain MSC-EKF.
+    if isfield(dataLog, 'OwnshipPose') && ~isempty(dataLog.OwnshipPose) ...
+            && numel(dataLog.OwnshipPose) >= scanIdx
+        pose = dataLog.OwnshipPose(scanIdx);
+    else
+        pose = struct('PlatformID', 0, 'Position', [0 0 0], 'Velocity', [0 0 0]);
+    end
+end
+
+function maneuver = calculateManeuver(currentPose, prevPose, dT)
+% Verbatim from MathWorks "Passive Ranging Using a Single Maneuvering
+% Sensor" example. Computes the higher-order ownship motion (deviation
+% from constant-velocity prediction) as a 6-element interleaved
+% maneuver vector [dpx; dvx; dpy; dvy; dpz; dvz] consumed by
+% trackingMSCEKF.ObserverInput. For dT=0 (first scan with no correction
+% yet) and for stationary-ownship scans (currentPose == prevPose) the
+% function naturally evaluates to zeros(6,1) — no maneuver.
+    v = prevPose.Velocity;
+    prevPos = prevPose.Position;
+    prevVel = prevPose.Velocity;
+    currentPos = currentPose.Position;
+    currentVel = currentPose.Velocity;
+
+    % position change apart from constant velocity motion
+    deltaP = currentPos - prevPos - v*dT;
+    % velocity change
+    deltaV = currentVel - prevVel;
+
+    maneuver = zeros(6, 1);
+    maneuver(1:2:end) = deltaP;
+    maneuver(2:2:end) = deltaV;
+end
+
+function [pos, cov] = getTrackPositionsMSC(tracks, observerPosition)
+% Verbatim from MathWorks "Passive Ranging Using a Single Maneuvering
+% Sensor" example. Converts MSC track state
+% [az;azRate;el;elRate;1/r;rDot/r] to Cartesian position via
+% cvmeasmsc(state, 'rectangular') and adds the observer's current
+% world position. Plumbed at line ~352 via dataLog.UsingMSCTracking
+% branch added in v3.7.3.
+%
+% Defensive deviation from canonical: empty-tracks early-return to
+% match getTrackPositions' implicit "empty in → empty out" behavior.
+    if isempty(tracks)
+        pos = zeros(0, 3);
+        cov = zeros(3, 3, 0);
+        return;
+    end
+    if isstruct(tracks) || isa(tracks, 'objectTrack')
+        % Track struct
+        state = [tracks.State];
+        stateCov = cat(3, tracks.StateCovariance);
+    elseif isa(tracks, 'trackingMSCEKF')
+        % Tracking Filter
+        state = tracks.State;
+        stateCov = tracks.StateCovariance;
+    end
+
+    % Get relative position using measurement function.
+    relPos = cvmeasmsc(state, 'rectangular');
+
+    % Add observer position
+    pos = relPos + observerPosition;
+    pos = pos';
+
+    if nargout > 1
+        cov = zeros(3, 3, numel(tracks));
+        for ii = 1:numel(tracks)
+            % Jacobian of position measurement
+            jac = cvmeasmscjac(state(:, ii), 'rectangular');
+            cov(:, :, ii) = jac * stateCov(:, :, ii) * jac';
+        end
+    end
+end
+
+function dist = trackbenchMSCAssignmentDistance(track, truth)
+% v3.7.3 X-F7 — custom AssignmentDistanceFcn/DivergenceDistanceFcn for
+% trackAssignmentMetrics when tracks carry MSC state. Converts MSC track
+% state [az;daz;el;del;1/r;vr/r] to world-frame Cartesian position via
+% cvmeasmsc(state,'rectangular') + persistent observer position (set by
+% trackbenchMSCObsPos setter before each step(tam,...) call), then
+% returns Euclidean distance to truth.Position in meters. Units match
+% AssignmentThreshold/DivergenceThreshold (also meters).
+%
+% Signature matches the System object's expected (onetrack, onetruth)
+% form. Returns a non-negative scalar. Bound to both Assignment and
+% Divergence distance fcn slots — both quantities are absolute position
+% error in meters in this configuration.
+    obsPos = trackbenchMSCObsPos();
+    relPos = cvmeasmsc(track.State(:), 'rectangular');
+    trackPos = relPos(:) + obsPos(:);
+    truthPos = truth.Position(:);
+    dist = norm(trackPos - truthPos);
+end
+
+function p = trackbenchMSCObsPos(newPos)
+% v3.7.3 X-F7 — module-level persistent observer-position holder for the
+% custom MSC distance function. Two modes:
+%   Setter:  trackbenchMSCObsPos(newPos)  — one arg, updates the slot.
+%   Getter:  p = trackbenchMSCObsPos()    — zero args, returns current.
+%
+% Persistent var is scoped to this local function; survives across
+% iterations of the runTracker main loop (the setter overwrites each
+% scan when usingMSC=true) and across runTracker invocations within a
+% MATLAB session (the first setter call inside any new run overwrites
+% any stale value before the first step(tam,...)). Defaults to [0;0;0]
+% on first getter call if no setter has run yet — distance values would
+% be off by the observer offset but the System object wouldn't crash;
+% in practice setter always runs first in the gated codepath.
+    persistent obsPos
+    if nargin >= 1
+        obsPos = newPos(:);
+        return;
+    end
+    if isempty(obsPos); obsPos = [0; 0; 0]; end
+    p = obsPos;
 end

@@ -18,6 +18,14 @@ function flightData = loadNASAFlight(matFilePath, opts)
 %     RefLat           - reference latitude (default: auto from midpoint)
 %     RefLon           - reference longitude (default: auto from midpoint)
 %     MaxDuration      - max seconds to use (default: Inf = all)
+%     StartOffset      - seconds added to every timeOfArrival (default: 0).
+%                        Use to stagger multi-flight batch starts. Note:
+%                        the target sits at its first waypoint position
+%                        from scenario t=0 to t=offset (waypointTrajectory
+%                        default), THEN begins moving. For NASA flights
+%                        whose start is outside radar range this is fine;
+%                        otherwise the target will be detected as a
+%                        stationary blip during the pre-offset window.
 %
 %   OUTPUT struct fields:
 %     flightData.waypoints     - [N x 3] NED positions in meters [x_N, y_E, z_D]
@@ -38,6 +46,7 @@ function flightData = loadNASAFlight(matFilePath, opts)
         opts.RefLat (1,1) double = NaN
         opts.RefLon (1,1) double = NaN
         opts.MaxDuration (1,1) double = Inf
+        opts.StartOffset (1,1) double = 0
     end
 
     %% Load .mat file
@@ -112,6 +121,15 @@ function flightData = loadNASAFlight(matFilePath, opts)
 
     waypoints = [xN(wpIdx), yE(wpIdx), zD(wpIdx)];
     toa = timeVec(wpIdx);
+
+    %% Apply user-supplied start offset.
+    % Shifts every toa by `opts.StartOffset`. Velocities and duration_s
+    % are invariant under offset (both are deltas). Used by the Flight
+    % Data Manager to stagger multi-flight batches. See OPTIONS doc above
+    % for the limitation about pre-offset stationary detection.
+    if opts.StartOffset ~= 0
+        toa = toa + opts.StartOffset;
+    end
 
     %% Compute velocities from waypoint differences
     nWP = size(waypoints, 1);

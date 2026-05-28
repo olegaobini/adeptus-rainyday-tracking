@@ -1,0 +1,56 @@
+{
+  "description": "Two airliners on shallow X-crossing through (0,-13km,-1.5km) at t=30s. Crossing angle ~9.5deg keeps velocity vectors nearly parallel through the close-approach window so IMM cannot disambiguate via velocity. Sized for default_PSR FOV+range. M.Harding 2026-05-25 rev3.",
+  "duration_s": 60,
+  "targets": [
+    {
+      "name": "target_A_SW_to_NE",
+      "label": "target_A_SW_to_NE",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [-6000, -13500, -1500],
+          "time_s": 0,
+          "speed_kmh": 722
+        },
+        {
+          "pos": [0, -13000, -1500],
+          "time_s": 30,
+          "speed_kmh": 722
+        },
+        {
+          "pos": [6000, -12500, -1500],
+          "time_s": 60,
+          "speed_kmh": 722
+        }
+      ]
+    },
+    {
+      "name": "target_B_NW_to_SE",
+      "label": "target_B_NW_to_SE",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [-6000, -12500, -1500],
+          "time_s": 0,
+          "speed_kmh": 722
+        },
+        {
+          "pos": [0, -13000, -1500],
+          "time_s": 30,
+          "speed_kmh": 722
+        },
+        {
+          "pos": [6000, -13500, -1500],
+          "time_s": 60,
+          "speed_kmh": 722
+        }
+      ]
+    }
+  ]
+}

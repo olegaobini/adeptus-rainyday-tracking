@@ -226,7 +226,7 @@ if any(sonarMask); fprintf('[runDetections] WARNING: %d sonar sensor(s) — skip
 activeMask  = ~sonarMask;
 activeInfos = sensorInfos(activeMask);
 numActive   = numel(activeInfos);
-fprintf('[runDetections] PSR count: %d | MSSR: %d\n', sum(~[activeInfos.isMSSR]), sum([activeInfos.isMSSR]));
+fprintf('[runDetections] Primary sensors: %d | Beacon sensors: %d\n', sum(~[activeInfos.isMSSR]), sum([activeInfos.isMSSR]));
 
 %% Determine scan cadence
 hasMechanical = any([activeInfos.isMechanical]);
@@ -269,7 +269,11 @@ detBuffer = {}; mssrBuffer = {}; cfgBuffer = {};
 %
 %  Single-target M4 scenarios keep working: nTargets==1, target never
 %  drops out, and the column-append degenerates back to a 1×nScans row.
-truthInitPoses = targetPoses(activeInfos(1).platform);
+% v3.7.2 — world-frame target poses (X-F6 truth-log axis closure).
+% See targetPosesWorld() local helper at end of file. Replaces
+% activeInfos(1).platform-local targetPoses() which silently corrupted
+% the truth column for airborne-ownship scenarios.
+truthInitPoses = targetPosesWorld(scenario);
 nExpectedTargets = numel(truthInitPoses);
 truthLastByPlatform = truthInitPoses(:);   % column of last-known poses
 
@@ -282,6 +286,22 @@ dataLog.SensorPlatformIDs = [];
 dataLog.HasIFF            = hasMSSR;
 dataLog.IFFSensorIndex    = mssrSensorIdx;
 dataLog.HasRotator        = hasRotator;
+% v3.7.3 — MSC-RPEKF support fields (airborne IRST passive ranging).
+% OwnshipPose is populated per-scan in the flush block below from
+% ownshipPoseWorld(scenario), parallel to dataLog.Truth. Used by
+% runTracker.m to read ownship pose for ObserverInput propagation on
+% each trackingMSCEKF bank filter (the load-bearing mechanism that
+% lets the range-parameterized bank collapse to truth for a moving
+% sensor). UsingMSCTracking is the scenario-level routing flag for
+% both the ObserverInput propagation and the getTrackPositionsMSC
+% visualization shim in runTracker.m. Always set, never conditional —
+% keeps dataLog shape consistent across runs. Mixed-sensor scenarios
+% (radar + IR simultaneously) out of scope for v3.7.3; documented in
+% README Process findings as post-demo enhancement.
+% Refs: MathWorks "Passive Ranging Using a Single Maneuvering Sensor"
+% example; v3.7.2 targetPosesWorld pattern with inverted predicate.
+dataLog.OwnshipPose       = struct('PlatformID', {}, 'Position', {}, 'Velocity', {});
+dataLog.UsingMSCTracking  = any([activeInfos.isIR]);
 terrainGrid = getOrDefault(envConfig, 'terrainGrid', []);
 dataLog.TerrainGrid = ternary(~isempty(terrainGrid), terrainGrid, []);
 
@@ -291,7 +311,20 @@ for k = 1:numActive
     si = activeInfos(k); s = si.sensor;
     cov = struct('sensorIndex',si.sensorIndex,'isRotator',si.isRotator,...
         'isMSSR',si.isMSSR,'isRadar',si.isRadar,'isIR',si.isIR);
-    try cov.position = si.platform.InitialPosition(:)' + s.MountingLocation(:)'; catch; cov.position = [0 0 0]; end
+    % v3.6.5 — cov.position bugfix: was reading si.platform.InitialPosition,
+    % which is NOT a property of fusion.scenario.Platform in R2025b. The
+    % documented Platform properties are PlatformID, ClassID, Dimensions,
+    % Mesh, Position, Velocity, Acceleration, Orientation,
+    % AngularVelocity, Trajectory, Sensors, Emitters, Signatures,
+    % PoseEstimator — no InitialPosition. The try has therefore been
+    % throwing on every sensor on every run since whenever this code was
+    % written, and the silent catch fallback was leaving cov.position at
+    % the origin universally. That's why blue stars and FOV cones
+    % rendered at scenario origin regardless of editor placement.
+    % Trajectory.Position is the actual property name and exists on
+    % every Platform (defaults to [0 0 0] for editor-anchored sensors,
+    % which is correct — their world coords live in MountingLocation).
+    try cov.position = si.platform.Trajectory.Position(:)' + s.MountingLocation(:)'; catch; cov.position = [0 0 0]; end
     try cov.maxRange = s.RangeLimits(2); catch; cov.maxRange = 111120; end
     try cov.mountingYaw = s.MountingAngles(1); catch; cov.mountingYaw = 0; end
     try cov.fov = s.FieldOfView(:)'; catch; cov.fov = [1.4 30]; end
@@ -378,9 +411,15 @@ while advance(scenario)
         end
         if isempty(dets); continue; end
 
-        % Filter angle-only
+        % Filter undersized measurements. IR sensors produce 2-vec [az;el]
+        % when DetectionCoordinates='Sensor spherical' + HasElevation=true
+        % (irSensor R2025b default); the tracker pipeline accepts these
+        % via initrpekf in +tracking/trackbenchFilterInit.m. Non-IR
+        % sensors with <3-vec measurements are malformed and dropped.
+        % v3.7.0: branch on si.isIR (computed at line ~162).
         keepDets = true(numel(dets), 1);
-        for ii = 1:numel(dets); if numel(dets{ii}.Measurement) < 3; keepDets(ii) = false; end; end
+        minMeas = 3; if si.isIR; minMeas = 2; end
+        for ii = 1:numel(dets); if numel(dets{ii}.Measurement) < minMeas; keepDets(ii) = false; end; end
         if any(~keepDets); dets = dets(keepDets); if isempty(dets); continue; end; end
 
         % RCS range filter (opt-in via envConfig.rcs_range_filter).
@@ -459,9 +498,14 @@ while advance(scenario)
                 end
 
                 % Drop detections using range-dependent Pd (resolve per-(x,y))
+                % v3.7.0: angle-only (IR) detections lack (x,y) position
+                % for per-region resolution and have no range for the Pd
+                % lookup — skip them here. Proper IR weather (fog primarily)
+                % is post-demo scope.
                 if ~isempty(dets)
                     keepRain = true(numel(dets), 1);
                     for dd = 1:numel(dets)
+                        if numel(dets{dd}.Measurement) < 3; continue; end
                         detPos = dets{dd}.Measurement(1:3);
                         rIdx = trackbench.environment.resolveRegionIdx( ...
                             detPos(1), detPos(2), weatherRegions);
@@ -476,7 +520,10 @@ while advance(scenario)
                 end
 
                 % Scale measurement noise (re-resolve since dets may have shrunk)
+                % v3.7.0: angle-only (IR) detections skipped — same rationale
+                % as the Pd-drop loop above.
                 for dd = 1:numel(dets)
+                    if numel(dets{dd}.Measurement) < 3; continue; end
                     detPos = dets{dd}.Measurement(1:3);
                     rIdx = trackbench.environment.resolveRegionIdx( ...
                         detPos(1), detPos(2), weatherRegions);
@@ -534,7 +581,19 @@ while advance(scenario)
             try sParams.rangeLimits = cSensor.RangeLimits;   catch; sParams.rangeLimits = [0 111120]; end
             try sParams.rangeRes    = cSensor.RangeResolution; catch; sParams.rangeRes = 93; end
             try sParams.fov         = cSensor.FieldOfView(:)'; catch; sParams.fov = [1.4 30]; end
-            try sParams.tilt        = cSensor.ElectronicScanAngle(2); catch; sParams.tilt = 2; end
+            % v3.6.7 — ElectronicScanAngle is NOT a property of fusionRadarSensor
+            % in R2025b (the actual doc'd properties are ElectronicScanLimits,
+            % LookAngle, MechanicalAngle, MountingAngles). The silent catch
+            % below has been firing on every sensor on every run since this
+            % code was written, leaving sParams.tilt at the constant 2°
+            % fallback. For PosterDemo's PSR with MountingAngles(2) = +2° the
+            % bug accidentally produces correct clutter geometry; for any
+            % sensor with a different mount pitch the clutter footprint would
+            % have been geometrically wrong. MountingAngles(2) is the antenna
+            % mount pitch (positive = tilted up), which IS the beam-center
+            % elevation for a pure mechanical rotator. Fallback to 2° is
+            % retained for sensor types lacking MountingAngles.
+            try sParams.tilt        = cSensor.MountingAngles(2); catch; sParams.tilt = 2; end
             try sParams.mountingLoc = cSensor.MountingLocation(:)'; catch; sParams.mountingLoc = [0 0 -15]; end
 
             allClutter = {};
@@ -656,7 +715,8 @@ while advance(scenario)
         % against the initial platform set by PlatformID and carry
         % forward the last-known pose for any missing target, so the
         % truth column stays at height nExpectedTargets across all scans.
-        targetsRaw = targetPoses(activeInfos(1).platform);
+        % v3.7.2 — world-frame per-scan target poses (X-F6 truth-log axis).
+        targetsRaw = targetPosesWorld(scenario);
         truthCol = truthLastByPlatform;   % start from last-known column
         if ~isempty(targetsRaw)
             for tg = 1:numel(targetsRaw)
@@ -674,7 +734,15 @@ while advance(scenario)
         mergedDets = [mssrBuffer; detBuffer];
         if isempty(mergedDets); lastFlushTime = simTime; detBuffer = {}; mssrBuffer = {}; cfgBuffer = {}; continue; end
 
-        fprintf("t=%.2f: PSR=%d, MSSR=%d, total=%d (clutter=%d)\n", ...
+        % v3.6.8 — Per-scan log labels: "Primary" (skin echo from PSR,
+        % IR, sonar, lidar, or any non-transponder sensor) + "Beacon"
+        % (transponder replies from MSSR / SSR / IFF / ADSB). detBuffer
+        % is anything that didn't classify as MSSR via the metadata or
+        % heuristic check at scan-info build time. Previously labeled
+        % "PSR=N, MSSR=N" which was misleading for non-PSR scenarios
+        % (an IR-only run would log PSR=N even with zero PSRs). The
+        % counts have always been correct; only the labels were wrong.
+        fprintf("t=%.2f: Primary=%d, Beacon=%d, total=%d (clutter=%d)\n", ...
             simTime, numel(detBuffer), numel(mssrBuffer), numel(mergedDets), nFalse);
 
         % Log — append targets as a COLUMN so Truth grows as
@@ -686,6 +754,20 @@ while advance(scenario)
         try scanSensors = unique(cellfun(@(d) d.SensorIndex, mergedDets)); catch; scanSensors = []; end
         dataLog.ScanSensorIndices = [dataLog.ScanSensorIndices(:)', {scanSensors}];
         dataLog.SensorPlatformIDs = [dataLog.SensorPlatformIDs, ternary(~isempty(scanSensors), scanSensors(1), 0)];
+        % v3.7.3 — Record ownship pose for MSC-RPEKF ObserverInput
+        % propagation. Mirrors the per-scan truth append at line 755
+        % (targetPosesWorld with inverted predicate: ~isempty(plat.Sensors)
+        % picks sensor hosts vs target platforms). Stationary tower
+        % scenarios produce constant pose; airborne ownship updates with
+        % current trajectory pose. Empty-result defensive fallback keeps
+        % OwnshipPose synced with dataLog.Time scan-by-scan.
+        ownshipNow = ownshipPoseWorld(scenario);
+        if isempty(ownshipNow)
+            dataLog.OwnshipPose(end+1) = struct('PlatformID', 0, ...
+                'Position', [0 0 0], 'Velocity', [0 0 0]);
+        else
+            dataLog.OwnshipPose(end+1) = ownshipNow(1);
+        end
 
         detBuffer = {}; mssrBuffer = {}; cfgBuffer = {};
         lastFlushTime = simTime;
@@ -704,6 +786,71 @@ end  % end main function
 %% ====================================================================
 %  LOCAL HELPER FUNCTIONS
 % =====================================================================
+function poses = targetPosesWorld(scenario)
+    % v3.7.2 — World-frame replacement for targetPoses(plat) in the
+    % truth-log path. Walks scenario.Platforms, filters out sensor-host
+    % platforms (isempty(plat.Sensors)), and returns a struct array
+    % carrying PlatformID + world-NED Position + world-NED Velocity for
+    % each target platform. Compatible with downstream consumers that
+    % previously read targetPoses() output: dataLog.Truth → runTracker
+    % (Position+Velocity+PlatformID at trackAssignmentMetrics).
+    %
+    % Frame correction: pose(plat,'true') returns the platform's
+    % kinematic state in scenario NED (per R2025b doc), unlike
+    % targetPoses(observer) which returns observer-local NED. For
+    % stationary observers at origin with identity orientation the two
+    % coincide (this is the PosterDemo case — see v3.6.5 §1 in
+    % loadRunFile.m), but for airborne ownship they differ, mixing
+    % frames against world-frame tracker output and pinning
+    % Tracked% to 0%.
+    poses = struct('PlatformID', {}, 'Position', {}, 'Velocity', {});
+    plats = scenario.Platforms;
+    for k = 1:numel(plats)
+        plat = plats{k};
+        if isempty(plat.Sensors)
+            p = pose(plat, 'true');
+            % v3.7.2 hotfix — waypointTrajectory returns NaN Position outside
+            % [start, end] (per R2025b doc). Skip to preserve targetPoses(plat)
+            % drop-expired semantics: per-scan slot-matching at the truth-log
+            % update site falls back to truthLastByPlatform for missing slots,
+            % holding the last seen pose and the [nTargets × nScans] shape.
+            if any(isnan(p.Position(:))); continue; end
+            poses(end+1).PlatformID = plat.PlatformID; %#ok<AGROW>
+            poses(end).Position = p.Position;
+            poses(end).Velocity = p.Velocity;
+        end
+    end
+end
+
+function poses = ownshipPoseWorld(scenario)
+    % v3.7.3 — Mirror of targetPosesWorld with inverted predicate.
+    % Walks scenario.Platforms (cell array per R2025b doc), filters IN
+    % sensor-host platforms (~isempty(plat.Sensors)) instead of OUT.
+    % Returns a struct array carrying PlatformID + world-NED Position +
+    % Velocity for each sensor host, used by runTracker.m to read
+    % per-scan ownship pose for MSC-RPEKF ObserverInput propagation.
+    %
+    % Multi-sensor-host caveat: returns all sensor host platforms but
+    % downstream consumes only the first (single-ownship MSC-RPEKF
+    % assumption, matching airborne_IRST.json's geometry). Multi-ownship
+    % is post-demo scope.
+    %
+    % NaN-skip for expired waypoint trajectories mirrors v3.7.2 fix at
+    % the targetPosesWorld helper above.
+    poses = struct('PlatformID', {}, 'Position', {}, 'Velocity', {});
+    plats = scenario.Platforms;
+    for k = 1:numel(plats)
+        plat = plats{k};
+        if ~isempty(plat.Sensors)
+            p = pose(plat, 'true');
+            if any(isnan(p.Position(:))); continue; end
+            poses(end+1).PlatformID = plat.PlatformID; %#ok<AGROW>
+            poses(end).Position = p.Position;
+            poses(end).Velocity = p.Velocity;
+        end
+    end
+end
+
 function isMSSR = classifyAsMSSR(sensor, metas)
     isMSSR = false;
     if ~isempty(metas) && isstruct(metas)

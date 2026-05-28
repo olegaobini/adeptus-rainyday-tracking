@@ -374,10 +374,24 @@ function buildDocsTab(tg, projectRoot, parentFig)
             ensureExists(fullfile(projectRoot, 'logs'), parentFig)));
     btnLogs.Layout.Row = 6;
 
-    btnResults = uibutton(gl, 'Text', 'Open results/ folder', ...
+    % Row 7: two side-by-side buttons. Left opens the results/ folder in
+    % the OS file manager (Explorer on Windows); right launches the
+    % saved-results viewer, which re-prints the per-tracker summary and
+    % re-draws the assignment plot for a previously-saved .mat. The
+    % sub-grid keeps both buttons in the same row originally occupied by
+    % the single "Open results/ folder" button.
+    glResults = uigridlayout(gl, [1 2]);
+    glResults.Layout.Row = 7;
+    glResults.ColumnWidth = {'1x', '1x'};
+    glResults.ColumnSpacing = 8;
+    glResults.Padding = [0 0 0 0];
+
+    btnResults = uibutton(glResults, 'Text', 'Open results/ folder', ...
         'ButtonPushedFcn', @(~,~) openDoc(parentFig, ...
-            ensureExists(fullfile(projectRoot, 'results'), parentFig)));
-    btnResults.Layout.Row = 7;
+            ensureExists(fullfile(projectRoot, 'results'), parentFig))); %#ok<NASGU>
+
+    btnViewResults = uibutton(glResults, 'Text', 'View a Saved Run...', ...
+        'ButtonPushedFcn', @(~,~) launchViewer(parentFig, projectRoot)); %#ok<NASGU>
 
     btnCache = uibutton(gl, 'Text', 'Open cache/ folder', ...
         'ButtonPushedFcn', @(~,~) openDoc(parentFig, ...
@@ -466,5 +480,32 @@ function openDoc(parentFig, path)
     catch ME
         uialert(parentFig, sprintf('Could not open:\n%s\n\n%s', ...
             path, ME.message), 'Open Failed');
+    end
+end
+
+function launchViewer(parentFig, projectRoot)
+    % Launch the saved-results viewer. Opens a file picker rooted in the
+    % project's results/ folder, then calls viewSavedResults on the chosen
+    % .mat. Any error in the viewer is surfaced through uialert so it
+    % doesn't get lost in the captured-output panes elsewhere in the GUI.
+    resultsDir = fullfile(projectRoot, 'results');
+    if ~isfolder(resultsDir)
+        resultsDir = char(projectRoot);
+    end
+
+    [file, dirPath] = uigetfile( ...
+        {'*.mat', 'Saved results (*.mat)'}, ...
+        'Select a saved results .mat to view', ...
+        resultsDir);
+    if isequal(file, 0)
+        return;
+    end
+
+    matPath = fullfile(dirPath, file);
+    try
+        viewSavedResults(matPath);
+    catch ME
+        uialert(parentFig, sprintf('Could not display results:\n%s\n\n%s', ...
+            matPath, ME.message), 'Viewer Failed');
     end
 end

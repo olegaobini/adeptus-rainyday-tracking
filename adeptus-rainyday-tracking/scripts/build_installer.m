@@ -57,7 +57,7 @@ function build_installer(flavor, opts)
     arguments
         flavor (1,:) char {mustBeMember(flavor, {'web', 'offline', 'both'})} = 'web'
         opts.AppName       (1,:) char = 'Rainy Day Tracker'
-        opts.Version       (1,:) char = '3.5.1.0'
+        opts.Version       (1,:) char = '3.6.0.0'
         opts.AuthorCompany (1,:) char = 'Team Adeptus, University of Washington'
         opts.AuthorName    (1,:) char = 'Team Adeptus'
         opts.Summary       (1,:) char = ...
@@ -145,7 +145,8 @@ function build_installer(flavor, opts)
         fullfile(projectRoot, 'config'), ...
         fullfile(projectRoot, 'docs'), ...
         fullfile(projectRoot, 'README.md'), ...
-        fullfile(projectRoot, 'CHECKPOINT.md') };
+        fullfile(projectRoot, 'CHECKPOINT.md'), ...
+        fullfile(fileparts(projectRoot), 'Tail_687_1') };
     for k = 1:numel(candidatePaths)
         if isfile(candidatePaths{k}) || isfolder(candidatePaths{k})
             additionalFiles{end+1} = candidatePaths{k}; %#ok<AGROW>

@@ -26,5 +26,8 @@
     "animate_visuals": true,
     "save_results": true,
     "globe_view": false
-  }
+  },
+  "compare_trackers": [
+    "GNN/default_GNN"
+  ]
 }

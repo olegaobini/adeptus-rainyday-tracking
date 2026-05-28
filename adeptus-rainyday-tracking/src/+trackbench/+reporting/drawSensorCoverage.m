@@ -139,8 +139,15 @@ for k = 1:nSensors
             'DisplayName', sprintf('%s (%.0f nm / %.0f°)', cov.label, cov.maxRange/1852, azSpan));
     end
     
-    % Sensor position marker
-    plot3(ax, cx, cy, gz, 'p', 'MarkerSize', 10, ...
+    % v3.6.6 — Sensor marker at actual altitude (negate NED Z for
+    % altitude-up plotting). In top-down views the Z is invisible; in
+    % 3D views this puts the star at the FOV cone apex rather than
+    % ground level (consistent with drawBeamEnvelope.m, which already
+    % uses the sensor's true altitude for its cone apex). Falls back to
+    % gz if cov.position(3) is non-finite.
+    sensorAlt = -cov.position(3) * sf;
+    if ~isfinite(sensorAlt); sensorAlt = gz; end
+    plot3(ax, cx, cy, sensorAlt, 'p', 'MarkerSize', 10, ...
         'MarkerFaceColor', col, 'MarkerEdgeColor', 'w', ...
         'HandleVisibility', 'off');
 end

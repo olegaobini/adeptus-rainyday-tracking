@@ -1,0 +1,30 @@
+{
+  "description": "Canonical MSSR/SSR sensor-pipeline smoke test (v3.6.11). Verifies that selecting SSR in the Path Editor produces a working sensor end-to-end: build (via buildSensor -> buildRadar SSR path), classification (metadata 'type' tag routes to mssrBuffer, not heuristic fallback), beacon detection physics (Doppler/weather/clutter all auto-skip via ~si.isMSSR gates), tracker handoff (detections reach GNN+IMM, ObjectClassID stamped per line ~419 of runDetections.m). Uses default_SSR (120 nm, L-band 1.03 GHz per meta / 1.06 GHz on sensor object - see MSSR-F2) + default_crossing_pair targets + none terrain + horizon-masking ON. EXPECTED CONSOLE SIGNATURE: 'Primary sensors: 0 | Beacon sensors: 1', 'MSSR detected: SensorIndex=1', per-scan 'Primary=0, Beacon=N, total=N (clutter=0)'. EXPECTED WARNING (not a regression): 'Only 4 scan(s) - need at least 5.' The default_crossing_pair targets sit at 5000 m altitude with start ranges of 30-50 km, putting target elevation angles in the 5-11 degree range - above the SSR's narrow +3 degree upper elevation edge. Targets drop out of beam as they approach the tower, producing only 4 scans in 60 s instead of the expected 12. This is correct ASR-11 MSSR behavior (narrow elevation by design, for en-route transponder traffic, NOT overhead coverage) - see MSSR-F4 / X-F5 in SENSOR_VALIDATION_MATRIX.md. Sensor pipeline verification is unaffected: Gates 3, 4, and 6 all pass on this run. Full Tracked% validation needs a sensor-compatible target geometry and is out of scope for the sensor-correctness audit.",
+  "sensors": [
+    "SSR/default_SSR"
+  ],
+  "targets": "crossing_pair/default_crossing_pair",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking":   true,
+    "ground_clutter":    false,
+    "doppler_fade":      false,
+    "weather":           "none",
+    "rcs_range_filter":  false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false,
+    "globe_view": false
+  }
+}

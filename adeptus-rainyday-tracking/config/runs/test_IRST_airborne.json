@@ -1,0 +1,45 @@
+{
+  "description": "Airborne IRST scenario for v3.6.16 — moving ownship at 3000m altitude with sustained right turn (per Fogel-Gavish 1988 observability theorem, sensor motion must out-maneuver target motion by ≥1 order). Replaces test_IRST.json's observability-limited stationary geometry (Tracked% 0% per MathWorks 'Passive Ranging Using a Single Maneuvering Sensor' — the original test_IRST remains untouched for v3.6.15 evidence preservation). End-to-end pipeline: loadRunFile.m §7 routes ownship via trackbench.scenario.addOwnshipFromDef (behavior='waypoints') → waypointTrajectory with AutoBank=AutoPitch=true (fixed-wing aircraft per R2025b Algorithms truth table) → airborne_IRST.json (MechanicalScanLimits widened to [[0,360],[-15,25]] to accommodate body-frame elevation rotation under bank) → runDetections.m (si.isIR branch at line 162, 2-vec minMeas branch at line 401, v3.7.0 defensive weather guards at lines 488/506) → trackbenchFilterInit angle-only wrapper (initrpekf → trackingGSF for 2-vec [az;el] measurements with struct-array MeasurementParameters per v3.7.0) → trackerGNN with lenient confirmation (test_IRST_GNN) → v3.7.2 world-frame truth log (platformPoses-based, BUGHUNT v3.7.2 fix). Ownship trajectory: CV-north at 200 m/s for 0-15s (initial bearing-only collection), sustained right turn 15-40s (heading rotates 0° → ~85°), CV-ENE 40-50s. Target: non-maneuvering CV south at 150 m/s, starting NE of ownship at 2800m alt — kept in body-frame elevation envelope through the maneuver. Clear-air scenario (terrain_occlusion=false, horizon_masking=false) to keep v3.7.x site 3 (per-sensor visibility-masking targetPoses plat-local-frame, X-F6 deferred to potential v3.7.3) dormant for demo-day. EXPECTED CONSOLE SIGNATURE: '[RUN] Platform \"ownship\": 1 sensor(s) — MOVING (behavior=waypoints)', 'Primary sensors: 1 | Beacon sensors: 0', per-scan 'Primary=N, Beacon=0, total=N (clutter=0)' lines, ≥1 confirmed track. SUCCESS GATE for Phase 3 verification: (a) end-to-end run without error, (b) ≥1 confirmed track, (c) Tracked% > 0% on truth target — validates v3.7.2 truth-log frame fix AND v3.6.16 addOwnshipFromDef integration AND airborne_IRST envelope geometry. REGRESSION PAIR: run alongside test_IRST.json (untouched) to confirm v3.6.15 ground-based IRST evidence still reproducible.",
+  "sensors": [
+    "IRST/airborne_IRST"
+  ],
+  "targets": "ir_airborne_demo/default_ir_airborne_demo",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/test_IRST_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking":   false,
+    "ground_clutter":    false,
+    "doppler_fade":      false,
+    "weather":           "none",
+    "rcs_range_filter":  false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {
+    "ownship": {
+      "behavior": "waypoints",
+      "label": "Ownship F-18 (airborne IRST)",
+      "waypoints": [
+        { "pos": [    0,     0, -3000], "time_s":   0 },
+        { "pos": [ 3000,     0, -3000], "time_s":  15 },
+        { "pos": [ 8712,  1568, -3000], "time_s":  45 },
+        { "pos": [12834,  5824, -3000], "time_s":  75 },
+        { "pos": [14189, 11603, -3000], "time_s": 105 },
+        { "pos": [12419, 17259, -3000], "time_s": 135 },
+        { "pos": [ 8006, 21213, -3000], "time_s": 165 },
+        { "pos": [ 5173, 22187, -3000], "time_s": 180 }
+      ]
+    }
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false,
+    "globe_view": false
+  }
+}

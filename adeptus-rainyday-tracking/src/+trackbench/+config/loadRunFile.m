@@ -446,26 +446,70 @@ primaryUpdateRate = [];
 for p = 1:numel(platformNames)
     pName = platformNames{p};
     sensorList = sensors.(pName);
-    plat = platform(scenario, 'Sensors', sensorList);
-    if isstruct(platformDefs) && ~isempty(fieldnames(platformDefs)) && isfield(platformDefs, pName)
+    isMoving = isstruct(platformDefs) && ~isempty(fieldnames(platformDefs)) && isfield(platformDefs, pName);
+    % v3.6.5 §1 — Editor-exported stationary sensors carry their world
+    % (X, Y, alt) coordinates in MountingLocation, with the platform
+    % left at the scenario origin. This is the canonical pattern for
+    % this codebase: keeping the platform at (0,0,0) means
+    % targetPoses(plat) returns target positions in absolute scenario
+    % coords (the platform's local NED frame coincides with the
+    % scenario frame), which the downstream pipeline assumes —
+    % occlusion LOS, horizon masking, truth log, tracker association
+    % all currently treat targetPoses output as absolute coordinates.
+    %
+    % The v3.6.2/3/4 attempts to hoist the platform to the sensor's
+    % world position all broke that assumption in different ways.
+    % v3.6.4 diagnostics confirmed the platform was at the anchor and
+    % pose() returned the correct world position — but the bit-identical
+    % 11179-occlusion failure persisted because targets came back in
+    % the platform's local frame, shifting them off by the anchor for
+    % every LOS/horizon/truth check and causing 100%% truth-est failure.
+    %
+    % The cosmetic blue-star-at-origin issue that triggered this whole
+    % saga turned out to be a *separate* one-line bug in runDetections.m
+    % §coverage build: cov.position read si.platform.InitialPosition,
+    % which is not a property of fusion.scenario.Platform — the try
+    % has been silently failing on every run, leaving cov.position at
+    % the origin for the entire project history. Fixed in v3.6.5 by
+    % reading Trajectory.Position (a real Platform property) instead.
+    anchor = [];
+    if ~isMoving
+        for s = 1:numel(sensorList)
+            sn = sensorList{s};
+            if isprop(sn, 'MountingLocation')
+                mLoc = sn.MountingLocation(:)';
+                if hypot(mLoc(1), mLoc(2)) > 100
+                    anchor = mLoc;
+                    break;
+                end
+            end
+        end
+    end
+    if isMoving
+        % v3.6.16 — Routes via addOwnshipFromDef for rich trajectory
+        % support (constant_velocity, gentle_turn, s_maneuver, crossing,
+        % orbit, approach, departure, waypoints). Legacy schema (only
+        % start_pos / heading_deg / speed_kmh) defaults to
+        % behavior="constant_velocity". Heading convention changed from
+        % the pre-v3.6.16 inline path's sind→N / cosd→E (swapped) to
+        % addOwnshipFromDef's aviation cosd→N / sind→E — see v3.6.16
+        % README Process findings.
         pDef = platformDefs.(pName);
-        pStart = [0 0 0]; pHeading = 90; pSpeed = 250;
-        if isfield(pDef, 'start_pos');   pStart = reshape(pDef.start_pos, 1, []); end
-        if isfield(pDef, 'heading_deg'); pHeading = pDef.heading_deg; end
-        if isfield(pDef, 'speed_kmh');   pSpeed = pDef.speed_kmh * 1000 / 3600; end
-        dx = pSpeed * sind(pHeading);
-        dy = pSpeed * cosd(pHeading);
-        T = config.scenario.duration_s;
-        pEnd = pStart + [dx dy 0] * T;
-        plat.Trajectory = waypointTrajectory( ...
-            'Waypoints', [pStart; pEnd], ...
-            'TimeOfArrival', [0; T], ...
-            'Velocities', [dx dy 0; dx dy 0], ...
-            'AutoBank', true, 'AutoPitch', true);
-        fprintf('[RUN] Platform "%s": %d sensor(s) — MOVING → hdg %.0f° @ %.0f km/h\n', ...
-            pName, numel(sensorList), pHeading, pSpeed*3.6);
+        pDef.label = pName;
+        plat = trackbench.scenario.addOwnshipFromDef( ...
+            scenario, pDef, config.scenario.duration_s, sensorList);
+        behaviorStr = 'constant_velocity';
+        if isfield(pDef, 'behavior'); behaviorStr = char(pDef.behavior); end
+        fprintf('[RUN] Platform "%s": %d sensor(s) — MOVING (behavior=%s)\n', ...
+            pName, numel(sensorList), behaviorStr);
     else
+        plat = platform(scenario, 'Sensors', sensorList);
         fprintf('[RUN] Platform "%s": %d sensor(s) — STATIONARY\n', pName, numel(sensorList));
+        if ~isempty(anchor)
+            fprintf(['[RUN] Platform "%s": editor sensor world coords ' ...
+                '[E=%.0f, N=%.0f, alt=%.0f]m (encoded in MountingLocation; platform at origin per scenario convention)\n'], ...
+                pName, anchor(1), anchor(2), -anchor(3));
+        end
     end
     if isempty(primaryUpdateRate) && ~isempty(sensorList)
         if isprop(sensorList{1}, 'UpdateRate')
@@ -505,17 +549,47 @@ try
             Zterrain, terrainRegions, Xg, Yg, scenBounds);
     end
     groundSurface(scenario, 'Terrain', Zterrain, 'Boundary', boundary);
-    % Raise stationary platforms to terrain
+    % v3.6.5 §2 — Raise stationary platforms only if buried in terrain,
+    % AND skip editor-style platforms whose attached sensors carry
+    % world coordinates in MountingLocation. Such platforms stay at the
+    % scenario origin by design (§1 above); the radar's effective world
+    % position is composed by fusionRadarSensor as plat.Position +
+    % sensor.MountingLocation. Raising the platform to terrain at the
+    % origin would shift that composed position by the valley-floor
+    % terrain elevation (typically 50-200m) and pull the editor-placed
+    % sensor down from its intended altitude. This guard restores
+    % v3.6.1's behavior and was lost during the v3.6.2/3/4 refactors.
     allPlats = scenario.Platforms;
     for pp = 1:numel(allPlats)
         platObj = allPlats{pp};
-        if ~isa(platObj.Trajectory, 'waypointTrajectory')
-            pPos = platObj.Trajectory.Position(:)';
-            terrZ = interp2(Xg, Yg, Zterrain, pPos(1), pPos(2), 'linear', 0);
-            if terrZ < -1
-                platObj.Trajectory.Position = [pPos(1), pPos(2), terrZ];
-                fprintf('[RUN] Platform %d raised to terrain surface (%.0fm ASL)\n', pp, -terrZ);
+        if isa(platObj.Trajectory, 'waypointTrajectory'); continue; end
+
+        % Editor-style guard: any sensor with a non-trivial XY in
+        % MountingLocation flags the platform as editor-anchored;
+        % its sensor world position is composed via MountingLocation
+        % and the platform stays at origin on purpose.
+        isEditorStyle = false;
+        if ~isempty(platObj.Sensors)
+            for ss = 1:numel(platObj.Sensors)
+                sObj = platObj.Sensors{ss};
+                if isprop(sObj, 'MountingLocation')
+                    mL = sObj.MountingLocation(:)';
+                    if hypot(mL(1), mL(2)) > 100
+                        isEditorStyle = true;
+                        break;
+                    end
+                end
             end
+        end
+        if isEditorStyle; continue; end
+
+        pPos = platObj.Trajectory.Position(:)';
+        terrZ = interp2(Xg, Yg, Zterrain, pPos(1), pPos(2), 'linear', 0);
+        % NED: more positive Z = lower altitude. Platform is buried iff
+        % its Z is deeper (more positive) than the terrain Z at (X,Y).
+        if pPos(3) > terrZ + 1
+            platObj.Trajectory.Position = [pPos(1), pPos(2), terrZ];
+            fprintf('[RUN] Platform %d raised to terrain surface (%.0fm ASL)\n', pp, -terrZ);
         end
     end
     tg = struct('Z', Zterrain, 'boundary', boundary, 'X', Xg, 'Y', Yg);

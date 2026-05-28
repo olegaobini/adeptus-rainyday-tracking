@@ -76,16 +76,38 @@ if isfield(config, 'terrainGrid') && ~isempty(config.terrainGrid)
             continue;
         end
 
-        % Check if within terrain grid bounds
-        if pPos(1) >= tg.boundary(1,1) && pPos(1) <= tg.boundary(1,2) && ...
-           pPos(2) >= tg.boundary(2,1) && pPos(2) <= tg.boundary(2,2)
-            terrZ = interp2(tg.X, tg.Y, tg.Z, pPos(1), pPos(2), 'linear', 0);
+        % v3.6.6 — Underground check uses COMPOSED sensor world position
+        % (platform.Position + sensor.MountingLocation), not raw platform
+        % Position. That's what fusionRadarSensor uses internally for
+        % detection geometry, so it's also the correct value for the
+        % "is the sensor buried?" check. The old code read Trajectory.Position
+        % directly and fired a false-positive CRITICAL for every
+        % editor-style scenario — those platforms sit at origin by
+        % design (sensor world coords live in MountingLocation), and
+        % terrain at origin is typically a valley floor, so the platform
+        % was "buried" by construction even though the actual sensor
+        % was on a mountain peak.
+        if isempty(platObj.Sensors); continue; end
+        for ss = 1:numel(platObj.Sensors)
+            sObj = platObj.Sensors{ss};
+            if ~isprop(sObj, 'MountingLocation'); continue; end
+            sensorWorld = pPos + sObj.MountingLocation(:)';
 
-            if pPos(3) > terrZ + 5  % platform z MORE positive than terrain z (buried in NED)
-                issues{end+1} = makeIssue('CRITICAL', 'Sensor Platform Underground', ...
-                    sprintf('Sensor platform %d at z=%.0fm is %.0fm BELOW terrain (terrain=%.0fm ASL at [%.0f,%.0f]).', ...
-                        pp, -pPos(3), pPos(3)-terrZ, -terrZ, pPos(1), pPos(2)), ...
-                    'Platform should have been auto-raised in loadRunFile. If this still fires, check MountingLocation or the auto-raise logic for moving sensor platforms (aircraft).'); %#ok<AGROW>
+            % Check if within terrain grid bounds
+            if sensorWorld(1) >= tg.boundary(1,1) && sensorWorld(1) <= tg.boundary(1,2) && ...
+               sensorWorld(2) >= tg.boundary(2,1) && sensorWorld(2) <= tg.boundary(2,2)
+                terrZ = interp2(tg.X, tg.Y, tg.Z, sensorWorld(1), sensorWorld(2), 'linear', 0);
+
+                if sensorWorld(3) > terrZ + 5  % sensor z MORE positive than terrain z (buried in NED)
+                    issues{end+1} = makeIssue('CRITICAL', 'Sensor Underground', ...
+                        sprintf(['Sensor on platform %d (composed world position ' ...
+                            '[E=%.0f, N=%.0f, alt=%.0f]m) is %.0fm BELOW terrain ' ...
+                            '(terrain=%.0fm ASL at that location).'], ...
+                            pp, sensorWorld(1), sensorWorld(2), -sensorWorld(3), ...
+                            sensorWorld(3)-terrZ, -terrZ), ...
+                        'Either the editor-placed altitude is wrong, the terrain heightmap is higher than expected at that XY, or the platform auto-raise in loadRunFile needs to handle this case.'); %#ok<AGROW>
+                    break;  % one issue per platform; avoid duplicate warnings on multi-sensor platforms
+                end
             end
         end
     end

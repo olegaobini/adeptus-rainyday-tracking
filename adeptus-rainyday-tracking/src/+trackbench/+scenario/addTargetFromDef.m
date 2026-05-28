@@ -33,9 +33,16 @@ function addTargetFromDef(scenario, tDef, duration, idx)
 %    "max_duration_s": 600                   (optional, default = scenario duration)
 %    "ref_lat": 41.5                         (optional, auto from flight midpoint)
 %    "ref_lon": -78.0                        (optional, auto from flight midpoint)
+%    "start_offset_s": 30                    (optional, default 0; staggers start)
 %    Loads real flight recorder data via trackbench.flightdata.loadNASAFlight.
 %    The NED origin is the ref point (auto or specified), which is where the
 %    sensor tower sits. speed_kmh/start_pos/altitude_m are ignored.
+%
+%    start_offset_s shifts every timeOfArrival by the given seconds so
+%    multi-flight batches can stagger their starts. The target sits at
+%    its first waypoint position from scenario t=0 to t=offset (MATLAB's
+%    waypointTrajectory default), then begins moving along the recorded
+%    path. See loadNASAFlight's OPTIONS for the pre-offset detection note.
 %
 %  WAYPOINTS BEHAVIOR FORMAT
 %    "waypoints": [
@@ -133,6 +140,23 @@ function addTargetFromDef(scenario, tDef, duration, idx)
         rcs_val = tDef.rcs_dbsm;
         tgt.Signatures = {rcsSignature('Pattern', rcs_val)};
     end
+
+    %% ── IR Signature (default, auto-attached) ────────────────────
+    % v3.6.13 — append default irSignature so irSensor types (IRST /
+    % FLIR / IR_STARING / CUSTOM_IR) can detect this target.
+    % fusionRadarSensor and sonarSensor enumerate Signatures and pick by
+    % isa() match, so a trailing irSignature is inert for radar/sonar
+    % runs. PosterDemo bit-identical canary mandatory after this edit.
+    %
+    % BEHAVIOR CHANGE: every target now has both rcsSignature (if the
+    % target def configured one) AND a default irSignature. Pre-v3.6.13
+    % targets had rcsSignature alone (or empty Signatures for IR-themed
+    % presets like default_ir_radar_fusion.json that don't set rcs_*).
+    % Post-demo follow-up: optional ir_signature schema field for
+    % opt-in control rather than auto-default.
+    existingSigs = tgt.Signatures;
+    try irSig = irSignature(); catch; irSig = irSignature('Pattern', 1000); end
+    tgt.Signatures = [existingSigs, {irSig}];
 
     %% ── Physical Dimensions ──────────────────────────────────────────
     % Sets the cuboid approximation for visualization and extended object tracking.
@@ -232,6 +256,13 @@ function [wp, t, vel] = buildRecordedFlight(tDef, scenarioDuration)
     end
     if isfield(tDef, 'ref_lon')
         nvArgs = [nvArgs, {'RefLon', tDef.ref_lon}];
+    end
+
+    % start_offset_s — staggers multi-flight batches (see docstring above).
+    % Guarded with > 0 check so legacy targets without the field behave
+    % bit-for-bit identically to the pre-5f path.
+    if isfield(tDef, 'start_offset_s') && tDef.start_offset_s > 0
+        nvArgs = [nvArgs, {'StartOffset', tDef.start_offset_s}];
     end
 
     fd = trackbench.flightdata.loadNASAFlight(flightFile, nvArgs{:});

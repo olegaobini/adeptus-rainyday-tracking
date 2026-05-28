@@ -1,0 +1,30 @@
+{
+  "description": "Canonical PSR smoke-test for sensor validation gate. Independent of PosterDemo: flat 'none' terrain, two crossing targets at 10-50 km, no weather. Exercises PSR build-classify-detect-track end-to-end. Uses sband_PSR (60nm, S-band 2.8 GHz — canonical ASR-11 spec per physics_validation_audit.md). Expected: real posRMS numbers, Tracked% > 80%, blue rotating-radar ring + green/red beam cone in 3D view, Primary sensors: 1 | Beacon sensors: 0.",
+  "sensors": [
+    "PSR/sband_PSR"
+  ],
+  "targets": "crossing_pair/default_crossing_pair",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking":   true,
+    "ground_clutter":    false,
+    "doppler_fade":      true,
+    "weather":           "none",
+    "rcs_range_filter":  false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false,
+    "globe_view": false
+  }
+}

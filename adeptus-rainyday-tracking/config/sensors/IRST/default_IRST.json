@@ -7,6 +7,7 @@
     "fov": [360, 20],
     "rangeLimits": [0, 100000],
     "pd": 0.7,
-    "mountingLoc": [0, 0, -10]
+    "mountingLoc": [0, 0, -10],
+    "MechanicalScanLimits": [[0, 360], [-5, 15]]
   }
 }

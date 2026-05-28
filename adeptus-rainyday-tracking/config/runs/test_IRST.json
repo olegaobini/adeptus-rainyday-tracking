@@ -1,0 +1,30 @@
+{
+  "description": "Canonical IRST smoke-test for sensor validation gate (v3.6.15). Verifies end-to-end IRST pipeline: JSON load via loadRunFile.m:87-116 → buildSensor → buildIR → applyUnmatched → safeSet → irSensor (with v3.6.15 MechanicalScanLimits override [0 360; -5 15]) → runDetections (si.isIR classification at line 162, 2-vec minMeas branch at line 401, defensive weather guards at lines 488/506 — all per v3.7.0) → trackbenchFilterInit angle-only wrapper (initrpekf → trackingGSF for 2-vec [az;el] measurements with struct-array MeasurementParameters, per v3.7.0) → trackerGNN with lenient confirmation (test_IRST_GNN). Single low-altitude crossing target (ir_low_altitude_demo) at 100m altitude, 5km lateral offset, elevation 0.73-1.03° throughout — well inside the [-5°, +15°] scan envelope. Flat 'none' terrain, no weather, all degradations off for minimum-friction verification. EXPECTED CONSOLE SIGNATURE: 'Primary sensors: 1 | Beacon sensors: 0' (IR is classified as Primary per v3.6.8 labeling), per-scan 'Primary=N, Beacon=0, total=N (clutter=0)' lines, ≥1 confirmed track. EXPECTED VISUALIZATION: magenta dashed coverage ring (drawSensorCoverage isIR branch), magenta beam cone in 3D view (drawBeamEnvelope isIR gate). SUCCESS GATE for Phase 3 verification: end-to-end run without error AND ≥1 confirmed track.",
+  "sensors": [
+    "IRST/default_IRST"
+  ],
+  "targets": "ir_low_altitude_demo/default_ir_low_altitude_demo",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/test_IRST_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking":   false,
+    "ground_clutter":    false,
+    "doppler_fade":      false,
+    "weather":           "none",
+    "rcs_range_filter":  false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": false,
+    "save_results": false,
+    "globe_view": false
+  }
+}

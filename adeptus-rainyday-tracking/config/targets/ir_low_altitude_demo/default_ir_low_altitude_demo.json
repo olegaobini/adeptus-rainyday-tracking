@@ -1,0 +1,16 @@
+{
+  "description": "Low-altitude IR target preset for the IRST smoke-test scenario (test_IRST, v3.6.15). Single 'crossing' target at 100m altitude, ~5km lateral offset from the IRST tower (at scenario origin, mountingLoc Z=-10), traversing 10km north-to-south in 60s at 800 km/h. Geometry chosen to keep target elevation in the [0.73°, 1.03°] range throughout the run, well inside the IRST's [-5°, +15°] scan envelope (per v3.6.15 default_IRST.json MechanicalScanLimits override). Range stays 5-7km, well inside the IRST's 100km rangeLimits. Provides reliable detection-to-track for end-to-end IRST pipeline verification through loadRunFile.m → buildSensor → buildIR → applyUnmatched → safeSet → irSensor (with overridden scan envelope) → runDetections (si.isIR classification at line 162) → trackbenchFilterInit angle-only wrapper (initrpekf → trackingGSF, v3.7.0) → trackerGNN.",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "crossing",
+      "speed_kmh": 800,
+      "start_pos": [5000, -5000, -100],
+      "end_pos": [-5000, -5000, -100],
+      "altitude_m": 100,
+      "rcs_dbsm": 5,
+      "label": "Low-altitude crossing (IRST demo)",
+      "class_id": 1
+    }
+  ]
+}

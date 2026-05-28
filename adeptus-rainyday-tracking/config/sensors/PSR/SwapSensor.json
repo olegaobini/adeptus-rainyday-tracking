@@ -1,0 +1,35 @@
+{
+  "name": "SwapSensor",
+  "type": "PSR",
+  "platform": "tower",
+  "frequency_hz": 2.8E+9,
+  "params": {
+    "rpm": 20,
+    "fov": [
+      1.4,
+      30
+    ],
+    "tilt": 2,
+    "sector": [
+      0,
+      360
+    ],
+    "pd": 0.9,
+    "far": 1E-6,
+    "rangeLimits": [
+      0,
+      111120
+    ],
+    "rangeRes": 93,
+    "mountingLoc": [
+      33767.975575344753,
+      -33273.90776863433,
+      -15
+    ],
+    "_display_color": [
+      0.85,
+      0.55,
+      0.2
+    ]
+  }
+}

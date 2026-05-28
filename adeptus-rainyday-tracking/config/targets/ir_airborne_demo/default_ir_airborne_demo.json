@@ -1,0 +1,16 @@
+{
+  "description": "Non-maneuvering target preset for the airborne IRST scenario (test_IRST_airborne, v3.6.16). Single CV target at 2800m altitude, starting northeast of ownship scenario origin, heading south at 150 m/s (540 km/h, typical fighter cruise) for 50s. Geometry chosen to keep target in ownship body-frame elevation envelope [-15°, +25°] (airborne_IRST.json) through the ownship's sustained right turn (15-40s of scenario). At scenario t=0 target is at body-frame az ≈ +51° (forward-right of ownship heading north), el ≈ -1.8° (slightly below ownship). Bank-induced body-frame elevation shift during the turn: target on ownship's right side + right bank → body-frame el rises (sin-projection of roll onto target az). Peak shift ≈ +23° at peak bank (30°), pushing target el from -1.8° to ~+21° — inside [-15°, +25°] envelope but outside the ground-based [-5°, +15°] envelope, validating the airborne widening. Target itself is non-maneuvering CV per MathWorks 'Passive Ranging Using a Single Maneuvering Sensor' canonical pattern (Fogel-Gavish 1988 observability theorem requires ONE side to maneuver, the SENSOR side; non-maneuvering target is the canonical reference geometry).",
+  "duration_s": 180,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 270,
+      "start_pos": [4000, 5000, -2800],
+      "altitude_m": 2800,
+      "heading_deg": 180,
+      "rcs_dbsm": 5,
+      "label": "Non-maneuvering target (airborne IRST demo)",
+      "class_id": 1
+    }
+  ]
+}

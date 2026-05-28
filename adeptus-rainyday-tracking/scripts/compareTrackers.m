@@ -7,7 +7,7 @@ function results = compareTrackers(runName, opts)
 %  Reads the run file's "compare_trackers" array — each entry pointing to a
 %  tracker JSON config under config/trackers/ — and runs each one against
 %  the cached detections from that run. Prints a ranked comparison table
-%  sorted by composite score.
+%  sorted by a composite 6-component quality score (lower = better).
 %
 %  Unlike the older compareAllTrackers, this function makes NO assumptions
 %  about which files to use. The user lists the exact files to compare in
@@ -38,18 +38,25 @@ function results = compareTrackers(runName, opts)
 %      and "filter_model" (CV/IMM).
 %
 %  OPTS (optional struct)
-%    .weights : [posRMS, swaps, falseTracks, breaks] weighting for score
-%               (default [0.5, 0.25, 0.15, 0.10])
+%    .weights : 6-element vector for the composite score:
+%               [posErr, swap, false, break, tracked, estFail]
+%               Default [0.25 0.15 0.10 0.10 0.25 0.15]. Legacy 4-element
+%               vectors are padded with default tracked/estFail weights
+%               and a warning is issued.
 %
 %  OUTPUT
-%    results.table   : sorted comparison table (best first)
-%    results.raw     : per-entry metric structs
-%    results.runName : name of the run used
+%    results.table       : sorted comparison table (best first)
+%    results.raw         : per-entry metric structs
+%    results.breakdowns  : per-entry score-component breakdowns
+%    results.runName     : name of the run used
+%    results.weights     : weights used for scoring
 %
-%  See also: autoTuneTracker, runSingleScenario, compareAllTrackers (legacy)
+%  See also: autoTuneTracker, runSingleScenario,
+%            trackbench.analysis.computeTunerScore,
+%            trackbench.analysis.extractTunerMetrics
 
 if nargin < 2; opts = struct(); end
-if ~isfield(opts, 'weights'); opts.weights = [0.5, 0.25, 0.15, 0.10]; end
+if ~isfield(opts, 'weights'); opts.weights = [0.25, 0.15, 0.10, 0.10, 0.25, 0.15]; end
 
 runName = string(runName);
 
@@ -142,14 +149,15 @@ maxRange = computeMaxRangeFromTruth(dataLog);
 w = opts.weights;
 
 %% 5. Run each listed tracker
-entryResults = cell(nEntries, 1);
+entryResults    = cell(nEntries, 1);
+entryBreakdowns = cell(nEntries, 1);
 
-fprintf('  %-38s %-6s %-4s | %8s  %5s  %5s  %6s | %8s | Time\n', ...
-    'Config', 'Type', 'Flt', 'posRMS', 'Swaps', 'False', 'Breaks', 'Score');
-fprintf('  -------------------------------------- ------ ---- + --------  -----  -----  ------ + -------- + ----\n');
+fprintf('  %-30s %-6s %-4s | %5s %3s %3s %3s %4s %4s | %5s | Time\n', ...
+    'Config', 'Type', 'Flt', 'RMS', 'Sw', 'FT', 'Brk', 'Trkd', 'EstF', 'Score');
+fprintf('  ────────────────────────────── ────── ──── ┼ ─────────────────────────── ┼ ───── ┼ ────\n');
 
 for i = 1:nEntries
-    entryPath = trkList{i};
+    entryPath  = trkList{i};
     entryLabel = entryPath;
 
     tStart = tic;
@@ -180,40 +188,50 @@ for i = 1:nEntries
         [trackSummary, truthSummary, trackMetrics, ~] = ...
             trackbench.tracking.runTracker(dataLog, tracker, false, false, false);
 
-        m = extractMetrics(trackSummary, truthSummary, trackMetrics);
-        m.score = w(1) * (m.avgPosRMS / maxRange) + ...
-                  w(2) * m.swapCount + ...
-                  w(3) * log1p(m.falseTracks) + ...
-                  w(4) * m.breakCount;
-        m.configPath = entryPath;
-        m.tracker = tType;
-        m.model = fModel;
-        m.elapsed = toc(tStart);
+        % Extract metrics + score with the new 6-component formula
+        m = trackbench.analysis.extractTunerMetrics(trackSummary, truthSummary, trackMetrics);
+        s = trackbench.analysis.computeTunerScore(m, maxRange, w);
 
-        entryResults{i} = m;
-        fprintf('  %-38s %-6s %-4s | %7.0fm  %5d  %5d  %6d | %8.4f | %.1fs\n', ...
-            truncLabel(entryLabel,38), tType, fModel, ...
-            m.avgPosRMS, m.swapCount, m.falseTracks, m.breakCount, m.score, m.elapsed);
+        m.score      = s.total;
+        m.configPath = entryPath;
+        m.tracker    = tType;
+        m.model      = fModel;
+        m.elapsed    = toc(tStart);
+
+        entryResults{i}    = m;
+        entryBreakdowns{i} = s;
+
+        fprintf('  %-30s %-6s %-4s | %5s %3d %3d %3d %4s %4s | %.3f | %.1fs\n', ...
+            truncLabel(entryLabel,30), tType, fModel, ...
+            fmtMeters(m.avgPosRMS), m.swapCount, m.falseTracks, m.breakCount, ...
+            fmtPctNarrow(m.worstTrackedPct), fmtEstFail(m.estFailures, m.numTruths), ...
+            m.score, m.elapsed);
 
         clear tracker;
     catch ME
-        m = struct('avgPosRMS', Inf, 'swapCount', 99, 'falseTracks', 99, ...
-            'breakCount', 99, 'score', Inf, 'configPath', entryPath, ...
-            'tracker', '?', 'model', '?', 'elapsed', toc(tStart), ...
-            'error', ME.message);
-        entryResults{i} = m;
-        fprintf('  %-38s FAILED: %s\n', truncLabel(entryLabel,38), ME.message);
+        m = makeFailedMetric();
+        m.configPath = entryPath;
+        m.tracker    = '?';
+        m.model      = '?';
+        m.elapsed    = toc(tStart);
+        m.error      = ME.message;
+        entryResults{i}    = m;
+        entryBreakdowns{i} = makeFailedScore(w);
+        fprintf('  %-30s FAILED: %s\n', truncLabel(entryLabel,30), ME.message);
     end
 end
 
 %% 6. Build comparison table (sorted)
-configs = cell(nEntries, 1);
+configs  = cell(nEntries, 1);
 trackers = cell(nEntries, 1);
 models   = cell(nEntries, 1);
 posRMS   = zeros(nEntries, 1);
 swaps    = zeros(nEntries, 1);
 falses   = zeros(nEntries, 1);
 breaks   = zeros(nEntries, 1);
+trkdPct  = zeros(nEntries, 1);
+estFails = zeros(nEntries, 1);
+numTr    = zeros(nEntries, 1);
 scores   = zeros(nEntries, 1);
 times    = zeros(nEntries, 1);
 for i = 1:nEntries
@@ -225,12 +243,18 @@ for i = 1:nEntries
     swaps(i)    = r.swapCount;
     falses(i)   = r.falseTracks;
     breaks(i)   = r.breakCount;
+    if isnan(r.worstTrackedPct); trkdPct(i) = 0; else; trkdPct(i) = r.worstTrackedPct; end
+    estFails(i) = r.estFailures;
+    numTr(i)    = r.numTruths;
     scores(i)   = r.score;
     times(i)    = r.elapsed;
 end
-compTable = table(configs, trackers, models, posRMS, swaps, falses, breaks, scores, times, ...
-    'VariableNames', {'Config','Tracker','Model','posRMS_m','Swaps','FalseTracks','Breaks','Score','Time_s'});
-compTable = sortrows(compTable, 'Score');
+compTable = table(configs, trackers, models, posRMS, swaps, falses, breaks, ...
+    trkdPct, estFails, numTr, scores, times, ...
+    'VariableNames', {'Config','Tracker','Model','posRMS_m','Swaps','FalseTracks', ...
+                      'Breaks','WorstTrkdPct','EstFail','NumTruths','Score','Time_s'});
+[compTable, sortIdx] = sortrows(compTable, 'Score');
+entryBreakdownsSorted = entryBreakdowns(sortIdx);
 
 %% 7. Summary
 fprintf('\n');
@@ -240,18 +264,44 @@ fprintf('================================================================\n\n');
 disp(compTable);
 
 if ~isempty(compTable) && isfinite(compTable.Score(1))
-    b = compTable(1,:);
-    fprintf('  BEST: %s (%s+%s) -- posRMS=%.0fm, Score=%.4f\n', ...
-        b.Config{1}, b.Tracker{1}, b.Model{1}, b.posRMS_m, b.Score);
+    b      = compTable(1,:);
+    bScore = entryBreakdownsSorted{1};
+
+    fprintf('  ★ BEST: %s (%s+%s)\n', b.Config{1}, b.Tracker{1}, b.Model{1});
+    fprintf('  ──────────────────────────────────────────────────────\n');
+    printScoreBreakdown(bScore);
+
+    % If there are multiple entries, also show how the winner compares
+    % component-by-component against the runner-up. Often the score gap
+    % comes from one specific term — useful to call out.
+    if height(compTable) >= 2 && isfinite(compTable.Score(2))
+        runner = compTable(2,:);
+        rScore = entryBreakdownsSorted{2};
+        fprintf('\n  Versus runner-up (%s):\n', runner.Config{1});
+        labels = {'posErr', 'swap  ', 'false ', 'break ', 'tracked', 'estFail'};
+        bestW   = bScore.weighted;
+        runnerW = rScore.weighted;
+        diff    = runnerW - bestW;  % positive = runner-up worse here
+        for k = 1:numel(labels)
+            arrow = '  ';
+            if diff(k) > 0.005;  arrow = '↑ '; end  % winner better
+            if diff(k) < -0.005; arrow = '↓ '; end  % winner worse
+            fprintf('    %s   winner: %.3f   runner-up: %.3f   Δ:%+.3f %s\n', ...
+                labels{k}, bestW(k), runnerW(k), diff(k), arrow);
+        end
+        fprintf('  (↑ means winner is better on this component; ↓ means runner-up is)\n');
+    end
 end
 
 fprintf('\n================================================================\n');
 fprintf('  COMPARISON COMPLETE: %s\n', runName);
 fprintf('================================================================\n\n');
 
-results.table   = compTable;
-results.raw     = entryResults;
-results.runName = char(runName);
+results.table      = compTable;
+results.raw        = entryResults;
+results.breakdowns = entryBreakdowns;
+results.runName    = char(runName);
+results.weights    = w;
 
 end
 
@@ -288,30 +338,73 @@ function [params, gMod, fMod] = resolveEntryParams(tc, config, gBase, fBase)
 end
 
 
-function m = extractMetrics(trackSummary, truthSummary, trackMetrics)
-    m.avgPosRMS = Inf;
-    m.swapCount = 0;
-    m.falseTracks = 0;
-    m.breakCount = 0;
+function m = makeFailedMetric()
+%makeFailedMetric  Sentinel struct so a failed run still slots into tables.
+    m.avgPosRMS       = Inf;
+    m.swapCount       = 99;
+    m.falseTracks     = 99;
+    m.breakCount      = 99;
+    m.worstTrackedPct = 0;
+    m.avgTrackedPct   = 0;
+    m.estFailures     = 99;
+    m.numTruths       = 1;
+    m.score           = Inf;
+end
 
-    if istable(trackMetrics) && ~isempty(trackMetrics)
-        if ismember('posRMS', trackMetrics.Properties.VariableNames)
-            valid = trackMetrics.posRMS(isfinite(trackMetrics.posRMS));
-            if ~isempty(valid); m.avgPosRMS = mean(valid); end
-        end
+function s = makeFailedScore(w)
+%makeFailedScore  Sentinel breakdown for failed configs.
+    s.posErr   = 1;
+    s.swap     = 1;
+    s.false    = 1;
+    s.break    = 1;
+    s.tracked  = 1;
+    s.estFail  = 1;
+    s.weighted = w(:)';
+    s.weights  = w(:)';
+    s.total    = Inf;
+end
+
+
+function printScoreBreakdown(s)
+%printScoreBreakdown  Show how each component contributed to the total.
+    fprintf('  Score: %.3f  (lower = better, 0 = perfect, 1 = catastrophic)\n', s.total);
+    fprintf('  Component contributions (raw × weight = weighted):\n');
+    labels = {'posErr ', 'swap   ', 'false  ', 'break  ', 'tracked', 'estFail'};
+    raws   = [s.posErr, s.swap, s.false, s.break, s.tracked, s.estFail];
+    for k = 1:numel(labels)
+        bar = repmat('█', 1, max(0, round(s.weighted(k) * 40)));
+        fprintf('    %s  %.3f × %.2f = %.3f  %s\n', ...
+            labels{k}, raws(k), s.weights(k), s.weighted(k), bar);
     end
-    if istable(trackSummary) && ~isempty(trackSummary)
-        if ismember('SwapCount', trackSummary.Properties.VariableNames)
-            m.swapCount = sum(trackSummary.SwapCount);
-        end
-        if ismember('AssignedTruthID', trackSummary.Properties.VariableNames)
-            m.falseTracks = sum(isnan(trackSummary.AssignedTruthID));
-        end
+end
+
+
+function s = fmtMeters(r)
+%fmtMeters  posRMS in 5 chars, e.g. " 1234" or "  Inf".
+    if ~isfinite(r)
+        s = '  Inf';
+    elseif r >= 99999
+        s = '99999';
+    else
+        s = sprintf('%5.0f', r);
     end
-    if istable(truthSummary) && ~isempty(truthSummary)
-        if ismember('BreakCount', truthSummary.Properties.VariableNames)
-            m.breakCount = sum(truthSummary.BreakCount);
-        end
+end
+
+function s = fmtPctNarrow(pct)
+%fmtPctNarrow  Worst-tracked percent in 4 chars, e.g. " 92%" or " --%".
+    if isnan(pct)
+        s = ' --%';
+    else
+        s = sprintf('%3.0f%%', max(0, min(100, pct)));
+    end
+end
+
+function s = fmtEstFail(est, total)
+%fmtEstFail  Establishment-failure ratio in 4 chars, e.g. "0/2" or "--".
+    if total <= 0
+        s = '  --';
+    else
+        s = sprintf('%d/%d', est, total);
     end
 end
 
@@ -319,7 +412,7 @@ end
 function s = truncLabel(s, maxLen)
     s = char(s);
     if numel(s) > maxLen
-        s = [s(1:maxLen-1) '...'];
+        s = [s(1:maxLen-1) '…'];
     end
 end
 

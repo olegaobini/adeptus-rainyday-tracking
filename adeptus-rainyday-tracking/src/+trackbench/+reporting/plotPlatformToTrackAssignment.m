@@ -68,37 +68,91 @@ end
 
 for i = 1:numel(uTrk)
     tid = uTrk(i);
-    idx = (trk == tid);
-    if ~any(idx); continue; end
+    idx = find(trk == tid);
+    if isempty(idx); continue; end
 
-    % Find the dominant truth for this track (mode of TruthID assignments)
+    % Sort this track's rows by time so segment boundaries follow scan
+    % order, not row order in the table.
+    [~, ord] = sort(t(idx));
+    idx = idx(ord);
+    tTrack         = t(idx);
     truthsForTrack = tru(idx);
-    truthsForTrack = truthsForTrack(~isnan(truthsForTrack));
-    if isempty(truthsForTrack)
-        ci = [0.5 0.5 0.5];  % grey for unassigned
+    yValTrack      = yVal(idx);
+
+    % Dominant truth (mode of valid assignments) supplies the LABEL color.
+    % The line itself is drawn in segments colored by the truth at each
+    % scan so swaps appear as a color change in the line, not just a red
+    % X overlay — see swap discussion in analyzeTrackSwaps.m.
+    validTruths = truthsForTrack(~isnan(truthsForTrack) & truthsForTrack > 0);
+    if isempty(validTruths)
         dominantTruth = NaN;
+        labelColor = [0.7 0.7 0.7];
     else
-        dominantTruth = mode(truthsForTrack);
+        dominantTruth = mode(validTruths);
         if isKey(truthColorMap, dominantTruth)
-            ci = truthColorMap(dominantTruth);
+            labelColor = truthColorMap(dominantTruth);
         else
-            ci = [0.5 0.5 0.5];
+            labelColor = [0.7 0.7 0.7];
         end
     end
 
-    % Draw as a thick line
-    plot(ax, t(idx), yVal(idx), '-', 'LineWidth', 3, 'Color', ci, ...
-        'HandleVisibility', 'off');
+    % Walk the scan sequence and emit one plot() per run of unchanged
+    % truth. isequaln treats two NaNs as equal so "no assignment"
+    % stretches don't spuriously break into single-point segments.
+    nScans   = numel(tTrack);
+    segStart = 1;
+    for k = 2:nScans+1
+        atEnd = (k > nScans);
+        if atEnd
+            truthChanged = true;
+        else
+            truthChanged = ~isequaln(truthsForTrack(k-1), truthsForTrack(k));
+        end
+        if ~truthChanged; continue; end
 
-    % Label near first sample: "T01 → Truth 2"
-    i0 = find(idx, 1, 'first');
-    if isnan(dominantTruth)
-        labelStr = sprintf(' T%02d (unassigned)', tid);
-    else
-        labelStr = sprintf(' T%02d \\rightarrow Truth %d', tid, dominantTruth);
+        segIdx   = segStart:(k-1);
+        segTruth = truthsForTrack(segStart);
+        if isnan(segTruth) || segTruth <= 0
+            segColor = [0.6 0.6 0.6];  % grey for unassigned stretches
+        elseif isKey(truthColorMap, segTruth)
+            segColor = truthColorMap(segTruth);
+        else
+            segColor = [0.6 0.6 0.6];
+        end
+
+        tSeg = tTrack(segIdx);
+        ySeg = yValTrack(segIdx);
+        if numel(tSeg) == 1
+            % Single-scan segment — render as a marker so it stays visible
+            plot(ax, tSeg, ySeg, 'o', ...
+                'MarkerFaceColor', segColor, 'MarkerEdgeColor', segColor, ...
+                'MarkerSize', 7, 'HandleVisibility', 'off');
+        else
+            plot(ax, tSeg, ySeg, '-', ...
+                'LineWidth', 3, 'Color', segColor, ...
+                'HandleVisibility', 'off');
+        end
+
+        segStart = k;
     end
-    text(ax, t(i0), yVal(i0), labelStr, ...
-        'FontWeight', 'bold', 'Color', ci, 'FontSize', 9, ...
+
+    % Label near first sample. If the track was associated with more than
+    % one truth during its lifetime (i.e. a swap occurred on this track),
+    % list them in order of first appearance: "T01 -> Truth 2->1".
+    uniqueTruths = unique(validTruths, 'stable');
+    if isempty(uniqueTruths)
+        labelStr = sprintf(' T%02d (unassigned)', tid);
+    elseif numel(uniqueTruths) == 1
+        labelStr = sprintf(' T%02d \\rightarrow Truth %d', tid, uniqueTruths(1));
+    else
+        truthChain = sprintf('%d', uniqueTruths(1));
+        for u = 2:numel(uniqueTruths)
+            truthChain = sprintf('%s\\rightarrow%d', truthChain, uniqueTruths(u));
+        end
+        labelStr = sprintf(' T%02d \\rightarrow Truth %s', tid, truthChain);
+    end
+    text(ax, tTrack(1), yValTrack(1), labelStr, ...
+        'FontWeight', 'bold', 'Color', labelColor, 'FontSize', 9, ...
         'VerticalAlignment', 'bottom', 'Interpreter', 'tex');
 end
 

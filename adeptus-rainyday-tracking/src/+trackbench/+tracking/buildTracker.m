@@ -26,12 +26,18 @@ function tracker = buildTracker(trackerType, filterModel, params, globalParams, 
 
     % Wrap filter initialization to bake in config parameters.
     if strcmpi(filterModel, 'CV')
-        initFcn = @(det) trackbench.tracking.initCVFilter(det, filterParams);
+        baseInitFcn = @(det) trackbench.tracking.initCVFilter(det, filterParams);
     elseif strcmpi(filterModel, 'IMM')
-        initFcn = @(det) trackbench.tracking.initIMMFilter(det, filterParams);
+        baseInitFcn = @(det) trackbench.tracking.initIMMFilter(det, filterParams);
     else
         error('[TRACKER] Unknown filter model: %s. Use CV or IMM.', filterModel);
     end
+
+    % v3.7.0: Route angle-only (IR) detections to initrpekf; everything
+    % else falls through to baseInitFcn. PSR/MSSR/sonar detections lack
+    % the Frame='Spherical' + HasRange=false combo, so behavior is
+    % bit-identical for the existing detection paths.
+    initFcn = @(det) trackbench.tracking.trackbenchFilterInit(det, baseInitFcn);
 
     % Extract confirm/delete thresholds with defaults
     % These control when tentative tracks become confirmed and when

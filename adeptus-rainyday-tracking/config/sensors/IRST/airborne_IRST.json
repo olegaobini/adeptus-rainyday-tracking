@@ -1,0 +1,16 @@
+{
+  "name": "Airborne IR Search and Track",
+  "type": "IRST",
+  "platform": "ownship",
+  "_frequency_hz": "N/A — IR sensor, not radar. IRST operates in infrared wavelengths (~3-12 μm). Not affected by rain attenuation but severely degraded by fog and clouds. The frequency_hz field is ignored for IR sensor types.",
+  "_envelope_note": "v3.6.16 airborne IRST variant. MechanicalScanLimits elevation envelope widened from default_IRST.json's [-5°, +15°] (ground-based) to [-15°, +25°] (airborne) to accommodate body-frame elevation rotation under ownship bank during turns. Phase 1 analysis: a 30° bank with target at body-frame az ≈ 50° produces ≈ 23° body-frame elevation shift (sin-projection of roll onto target direction), which exceeds the default ground-based envelope ceiling but stays inside the widened airborne envelope. The widening matches real-world airborne IRSTs (e.g., F-35 EOTS, Su-57 OLS-50M) which have broader elevation envelopes than ground-based IRSTs to maintain search coverage through maneuvers. Default_IRST.json is preserved unchanged — v3.6.15 matrix evidence for ground-based IRST remains valid.",
+  "_mountingloc_note": "MountingLocation [0, 0, 0] = sensor at platform center of mass (airborne). Differs from default_IRST.json's [0, 0, -10] which puts the IRST on a 10m mast above tower platform origin. For an airborne ownship the platform IS the airframe, so no mast offset.",
+  "params": {
+    "fov": [360, 20],
+    "rangeLimits": [0, 100000],
+    "pd": 0.7,
+    "mountingLoc": [0, 0, 0],
+    "hasINS": true,
+    "MechanicalScanLimits": [[0, 360], [-15, 25]]
+  }
+}

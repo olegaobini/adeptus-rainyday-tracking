@@ -1,0 +1,37 @@
+{
+  "description": "Swap detection test - two airliners crossing at midpoint, clean conditions. Expected: GNN swaps > 0; JPDA/TOMHT swaps <= GNN.",
+  "sensors": [
+    "PSR/default_PSR"
+  ],
+  "targets": "waypoints/swap_demo",
+  "terrain": "water/default_water",
+  "trackers": [
+    "GNN/default_GNN",
+    "JPDA/default_JPDA",
+    "TOMHT/default_TOMHT"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "rcs_range_filter": false,
+    "weather": "none"
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  },
+  "compare_trackers": [
+    "GNN/default_GNN",
+    "JPDA/default_JPDA",
+    "TOMHT/default_TOMHT"
+  ]
+}

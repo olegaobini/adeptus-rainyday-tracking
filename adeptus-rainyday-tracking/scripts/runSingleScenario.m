@@ -226,7 +226,9 @@ for c = 1:length(trackerCombos)
     results.(comboName).swapReport = swapReport;
 
     if config.output.print_diagnostics
-        disp(trackSummary); disp(truthSummary);
+        trackbench.reporting.printCompactTrackSummary(trackSummary);
+        fprintf('\n');
+        trackbench.reporting.printCompactTruthSummary(truthSummary);
     end
 
     swapStr = ternary(swapReport.swapFree, 'CLEAN', sprintf('%d SWAP(S)', swapReport.totalSwaps));
@@ -258,6 +260,27 @@ for c = 1:length(trackerCombos)
             fprintf('T%d=%s  ', ti, string(trackMetrics.Quality(ti)));
         end
         fprintf('\n');
+    end
+
+    % Establishment-failure flag: warn if any truth took more than 25%
+    % of its lifetime to be first associated with a track. This catches
+    % the failure mode the swap count alone misses — a truth that was
+    % effectively never tracked, then briefly captured by a late swap.
+    if istable(truthSummary) && height(truthSummary) > 0 && ...
+            all(ismember({'TruthID','TotalLength','EstablishmentLength'}, ...
+                truthSummary.Properties.VariableNames))
+        estLateMsgs = strings(0, 1);
+        for ti = 1:height(truthSummary)
+            tl = truthSummary.TotalLength(ti);
+            el = truthSummary.EstablishmentLength(ti);
+            if tl > 0 && (el / tl) > 0.25
+                estLateMsgs(end+1) = sprintf('Truth%d est@%d/%d (%.0f%%)', ...
+                    truthSummary.TruthID(ti), el, tl, 100 * el / tl); %#ok<AGROW>
+            end
+        end
+        if ~isempty(estLateMsgs)
+            fprintf('  │ Est failure : %s\n', strjoin(estLateMsgs, ', '));
+        end
     end
     fprintf('  └─────────────────────────────────────────────\n');
 

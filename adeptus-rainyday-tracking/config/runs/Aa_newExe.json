@@ -7,8 +7,6 @@
   "targets": "waypoints/Aa_newExe",
   "terrain": "rural/Aa_newExe_terrain",
   "trackers": [
-    "GNN/default_GNN",
-    "GNN/my_GNN",
     "GNN/my_GNN_cv"
   ],
   "degradation": {
@@ -31,8 +29,6 @@
     "globe_view": false
   },
   "compare_trackers": [
-    "GNN/default_GNN",
-    "GNN/my_GNN",
     "GNN/my_GNN_cv"
   ]
 }

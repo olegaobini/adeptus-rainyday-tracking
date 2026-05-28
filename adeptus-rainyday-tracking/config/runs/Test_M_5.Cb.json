@@ -166,7 +166,7 @@
     }
   },
   "cache": {
-    "use_cached_detections": false,
+    "use_cached_detections": true,
     "save_detections": true
   },
   "platforms": {},

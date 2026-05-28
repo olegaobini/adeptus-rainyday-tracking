@@ -120,12 +120,12 @@ function varargout = mainMenu()
     % Window is small and fixed-size; sub-windows open at their own
     % default positions and the user can arrange.
     fig = uifigure('Name', 'Rainy Day Tracker', ...
-                   'Position', [120 200 460 460], ...
+                   'Position', [120 200 460 526], ...
                    'Resize', 'off');
 
-    gl = uigridlayout(fig, [8, 1]);
-    %               Title  Subtitle  spacer  btn1  btn2  btn3  flex  Exit
-    gl.RowHeight = {38,    20,       12,     58,   58,   58,   '1x', 32};
+    gl = uigridlayout(fig, [9, 1]);
+    %               Title  Subtitle  spacer  btn1  btn2  btn3  btn4  flex  Exit
+    gl.RowHeight = {38,    20,       12,     58,   58,   58,   58,   '1x', 32};
     gl.ColumnWidth = {'1x'};
     gl.RowSpacing = 8;
     gl.Padding = [28 18 28 18];
@@ -159,12 +159,17 @@ function varargout = mainMenu()
         'ButtonPushedFcn', @(~,~) launchValidationDocs());
     btn3.Layout.Row = 6;
 
+    btn4 = uibutton(gl, 'Text', '4.  Flight Data Manager', ...
+        'FontSize', 14, ...
+        'ButtonPushedFcn', @(~,~) launchFlightDataMgr());
+    btn4.Layout.Row = 7;
+
     % Exit button at the bottom — closes the menu only. Open sub-windows
     % stay open (they're independent uifigures).
     btnExit = uibutton(gl, 'Text', 'Exit', ...
         'FontSize', 12, ...
         'ButtonPushedFcn', @(~,~) close(fig));
-    btnExit.Layout.Row = 8;
+    btnExit.Layout.Row = 9;
 
     % ── Sub-window launchers ──────────────────────────────────────────
     % All wrapped in try/catch + uialert so the menu stays responsive
@@ -205,6 +210,25 @@ function varargout = mainMenu()
                    'runTestPlan from the MATLAB console, or open ' ...
                    'README.md / handout / glossary directly from the ' ...
                    'project folder.'];
+            uialert(fig, msg, 'Coming Soon', 'Icon', 'info');
+        end
+    end
+
+    function launchFlightDataMgr()
+        % Calls flightDataManagerGUI when it exists; placeholder otherwise.
+        % Browses NASA DASHlink FDR (.mat) files, visualizes on a globe,
+        % and composes multi-flight batches for Path Editor import.
+        if exist('flightDataManagerGUI', 'file') == 2
+            try
+                flightDataManagerGUI(projectRoot);
+            catch ME
+                uialert(fig, ME.message, 'Flight Data Manager Error');
+            end
+        else
+            msg = ['Flight Data Manager is coming soon.' newline newline ...
+                   'This will provide browsing, globe visualization, ' ...
+                   'and multi-flight scenario import for NASA DASHlink ' ...
+                   'flight data recorder (.mat) files.'];
             uialert(fig, msg, 'Coming Soon', 'Icon', 'info');
         end
     end
@@ -274,18 +298,24 @@ function seedUserDataRoot(userRoot, installRoot)
 %seedUserDataRoot  First-launch population of the per-user data dir.
 %   Idempotent: only copies items that don't already exist in userRoot,
 %   so user edits to run files (etc.) survive subsequent launches.
-%   Always ensures cache/ and results/ exist (even on later launches).
+%   Always ensures cache/, results/, and flight_data/ exist.
 %
 %   Items copied from installRoot (skipped if already present):
-%     config/         — sensors, targets, terrain, trackers, weather, runs.
-%                       User edits land here.
-%     docs/           — PDFs, handouts, glossary (read by validationDocsGUI).
-%     README.md       — project overview.
-%     CHECKPOINT.md   — current state notes.
+%     config/                — sensors, targets, terrain, trackers,
+%                              weather, runs. User edits land here.
+%     docs/                  — PDFs, handouts, glossary (read by
+%                              validationDocsGUI).
+%     README.md              — project overview.
+%     CHECKPOINT.md          — current state notes.
+%     flight_data/Tail_687_1 — NASA DASHlink sample flights (3 .mat
+%                              files, ~7.8 MB). FDM defaults to scanning
+%                              this folder; users can add more .mat
+%                              files here or in sibling subfolders.
 %
 %   Items always created (writable scratch):
-%     cache/    — detection cache (.mat files keyed by run name).
-%     results/  — saved tracker results (timestamped .mat files).
+%     cache/        — detection cache (.mat files keyed by run name).
+%     results/      — saved tracker results (timestamped .mat files).
+%     flight_data/  — user-writable home for FDR .mat files.
     if ~isfolder(userRoot)
         mkdir(userRoot);
     end
@@ -318,6 +348,31 @@ function seedUserDataRoot(userRoot, installRoot)
         catch ME
             warning('trackbench:mainMenu:seedFailed', ...
                 'Failed to copy %s -> %s: %s', src, dst, ME.message);
+        end
+    end
+
+    % Seed flight data folder (v3.6.0+). Two-step:
+    %   (a) Always ensure <userRoot>/flight_data/ exists — this is the
+    %       user-writable home for FDR .mat files. Users add their own
+    %       flights here (or in subfolders) and the Flight Data Manager
+    %       defaults to scanning it.
+    %   (b) On first launch only, copy the installer-bundled
+    %       <installRoot>/Tail_687_1/ samples into
+    %       <userRoot>/flight_data/Tail_687_1/ so the FDM has something
+    %       to scan out of the box.
+    flightDataDir = fullfile(userRoot, 'flight_data');
+    if ~isfolder(flightDataDir)
+        mkdir(flightDataDir);
+    end
+    sampleSrc = fullfile(installRoot, 'Tail_687_1');
+    sampleDst = fullfile(flightDataDir, 'Tail_687_1');
+    if isfolder(sampleSrc) && ~isfolder(sampleDst)
+        try
+            copyfile(sampleSrc, sampleDst, 'f');
+            seededAny = true;
+        catch ME
+            warning('trackbench:mainMenu:flightSeedFailed', ...
+                'Failed to copy %s -> %s: %s', sampleSrc, sampleDst, ME.message);
         end
     end
 
