@@ -1050,8 +1050,24 @@ function applyAutoFit2D(ax, wp, state)
     xSpan = max(xMax - xMin, 2000);
     ySpan = max(yMax - yMin, 2000);
     pad = 0.10;
-    ax.XLim = [xMin - pad*xSpan, xMax + pad*xSpan];
-    ax.YLim = [yMin - pad*ySpan, yMax + pad*ySpan];
+    xL = [xMin - pad*xSpan, xMax + pad*xSpan];
+    yL = [yMin - pad*ySpan, yMax + pad*ySpan];
+    % v3.7.10 - cap the displayed aspect. A near-straight route (e.g. PAR_TEST:
+    % ~26 km E-W but ~0.2 km N-S) is ~50:1; axis(ax,'equal') turns that into a
+    % 50:1 plot box - an unusable sliver. Pad the SHORTER axis with empty space
+    % so the box ratio stays within maxAR. Equal data scaling is kept (range
+    % rings stay circular); the thin path just gets breathing room.
+    maxAR = 1;   % keep the autofit box square (1:1)
+    xw = diff(xL); yw = diff(yL);
+    if     xw > maxAR*yw; g = (xw/maxAR - yw)/2; yL = [yL(1)-g, yL(2)+g];
+    elseif yw > maxAR*xw; g = (yw/maxAR - xw)/2; xL = [xL(1)-g, xL(2)+g];
+    end
+    ax.XLim = xL;
+    ax.YLim = yL;
+    % Equal data units (circular rings) but let the box follow the capped
+    % limits instead of collapsing to a sliver.
+    ax.DataAspectRatio        = [1 1 1];
+    ax.PlotBoxAspectRatioMode = 'auto';
 end
 
 
@@ -1714,23 +1730,30 @@ end
 
 
 function [altLow, altHigh] = beamAltEdgesM(sr, rangeM, mountAltM)
-%beamAltEdgesM  Altitudes (metres, +Z up) where the upper and lower
-%                elevation-FOV edges reach `rangeM`. Formula:
-%                    altEdge = mountAlt + range * tand(±fov_el/2 + tilt)
-%                Lower edge is clipped to 0 (no below-ground volumes).
-%                Upper edge is floored to mountAlt + 10 so horizontal
-%                beams still render with non-zero cylinder height.
-%                NOTE: this function is COSMETIC — the clipping/flooring
-%                above is for 3D rendering only. The altitude-window
-%                banner readout (refreshSensorParamsPanel, §3.6B)
-%                intentionally computes the same ±fov_el/2+tilt formula
-%                WITHOUT clipping, so it reports the true physics even
-%                when the beam dips below ground. The parallel math is
-%                deliberate; do not unify.
+%beamAltEdgesM  Altitudes (metres, +Z up) where the lower/upper edges of a
+%                rotator/sector sensor's coverage band reach `rangeM`:
+%                    altEdge = mountAlt + range * tand([-fov, +fov] - tilt)
+%                i.e. a world elevation band of [-fov - tilt, +fov - tilt],
+%                matching the sim's drawn volume (see the v3.7.9 note in the
+%                body). Lower edge clipped to 0 (no below-ground volumes);
+%                upper edge floored to mountAlt + 10 so horizontal beams still
+%                render with non-zero height.
+%                NOTE: cosmetic (clip/floor are 3D-render only). The altitude
+%                banner in refreshSensorParamsPanel mirrors this same band for
+%                rotators/sectors WITHOUT clipping (true edges); keep the two
+%                in sync. No-scan staring cones use a separate model in
+%                drawBeamConeVolume3D (and the banner's else-branch).
     fovEl    = max(0, sr.fov(2));
     tiltDeg  = sr.tilt;
-    altLow   = mountAltM + rangeM * tand(-fovEl/2 + tiltDeg);
-    altHigh  = mountAltM + rangeM * tand(+fovEl/2 + tiltDeg);
+    % v3.7.9 - match the sim's drawn coverage band. computeSensorCoverageVolume
+    % renders scan-limits padded by +/-fov/2; for buildRadar's geometry that is
+    % a world elevation band of [-fov - tilt, +fov - tilt] (rotators offset the
+    % mech limits by -tilt; sectors apply -tilt as a mounting pitch). Using the
+    % same band makes the editor dome/wedge heights identical to the scenario
+    % plots. (Supersedes the older +/-fov/2+tilt single-beam approximation; the
+    % banner in refreshSensorParamsPanel is updated to match for these types.)
+    altLow   = mountAltM + rangeM * tand(-fovEl - tiltDeg);
+    altHigh  = mountAltM + rangeM * tand(+fovEl - tiltDeg);
     altLow   = max(altLow, 0);
     altHigh  = max(altHigh, mountAltM + 10);
 end

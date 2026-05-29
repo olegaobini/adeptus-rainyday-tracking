@@ -4978,8 +4978,16 @@ function refreshSensorParamsPanel(state)
     if mountAltBan <= 0; mountAltBan = 15; end
     fovEl       = max(0, sr.fov(2));
     rMaxBan     = sr.rangeLimits(2);
-    altLowBan   = mountAltBan + rMaxBan * tand(-fovEl/2 + sr.tilt);
-    altHighBan  = mountAltBan + rMaxBan * tand(+fovEl/2 + sr.tilt);
+    % v3.7.9 - rotators/sectors now draw the sim's [-fov-tilt, +fov-tilt] band
+    % (see beamAltEdgesM); no-scan staring cones keep the +/-fov/2+tilt edges
+    % (drawBeamConeVolume3D centers the cone at tilt with half-angle fov/2).
+    if sr.isRotator() || sr.isSector()
+        altLowBan   = mountAltBan + rMaxBan * tand(-fovEl - sr.tilt);
+        altHighBan  = mountAltBan + rMaxBan * tand(+fovEl - sr.tilt);
+    else
+        altLowBan   = mountAltBan + rMaxBan * tand(-fovEl/2 + sr.tilt);
+        altHighBan  = mountAltBan + rMaxBan * tand(+fovEl/2 + sr.tilt);
+    end
     scanText    = sprintf('%s  |  Alt @ max range: %.0f–%.0f m', ...
                           scanText, altLowBan, altHighBan);
     setPropIfGraphics(state.sensorScanModeLbl,   'Text',    scanText);
