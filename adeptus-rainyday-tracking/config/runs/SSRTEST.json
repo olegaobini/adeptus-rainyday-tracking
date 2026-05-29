@@ -1,0 +1,33 @@
+{
+  "description": "Editor-exported scenario \"SSRTEST\" (2026-05-28)",
+  "sensors": [
+    "SSR/sensor_1"
+  ],
+  "targets": "waypoints/SSRTEST",
+  "terrain": "none/SSRTEST_terrain",
+  "trackers": [
+    "autotuned/tropicalStorm_default/GNN_IMM"
+  ],
+  "degradation": {
+    "terrain_occlusion": true,
+    "horizon_masking": true,
+    "ground_clutter": true,
+    "doppler_fade": true,
+    "weather": "none",
+    "rcs_range_filter": false
+  },
+  "cache": {
+    "use_cached_detections": true,
+    "save_detections": true
+  },
+  "platforms": {},
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  },
+  "compare_trackers": [
+    "autotuned/tropicalStorm_default/GNN_IMM"
+  ]
+}

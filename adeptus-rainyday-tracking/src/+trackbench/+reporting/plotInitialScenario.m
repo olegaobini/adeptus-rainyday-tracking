@@ -50,16 +50,28 @@ function plotInitialScenario(dataLog, animateFlag)
             for kSensor = 1:numel(dataLog.SensorCoverage)
                 cov = dataLog.SensorCoverage(kSensor);
                 if ~cov.isRadar && ~cov.isIR; continue; end
-                if cov.isMSSR; continue; end
+                % v3.7.8 — MSSR/SSR now renders its swept coverage volume
+                % (same path as PSR). The volume is built from this sensor's
+                % own coverageConfig, so it tracks the SSR JSON config
+                % dynamically (range, FOV, tilt, az span).
 
-                [V, F] = trackbench.reporting.computeSensorCoverageVolume(cov);
+                % Faithful range: computeSensorCoverageVolume caps at 120 km
+                % to tame fusionRadarSensor's default [0 Inf]. Pass this
+                % sensor's real finite range so the SSR volume reaches its ring.
+                volOpts = struct();
+                if isfinite(cov.maxRange) && cov.maxRange > 0
+                    volOpts.rMaxCap = cov.maxRange;
+                end
+                [V, F] = trackbench.reporting.computeSensorCoverageVolume(cov, volOpts);
 
                 % NED -> display: scale m->km, negate Z so altitude points up
                 Vdisp = V * sf;
                 Vdisp(:, 3) = -Vdisp(:, 3);
 
                 % Per-type color matches drawSensorCoverage.m (FROZEN, v3.6.15)
-                if cov.isIR
+                if cov.isMSSR
+                    col = [0.9 0.5 0.1];                 % orange  — MSSR/SSR
+                elseif cov.isIR
                     col = [0.9 0.2 0.8];                 % magenta — IR
                 elseif ~cov.isRotator && cov.isRadar
                     col = [0.1 0.9 0.3];                 % green   — sector radar

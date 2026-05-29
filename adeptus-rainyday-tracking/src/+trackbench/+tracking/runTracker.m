@@ -116,6 +116,53 @@ if showVisuals
 
     if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
         trackbench.reporting.drawSensorCoverage(tpaxes, dataLog.SensorCoverage, false);
+
+        % v3.7.7 Site 2 — coverage volume overlay (mirror of v3.7.5 Site 1
+        % in plotInitialScenario.m). NED meters → display: negate Z so
+        % altitude points up; no m→km scale here (tracker plot uses NED
+        % meters internally despite the "km" axis label, unlike Site 1's
+        % plotInitialScenario which scales by 1/1000). FaceAlpha=0.12 —
+        % lower than Site 1's 0.18 because tracks/detections dominate the
+        % tracker plot visually; coverage is contextual here.
+        try
+            for kSensor = 1:numel(dataLog.SensorCoverage)
+                cov = dataLog.SensorCoverage(kSensor);
+                if ~cov.isRadar && ~cov.isIR; continue; end
+                % v3.7.8 — MSSR/SSR now renders its swept coverage volume
+                % (same path as PSR), built from this sensor's own
+                % coverageConfig so it tracks the SSR JSON config dynamically.
+
+                % Pass the sensor's real finite range so the SSR volume reaches
+                % its full range (the 120 km cap is only for Inf range).
+                volOpts = struct();
+                if isfinite(cov.maxRange) && cov.maxRange > 0
+                    volOpts.rMaxCap = cov.maxRange;
+                end
+                [V, F] = trackbench.reporting.computeSensorCoverageVolume(cov, volOpts);
+
+                Vdisp = V;
+                Vdisp(:, 3) = -Vdisp(:, 3);
+
+                % Per-type color matches drawSensorCoverage.m (FROZEN, v3.6.15)
+                if cov.isMSSR
+                    col = [0.9 0.5 0.1];                 % orange  — MSSR/SSR
+                elseif cov.isIR
+                    col = [0.9 0.2 0.8];                 % magenta — IR
+                elseif ~cov.isRotator && cov.isRadar
+                    col = [0.1 0.9 0.3];                 % green   — sector radar
+                else
+                    col = [0.2 0.6 1.0];                 % blue    — PSR / rotator
+                end
+
+                patch(tpaxes, 'Vertices', Vdisp, 'Faces', F, ...
+                    'FaceColor', col, 'FaceAlpha', 0.12, ...
+                    'EdgeColor', col, 'EdgeAlpha', 0.10, ...
+                    'LineWidth', 0.3, ...
+                    'HandleVisibility', 'off');
+            end
+        catch ME
+            fprintf('[WARN] Coverage volume skipped: %s\n', ME.message);
+        end
     end
     
     xlabel(tpaxes, 'X (km)');
@@ -472,7 +519,13 @@ while i < numSteps
 
         if animateVisuals
             if ~isempty(meas)
-                addpoints(detLine, meas(1,:), meas(2,:), -meas(3,:));
+                % v3.7.7 — underground detection filter (Site 1 precedent,
+                % plotInitialScenario.m:147/:157). HasINS=false body-frame
+                % artifact can produce meas(3) > 1 (display altitude < -1m).
+                % Root cause investigation in v3.7.4 follow-up queue item #9a
+                % (HasINS body-frame proper fix); this is viz-only mitigation.
+                keepUg = meas(3,:) <= 1;
+                addpoints(detLine, meas(1,keepUg), meas(2,keepUg), -meas(3,keepUg));
             end
             for tIdx = 1:numel(tracks)
                 tID = double(tracks(tIdx).TrackID);

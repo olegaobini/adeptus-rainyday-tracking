@@ -154,9 +154,26 @@ function addTargetFromDef(scenario, tDef, duration, idx)
     % presets like default_ir_radar_fusion.json that don't set rcs_*).
     % Post-demo follow-up: optional ir_signature schema field for
     % opt-in control rather than auto-default.
+    % v3.7.6 — Guard against duplicate irSignature. The v3.6.13 commentary
+    % above claimed the pre-v3.6.13 default tgt.Signatures was empty for
+    % IR-themed presets; doc-fetch (https://www.mathworks.com/help/fusion/
+    % examples/introduction-to-tracking-scenario-and-simulating-radar-
+    % detections.html) confirms the actual platform() default in R2025b is
+    % {rcsSignature, irSignature, tsSignature} — it already contains an
+    % irSignature. For targets WITH rcs_dbsm or rcs_profile, lines 138/141
+    % overwrite Signatures to {rcsObj}, so the append below produces
+    % {rcsObj, irSig} as intended. For targets WITHOUT rcs_*, the default
+    % cell is kept; without this guard the unconditional append would
+    % produce {rcs, ir, ts, ir} — duplicate irSignature — and platform's
+    % "at most one of each type" invariant rejects the assignment
+    % (TC-01/02/03/04/06 in the test plan). PosterDemo and TC-05/07 are
+    % bit-identical pre/post-fix because their targets configure rcs_*.
     existingSigs = tgt.Signatures;
-    try irSig = irSignature(); catch; irSig = irSignature('Pattern', 1000); end
-    tgt.Signatures = [existingSigs, {irSig}];
+    hasIR = ~isempty(existingSigs) && any(cellfun(@(s) isa(s, 'irSignature'), existingSigs));
+    if ~hasIR
+        try irSig = irSignature(); catch; irSig = irSignature('Pattern', 1000); end
+        tgt.Signatures = [existingSigs, {irSig}];
+    end
 
     %% ── Physical Dimensions ──────────────────────────────────────────
     % Sets the cuboid approximation for visualization and extended object tracking.

@@ -330,6 +330,17 @@ for k = 1:numActive
     try cov.fov = s.FieldOfView(:)'; catch; cov.fov = [1.4 30]; end
     try cov.elLimits = s.MechanicalElevationLimits(:)'; catch; cov.elLimits = [-17 13]; end
     try cc = coverageConfig(s); cov.scanElLimits = cc.ScanLimits(2,:); catch; cov.scanElLimits = cov.elLimits; end
+    % v3.7.9 - Sector radars point in elevation via MountingAngles pitch
+    % (buildRadar), which coverageConfig reports in the SENSOR frame. Add the
+    % mounting pitch so the drawn coverage VOLUME sits at the true (world)
+    % glide-slope elevation. No-op for rotators (pitch=0): PSR/SSR and the
+    % PosterDemo visuals are unchanged.
+    try
+        mPitch = s.MountingAngles(2);
+        cov.scanElLimits = cov.scanElLimits + mPitch;
+        cov.elLimits     = cov.elLimits + mPitch;
+    catch
+    end
     scanModeStr = ''; try scanModeStr = lower(string(s.ScanMode)); catch; end
     if contains(scanModeStr, 'no scanning') || contains(scanModeStr, 'electronic')
         try elecAz = s.ElectronicAzimuthLimits(:)'; catch; elecAz = [-45 45]; end

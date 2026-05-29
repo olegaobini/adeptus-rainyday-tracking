@@ -105,19 +105,36 @@ azMinDeg = cov.azLimits(1) + cov.mountingYaw;
 azMaxDeg = cov.azLimits(2) + cov.mountingYaw;
 azSpan   = azMaxDeg - azMinDeg;
 
-% Elevation: prefer scanElLimits (true beam edges from coverageConfig).
+% Elevation envelope. coverageConfig().ScanLimits (carried as scanElLimits)
+% gives the range over which the beam CENTER points — e.g. [-7, 3] for the
+% DASR MSSR. The beam is FieldOfView(el) wide, so the sensor illuminates
+% targets from scanMin - fov/2 to scanMax + fov/2. Pad by the half-beamwidth
+% so the drawn volume matches the true detectable region (v3.7.8: without it,
+% high targets rendered above the shading yet were still detected).
+elPad = 0;
+if isfield(cov, 'fov') && numel(cov.fov) >= 2
+    elPad = cov.fov(2) / 2;
+end
 if isfield(cov, 'scanElLimits') && numel(cov.scanElLimits) == 2
-    elMinDeg = cov.scanElLimits(1);
-    elMaxDeg = cov.scanElLimits(2);
+    elMinDeg = cov.scanElLimits(1) - elPad;
+    elMaxDeg = cov.scanElLimits(2) + elPad;
 elseif isfield(cov, 'elLimits') && numel(cov.elLimits) == 2
-    elMinDeg = cov.elLimits(1);
-    elMaxDeg = cov.elLimits(2);
+    elMinDeg = cov.elLimits(1) - elPad;
+    elMaxDeg = cov.elLimits(2) + elPad;
 elseif isfield(cov, 'fov') && numel(cov.fov) >= 2
     elMinDeg = -cov.fov(2)/2;
     elMaxDeg =  cov.fov(2)/2;
 else
     error('trackbench:reporting:computeSensorCoverageVolume:missingElLimits', ...
         'cov must carry scanElLimits, elLimits, or fov.');
+end
+
+% Clip the lower edge at the horizon so the volume sits on the ground plane
+% instead of plunging underground. Tower-mounted sensors sit at ~ground
+% level, so sub-horizon beam coverage is below ground, not real airspace.
+% Guarded so a purely down-looking sensor (elMax <= 0) can't invert.
+if elMaxDeg > 0
+    elMinDeg = max(elMinDeg, 0);
 end
 
 % Range: cap Inf per project convention.

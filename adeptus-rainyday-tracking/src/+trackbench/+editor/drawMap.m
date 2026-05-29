@@ -389,11 +389,13 @@ function drawMap3D(state, ax)
         drawTerrainHeightmap3D(ax, state);
     end
 
-    % ── M6 §3.3: sensor collection pass (flat-on-ground at z=0) ───────
-    %   3D is view-only; the editor deliberately renders sensor geometry
-    %   flat on the ground plane (no beam volumes / elevation cones).
-    %   True 3D coverage envelopes are out of scope for M6; users who
-    %   want them can run the sim and use drawBeamEnvelope.m post-hoc.
+    % ── M6 §3.3 / §3.6A: sensor collection pass ────────────────
+    %   Per-sensor 3D coverage volumes rendered via drawRotatorVolume3D /
+    %   drawSectorVolume3D / drawBeamConeVolume3D (added in M6 §3.6A).
+    %   Editor sensors use a custom record class with tilt-aware geometry
+    %   (beamAltEdgesM + sensorMountAltitudeM); computeSensorCoverageVolume
+    %   (Sites 1+2 plotting path, v3.7.5+) is NOT used here — Path Editor
+    %   sensors don't flow through dataLog.SensorCoverage.
     if numel(state.sensors) >= 1
         for k = 1:numel(state.sensors)
             isActiveSensor = (k == state.activeSensorIdx) && ...

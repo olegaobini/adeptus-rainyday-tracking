@@ -457,19 +457,37 @@ function [radar, meta] = buildRadar(idx, scanConfig, defaults, varargin)
     safeSet(radar, 'HasElevation',          S.hasElevation);
     safeSet(radar, 'HasRangeRate',          S.hasRangeRate);
 
-    sectorSpan = abs(diff(S.sector));
-    if sectorSpan < 359 && sectorSpan > 0
-        safeSet(radar, 'MechanicalAzimuthLimits', S.sector);
-    end
-
-    % Elevation limits — center the beam around the horizon so it covers
-    % aircraft both above and below. The tilt offsets the whole range.
-    %   PSR (fov=30, tilt=2): [-17, 13] → beam covers approx -32° to +28°
-    %   SSR (fov=10, tilt=2): [-7, 3]   → beam covers approx -12° to +8°
-    % Previous formula [-(fov+2), 2]-tilt pushed the beam too far below
-    % horizontal, causing targets above ~15° elevation to be missed.
-    if S.hasElevation
-        safeSet(radar, 'MechanicalElevationLimits', [-fov(2)/2  fov(2)/2] - S.tilt);
+    % Azimuth + elevation pointing.
+    %  Rotator/raster: scan a wide swath; tilt offsets the elevation band
+    %  (UNCHANGED - the PosterDemo canary depends on this exact behavior).
+    %  Sector: in R2025b a mechanical sector that crosses +/-180 deg azimuth,
+    %  or whose mechanical-elevation band is offset off boresight, returns NO
+    %  detections. So steer the sector via MountingAngles ([z-yaw, y-pitch,
+    %  x-roll]): yaw = sector center, pitch = -tilt (tilt<0 points the beam
+    %  up), and keep the mechanical scan limits SYMMETRIC about boresight.
+    %  Verified empirically + R2025b fusionRadarSensor MountingAngles/ScanMode
+    %  docs. drawSensorCoverage and computeSensorCoverageVolume re-add the
+    %  mounting yaw, so the drawn wedge still matches the configured sector.
+    if strcmpi(scanConfig, 'Sector')
+        azCenter = mean(S.sector);
+        azHalf   = abs(diff(S.sector)) / 2;
+        safeSet(radar, 'MountingAngles', [azCenter, -S.tilt, 0]);
+        if azHalf > 0 && azHalf < 180
+            safeSet(radar, 'MechanicalAzimuthLimits', [-azHalf  azHalf]);
+        end
+        if S.hasElevation
+            safeSet(radar, 'MechanicalElevationLimits', [-fov(2)/2  fov(2)/2]);
+        end
+    else
+        sectorSpan = abs(diff(S.sector));
+        if sectorSpan < 359 && sectorSpan > 0
+            safeSet(radar, 'MechanicalAzimuthLimits', S.sector);
+        end
+        % Elevation limits - tilt offsets the band. Rotators tolerate the
+        % asymmetry; this preserves existing PSR/SSR detection behavior.
+        if S.hasElevation
+            safeSet(radar, 'MechanicalElevationLimits', [-fov(2)/2  fov(2)/2] - S.tilt);
+        end
     end
 
     % FOV epsilon — prevents edge-case missed detections at FOV boundary
