@@ -1,0 +1,63 @@
+{
+    "description":"AUTO-TUNED TOMHT+CV for PosterDemo (score=0.007,
+     posRMS=960m,
+     trkd=98%)",
+    "tracker_type":"TOMHT",
+    "filter_model":"CV",
+    "volume":1.0E+8,
+    "beta":1E-12,
+    "params":{
+    "gate":50,
+    "gate_jpda":50,
+    "far_gnn":1E-6,
+    "far_jpda":1E-6,
+    "far_mht":1E-6,
+    "beta_jpda":1E-12,
+    "time_tolerance_jpda":0.05,
+    "num_tracks_jpda":500,
+    "max_branches":5,
+    "confirm_threshold":15,
+    "delete_threshold":-5,
+    "tomht_threshold_multiplier":[0.2,
+    1,
+    1]
+},
+    "filter":{
+    "init_speed_kmh":900,
+    "imm_transition_prob":0.97,
+    "scale_accel_horz":60,
+    "scale_accel_vert":10,
+    "scale_omega_dot":30
+},
+    "TUNING_NOTES":{
+    "method":"autoTuneTracker 2-pass sweep + sensitivity (v3.5)",
+    "filter_model":"CV",
+    "run":"PosterDemo",
+    "score":0.00732747511219402,
+    "score_components":{
+    "posErr":0.00930990044877608,
+    "swap":0,
+    "false":0,
+    "break":0,
+    "tracked":0.02,
+    "estFail":0
+},
+    "weights":[0.25,
+    0.15,
+    0.1,
+    0.1,
+    0.25,
+    0.15],
+    "raw_metrics":{
+    "posRMS":959.88544116535377,
+    "swaps":0,
+    "falseTracks":0,
+    "breaks":0,
+    "worstTrackedPct":98,
+    "avgTrackedPct":98,
+    "estFailures":0,
+    "numTruths":3
+},
+    "date":"2026-05-28 23:08"
+}
+}

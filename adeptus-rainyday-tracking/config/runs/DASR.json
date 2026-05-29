@@ -1,10 +1,11 @@
 {
-  "description": "Editor-exported scenario \"PosterDemo\" (2026-05-25)",
+  "description": "Editor-exported scenario \"RRT\" (2026-05-29)",
   "sensors": [
-    "PSR/MountainSensor"
+    "PSR/sensor_1",
+    "SSR/sensor_2"
   ],
-  "targets": "waypoints/PosterDemo",
-  "terrain": "mountain/PosterDemo_terrain",
+  "targets": "waypoints/DASR",
+  "terrain": "none/DASR_terrain",
   "trackers": [
     "autotuned/PosterDemo/TOMHT_CV"
   ],
@@ -13,7 +14,7 @@
     "horizon_masking": true,
     "ground_clutter": true,
     "doppler_fade": true,
-    "weather": "none",
+    "weather": "rain/DASR_weather",
     "rcs_range_filter": true
   },
   "cache": {

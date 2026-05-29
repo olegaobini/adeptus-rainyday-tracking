@@ -1,0 +1,35 @@
+{
+  "name": "DASR_EXAMPLE_SSR",
+  "type": "SSR",
+  "platform": "tower",
+  "frequency_hz": 1.06E+9,
+  "params": {
+    "rpm": 12.5,
+    "fov": [
+      1.4,
+      10
+    ],
+    "tilt": 2,
+    "sector": [
+      0,
+      360
+    ],
+    "pd": 0.99,
+    "far": 1E-7,
+    "rangeLimits": [
+      0,
+      22240
+    ],
+    "rangeRes": 100,
+    "mountingLoc": [
+      0,
+      0,
+      -15
+    ],
+    "_display_color": [
+      0.85,
+      0.55,
+      0.2
+    ]
+  }
+}

@@ -6,7 +6,7 @@
   "targets": "waypoints/PAR_TEST",
   "terrain": "none/PAR_TEST_terrain",
   "trackers": [
-    "GNN/autotuned_GNN"
+    "autotuned/PosterDemo/TOMHT_CV"
   ],
   "degradation": {
     "terrain_occlusion": true,
@@ -28,6 +28,6 @@
     "globe_view": false
   },
   "compare_trackers": [
-    "GNN/autotuned_GNN"
+    "autotuned/PosterDemo/TOMHT_CV"
   ]
 }

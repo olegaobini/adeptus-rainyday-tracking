@@ -1,0 +1,62 @@
+{
+  "description": "Multi-target scenario (2 targets) exported on 2026-05-29.",
+  "duration_s": 247,
+  "targets": [
+    {
+      "name": "m1_test",
+      "label": "m1_test",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            -21278.887112351513,
+            23725.547596641223,
+            -3000
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            25652.09913519269,
+            -16361.336489802776,
+            -3000
+          ],
+          "time_s": 246.88380249590065,
+          "speed_kmh": 900
+        }
+      ]
+    },
+    {
+      "name": "target_2",
+      "label": "target_2",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "rcs_profile": "airliner",
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            18221.359645998196,
+            23530.001820609792,
+            -3000
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            17341.403653856745,
+            18250.265867761093,
+            -3000
+          ],
+          "time_s": 21.410253349237625,
+          "speed_kmh": 900
+        }
+      ]
+    }
+  ]
+}

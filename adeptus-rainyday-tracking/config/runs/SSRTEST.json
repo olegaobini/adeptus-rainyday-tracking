@@ -6,14 +6,14 @@
   "targets": "waypoints/SSRTEST",
   "terrain": "none/SSRTEST_terrain",
   "trackers": [
-    "autotuned/tropicalStorm_default/GNN_IMM"
+    "autotuned/SSRTEST/GNN_IMM"
   ],
   "degradation": {
     "terrain_occlusion": true,
     "horizon_masking": true,
     "ground_clutter": true,
     "doppler_fade": true,
-    "weather": "none",
+    "weather": "rain/heavy_rain",
     "rcs_range_filter": false
   },
   "cache": {
@@ -28,6 +28,6 @@
     "globe_view": false
   },
   "compare_trackers": [
-    "autotuned/tropicalStorm_default/GNN_IMM"
+    "autotuned/SSRTEST/GNN_IMM"
   ]
 }

@@ -129,13 +129,11 @@ else
         'cov must carry scanElLimits, elLimits, or fov.');
 end
 
-% Clip the lower edge at the horizon so the volume sits on the ground plane
-% instead of plunging underground. Tower-mounted sensors sit at ~ground
-% level, so sub-horizon beam coverage is below ground, not real airspace.
-% Guarded so a purely down-looking sensor (elMax <= 0) can't invert.
-if elMaxDeg > 0
-    elMinDeg = max(elMinDeg, 0);
-end
+% NOTE: below-ground clipping is done per-vertex in ned() below (altitude
+% clamped to >= 0), so the volume rests on the true ground plane (z=0) even
+% for an elevated mount (e.g. a mountain-top radar). A prior horizon clip
+% floored the volume at the sensor's OWN altitude - wrong when mounted high.
+% The lower beam edge therefore keeps its real (possibly negative) elevation.
 
 % Range: cap Inf per project convention.
 rMax = cov.maxRange;
@@ -175,10 +173,13 @@ rGrid  = [0, rMax];
 % --- helper: spherical sensor frame -> world NED meters -----------------
 % elevation positive = above horizon. NED z+ = down, so the world-z of a
 % point at range r and elevation el above the sensor is pos(3) - r*sin(el).
+% z is clamped to <= 0 (altitude >= 0) so the swept volume rests on the
+% ground plane z=0 instead of plunging underground - correct for both
+% ground-level and elevated (mountain) mounts.
 ned = @(r, az, el) [ ...
     pos(1) + r .* cosd(el) .* cosd(az), ...
     pos(2) + r .* cosd(el) .* sind(az), ...
-    pos(3) - r .* sind(el) ];
+    min(pos(3) - r .* sind(el), 0) ];
 
 % --- assemble surface vertices + faces ----------------------------------
 V = zeros(0, 3);
