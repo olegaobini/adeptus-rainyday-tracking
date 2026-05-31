@@ -1,13 +1,13 @@
 {
-  "description": "Global Nearest Neighbor — fast, deterministic",
+  "description": "Global Nearest Neighbor — fast, deterministic. v3.7.x: gate 45->60 and confirm 20->15 keep angular-noisy radar detections assigned to a single track (previously fragmented into several tracks plus a coasting track that diverged ~15 km); added an IMM filter block (scale_accel_vert 10) matching the validated single-target autotuned config for stable position tracking.",
   "tracker_type": "GNN",
   "filter_model": "IMM",
   "volume": 1e9,
   "beta": 1e-14,
   "params": {
-    "gate": 45,
+    "gate": 60,
     "far_gnn": 1e-6,
-    "confirm_threshold": 20,
+    "confirm_threshold": 15,
     "delete_threshold": -5,
     "gate_jpda": 45,
     "far_jpda": 1e-6,
@@ -17,5 +17,12 @@
     "num_tracks_jpda": 500,
     "tomht_threshold_multiplier": [0.2, 1, 1],
     "max_branches": 5
+  },
+  "filter": {
+    "init_speed_kmh": 900,
+    "imm_transition_prob": 0.97,
+    "scale_accel_horz": 30,
+    "scale_accel_vert": 10,
+    "scale_omega_dot": 30
   }
 }

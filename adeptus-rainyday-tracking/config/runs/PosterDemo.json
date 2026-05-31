@@ -6,14 +6,14 @@
   "targets": "waypoints/PosterDemo",
   "terrain": "mountain/PosterDemo_terrain",
   "trackers": [
-    "autotuned/PosterDemo/TOMHT_CV"
+    "GNN/default_GNN"
   ],
   "degradation": {
     "terrain_occlusion": true,
     "horizon_masking": true,
     "ground_clutter": true,
     "doppler_fade": true,
-    "weather": "none",
+    "weather": "rain/tropicalStorm",
     "rcs_range_filter": true
   },
   "cache": {
@@ -28,6 +28,6 @@
     "globe_view": false
   },
   "compare_trackers": [
-    "autotuned/PosterDemo/TOMHT_CV"
+    "GNN/default_GNN"
   ]
 }

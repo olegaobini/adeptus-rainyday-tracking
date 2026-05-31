@@ -329,25 +329,48 @@ function seedUserDataRoot(userRoot, installRoot)
         end
     end
 
-    % Seed read-mostly content from the install dir on first launch only.
-    % Subsequent launches preserve any edits the user made.
-    seedItems = {'config', 'docs', 'README.md', 'CHECKPOINT.md'};
+    % Seed / refresh read-mostly content from the install dir. v3.7.x:
+    % previously copied each item ONLY if absent, so a reinstall with
+    % updated content never reached an already-seeded user dir (stale
+    % configs/docs persisted forever). Now we stamp a signature of the
+    % installed shipped content; a newer install (different signature)
+    % REFRESHES the shipped defaults - copyfile merges into the existing
+    % folder, overwriting same-named files (bundled scenarios, docs) and
+    % adding new ones while leaving user-CREATED files untouched (it never
+    % deletes). First seed still copies everything. A user's edit to a
+    % SHIPPED scenario is replaced on update; user-created scenarios survive.
+    seedItems  = {'config', 'docs', 'README.md', 'CHECKPOINT.md'};
+    installSig = localSeedSignature(installRoot, seedItems);
+    sigPath    = fullfile(userRoot, '.seed_signature');
+    prevSig    = '';
+    if isfile(sigPath)
+        try prevSig = strtrim(fileread(sigPath)); catch; end
+    end
+    refreshShipped = ~isempty(installSig) && ~strcmp(installSig, prevSig);
     seededAny = false;
     for k = 1:numel(seedItems)
         src = fullfile(installRoot, seedItems{k});
         dst = fullfile(userRoot,    seedItems{k});
-        if isfile(dst) || isfolder(dst)
-            continue;  % already seeded; preserve user edits
-        end
         if ~isfile(src) && ~isfolder(src)
             continue;  % installer didn't ship this; skip silently
         end
+        if (isfile(dst) || isfolder(dst)) && ~refreshShipped
+            continue;  % already current; preserve user edits
+        end
         try
-            copyfile(src, dst, 'f');
+            copyfile(src, dst, 'f');   % first seed, or refresh-merge on update
             seededAny = true;
         catch ME
             warning('trackbench:mainMenu:seedFailed', ...
                 'Failed to copy %s -> %s: %s', src, dst, ME.message);
+        end
+    end
+    if refreshShipped || ~isfile(sigPath)
+        try
+            fid = fopen(sigPath, 'w');
+            if fid ~= -1; fprintf(fid, '%s', installSig); fclose(fid); end
+        catch
+            % Signature stamp is best-effort; never block startup on it.
         end
     end
 
@@ -394,5 +417,37 @@ function seedUserDataRoot(userRoot, installRoot)
         catch
             % Marker is decorative; never block startup on this.
         end
+    end
+end
+
+
+function sig = localSeedSignature(rootDir, items)
+%localSeedSignature  Compact signature of the installed shipped content
+%  (file count + total bytes + latest mtime across the items). A reinstall
+%  changes it, which triggers a one-time refresh of the shipped defaults.
+%  Returns '' on failure, in which case the caller falls back to the old
+%  copy-if-absent behavior.
+    sig = '';
+    try
+        nFiles = 0; totalBytes = 0; maxMtime = 0;
+        for k = 1:numel(items)
+            p = fullfile(rootDir, items{k});
+            if isfile(p)
+                d = dir(p); nFiles = nFiles + 1;
+                totalBytes = totalBytes + d.bytes;
+                maxMtime   = max(maxMtime, d.datenum);
+            elseif isfolder(p)
+                d = dir(fullfile(p, '**', '*'));
+                d = d(~[d.isdir]);
+                nFiles = nFiles + numel(d);
+                if ~isempty(d)
+                    totalBytes = totalBytes + sum([d.bytes]);
+                    maxMtime   = max(maxMtime, max([d.datenum]));
+                end
+            end
+        end
+        sig = sprintf('n=%d|b=%d|t=%.6f', nFiles, totalBytes, maxMtime);
+    catch
+        sig = '';
     end
 end
