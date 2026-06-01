@@ -1,0 +1,39 @@
+{
+  "description": "Airborne radar moving-platform demo. A long-range rotating ARSR rides a MOVING ownship (straight level cruise, no bank needed - radar measures range so the target is fully observable without an observer maneuver, unlike passive IR). Standard GNN tracking, no MSC-RPEKF. Reference pattern: MathWorks 'Multiplatform Radar Detection Generation' (fusionRadarSensor on a waypointTrajectory platform with HasINS).",
+  "sensors": [
+    "ARSR/airborne_radar"
+  ],
+  "targets": "airborne_radar_demo/airborne_radar_target",
+  "terrain": "none/default_none",
+  "trackers": [
+    "GNN/default_GNN"
+  ],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false,
+    "weather": "none",
+    "rcs_range_filter": false
+  },
+  "cache": {
+    "use_cached_detections": false,
+    "save_detections": false
+  },
+  "platforms": {
+    "ownship": {
+      "behavior": "waypoints",
+      "label": "Ownship (airborne radar cruise)",
+      "waypoints": [
+        { "pos": [0, 2000, -3000], "time_s": 0 },
+        { "pos": [9000, 2000, -3000], "time_s": 60 }
+      ]
+    }
+  },
+  "output": {
+    "show_visuals": true,
+    "animate_visuals": true,
+    "save_results": true,
+    "globe_view": false
+  }
+}

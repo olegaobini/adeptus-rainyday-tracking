@@ -508,6 +508,7 @@ classdef EditorState < handle
         projectRoot      (1,1) string = ""
         outputDir        (1,1) string = ""
         loadedFrom       (1,1) string = ""
+        domain           (1,1) string = "radar"   % radar|sonar|ir (modality domain)
     end
 
 
@@ -533,7 +534,7 @@ classdef EditorState < handle
 
 
     methods
-        function obj = EditorState(projectRoot)
+        function obj = EditorState(projectRoot, domain)
             %EditorState  Construct with the project root for path resolution.
             %             Always seeds with one default editable target so
             %             buildUI's first read of state.targetName etc.
@@ -544,7 +545,12 @@ classdef EditorState < handle
                 obj.outputDir = fullfile(obj.projectRoot, ...
                     "config", "targets", "waypoints");
             end
+            if nargin >= 2 && ~isempty(domain)
+                obj.domain = lower(string(domain));
+            end
             seed = trackbench.editor.TargetRecord();
+            seed.defaultAltitudeM = ...
+                trackbench.editor.sensorDomain(obj.domain).defaultVerticalM;
             seed.targetName = "m1_test";
             obj.targets   = seed;
             obj.activeIdx = 1;
@@ -1714,6 +1720,8 @@ classdef EditorState < handle
             %              Auto-names "target_<n+1>" if name is omitted.
             obj.pushUndo();
             tr = trackbench.editor.TargetRecord();
+            tr.defaultAltitudeM = ...
+                trackbench.editor.sensorDomain(obj.domain).defaultVerticalM;
             if nargin < 2 || strlength(string(name)) == 0
                 tr.targetName = sprintf("target_%d", numel(obj.targets) + 1);
             else

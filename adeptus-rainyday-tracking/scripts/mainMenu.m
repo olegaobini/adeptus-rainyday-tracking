@@ -56,6 +56,17 @@ function varargout = mainMenu()
 %
 %  See also: pathEditor, runSimGUI, validationDocsGUI
 
+    % == Deployment dependency manifest (read by mcc at build time) ===
+    %  These toolbox entry points are reached only through runtime
+    %  function handles or System-object internals, which mcc static
+    %  dependency analysis can miss. Listing them forces build_executable
+    %  to bundle the experimental sonar / IR / passive-ranging code into
+    %  the compiled EXE. Pure compiler directive - inert at run time.
+    %#function sonarSensor sonarEmitter tsSignature
+    %#function irSensor
+    %#function trackingGSF trackingMSCEKF initcvmscekf cvmeasmsc cvmeasmscjac
+    %#function monostaticLidarSensor adsbTransponder adsbReceiver
+
     % ── Resolve project root (deployed-safe) ─────────────────────────
     %  In dev mode (running from MATLAB), projectRoot = the source folder.
     %
@@ -180,7 +191,9 @@ function varargout = mainMenu()
 
     function launchPathEditor()
         try
-            pathEditor(projectRoot);
+            dk = trackbench.editor.selectDomain();
+            if strlength(dk) == 0; return; end   % user closed the domain picker
+            pathEditor(projectRoot, dk);
         catch ME
             uialert(fig, ME.message, 'Path Editor Error');
         end

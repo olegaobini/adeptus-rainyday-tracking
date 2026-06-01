@@ -1,0 +1,15 @@
+{
+  "description": "Sonar end-to-end test - monostatic active sonar vs a submerged contact",
+  "sensors": ["ACTIVE_SONAR/sonar_1"],
+  "targets": "sonar_contact/default_sonar_contact",
+  "terrain": "none/SONAR_TEST_terrain",
+  "trackers": ["GNN/sonar_GNN"],
+  "degradation": {
+    "terrain_occlusion": false,
+    "horizon_masking": false,
+    "ground_clutter": false,
+    "doppler_fade": false
+  },
+  "cache": { "use_cached_detections": false, "save_detections": true },
+  "output": { "show_visuals": true, "animate_visuals": true, "save_results": true }
+}

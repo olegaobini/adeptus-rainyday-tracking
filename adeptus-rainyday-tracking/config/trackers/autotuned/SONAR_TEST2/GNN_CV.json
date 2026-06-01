@@ -1,0 +1,63 @@
+{
+    "description":"AUTO-TUNED GNN+CV for SONAR_TEST2 (score=0.008,
+     posRMS=30m,
+     trkd=100%)",
+    "tracker_type":"GNN",
+    "filter_model":"CV",
+    "volume":1.0E+8,
+    "beta":1E-10,
+    "params":{
+    "gate":60,
+    "far_gnn":1E-6,
+    "confirm_threshold":8,
+    "delete_threshold":-5,
+    "gate_jpda":60,
+    "far_jpda":1E-6,
+    "far_mht":1E-6,
+    "beta_jpda":1E-10,
+    "time_tolerance_jpda":0.05,
+    "num_tracks_jpda":500,
+    "tomht_threshold_multiplier":[0.2,
+    1,
+    1],
+    "max_branches":5
+},
+    "filter":{
+    "init_speed_kmh":200,
+    "imm_transition_prob":0.97,
+    "scale_accel_horz":30,
+    "scale_accel_vert":15,
+    "scale_omega_dot":30
+},
+    "TUNING_NOTES":{
+    "method":"autoTuneTracker 2-pass sweep + sensitivity (v3.5)",
+    "filter_model":"CV",
+    "run":"SONAR_TEST2",
+    "score":0.0078891192030639146,
+    "score_components":{
+    "posErr":0.031556476812255659,
+    "swap":0,
+    "false":0,
+    "break":0,
+    "tracked":0,
+    "estFail":0
+},
+    "weights":[0.25,
+    0.15,
+    0.1,
+    0.1,
+    0.25,
+    0.15],
+    "raw_metrics":{
+    "posRMS":30.472839888304879,
+    "swaps":0,
+    "falseTracks":0,
+    "breaks":0,
+    "worstTrackedPct":100,
+    "avgTrackedPct":100,
+    "estFailures":0,
+    "numTruths":2
+},
+    "date":"2026-05-31 19:45"
+}
+}

@@ -577,9 +577,12 @@ function buildSensorParamsPanel(parent, state)
     % Row 2 — Type
     lType = uilabel(g, 'Text', 'Type');
     lType.Layout.Row = 2; lType.Layout.Column = 1;
+    domSel     = trackbench.editor.sensorDomain(state.domain);
+    domTypes   = cellstr(domSel.sensorTypes);
+    domDefault = char(domSel.defaultSensor);
     state.sensorTypeDD = uidropdown(g, ...
-        'Items', {'PSR','SSR','ASR','ARSR','PAR','MARITIME','WEATHER','TWS'}, ...
-        'Value', 'PSR', ...
+        'Items', domTypes, ...
+        'Value', domDefault, ...
         'Tooltip', 'Changing type resets per-type defaults (keeps name, position, altitude).', ...
         'ValueChangedFcn', @(src, ~) onSensorTypeChanged(src, state));
     state.sensorTypeDD.Layout.Row = 2;
@@ -4510,7 +4513,7 @@ function onSensorsAdd(state)
 %              The modal restricts to the 8 supported types — UNKNOWN
 %              passthrough sensors are only created by the load path,
 %              never by the user.
-    types = {'PSR','SSR','ASR','ARSR','PAR','MARITIME','WEATHER','TWS'};
+    types = cellstr(trackbench.editor.sensorDomain(state.domain).sensorTypes);
     [sel, ok] = listdlg('PromptString', 'Pick sensor type:', ...
                         'SelectionMode', 'single', ...
                         'ListString', types, ...
@@ -5457,8 +5460,24 @@ function setPropIfGraphics(h, prop, value)
 %  any property by name. Kept separate to preserve both call sites'
 %  historical signatures without forcing a rewrite of selection-panel
 %  code.
-    if isgraphics(h)
+    if ~isgraphics(h)
+        return;
+    end
+    % Clamp a numeric Value into the component Limits before setting, so a
+    % value outside a radar-shaped field's range (e.g. a sonar/IR sensor's
+    % frequency, meaningless in the GHz field) does not throw "Value must be
+    % within Limits" and crash the panel refresh. (Phase 2 gives sonar/IR
+    % their own per-modality fields.)
+    if strcmp(prop, 'Value') && isnumeric(value) && isscalar(value) && isprop(h, 'Limits')
+        lim = h.Limits;
+        if isnumeric(lim) && numel(lim) == 2 && all(isfinite(lim))
+            value = min(max(value, lim(1)), lim(2));
+        end
+    end
+    try
         h.(prop) = value;
+    catch
+        % Leave the control unchanged rather than crash the refresh.
     end
 end
 

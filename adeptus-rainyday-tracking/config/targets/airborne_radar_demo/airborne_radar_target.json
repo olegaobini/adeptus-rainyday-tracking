@@ -1,0 +1,16 @@
+{
+  "description": "CV target for the airborne radar demo. Flies north at 540 km/h (150 m/s) parallel to the ownship cruise, holding a steady ~7.6 km slant range and shallow depression (~ -1.5 deg). RCS 5 dBsm. Steady geometry so the moving-platform radar track is clean and easy to read.",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "constant_velocity",
+      "speed_kmh": 540,
+      "start_pos": [3000, 9000, -2800],
+      "altitude_m": 2800,
+      "heading_deg": 0,
+      "rcs_dbsm": 5,
+      "label": "Parallel CV target (airborne radar demo)",
+      "class_id": 1
+    }
+  ]
+}

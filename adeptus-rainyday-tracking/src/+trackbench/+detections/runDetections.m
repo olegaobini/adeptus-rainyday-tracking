@@ -220,8 +220,17 @@ if hasMSSR
     fprintf('[runDetections] MSSR detected: SensorIndex=%d\n', mssrSensorIdx);
 end
 
-sonarMask = [sensorInfos.isSonar];
-if any(sonarMask); fprintf('[runDetections] WARNING: %d sonar sensor(s) — skipping.\n', sum(sonarMask)); end
+sonarMask   = [sensorInfos.isSonar];
+sonarInfos  = sensorInfos(sonarMask);
+hasSonar    = any(sonarMask);
+sonarIdxSet = [sonarInfos.sensorIndex];
+if hasSonar
+    fprintf('[runDetections] Sonar sensor(s): %d - acoustic emit/propagate/detect chain ENABLED.\n', sum(sonarMask));
+end
+
+% Radar/IR use the per-sensor sensor(targets,ins,t) call below; sonar runs
+% the scene-level emit->propagate->detect chain separately (different SDK
+% pattern), so it stays out of activeInfos.
 
 activeMask  = ~sonarMask;
 activeInfos = sensorInfos(activeMask);
@@ -247,12 +256,24 @@ if hasMechanical
 else
     rates = zeros(numActive, 1);
     for k = 1:numActive; try rates(k) = activeInfos(k).sensor.UpdateRate; catch; rates(k) = 1; end; end
-    scanInterval = max(0.5, min(15.0, 1/max(min(rates(rates>0)), 0.1)));
+    % Sonar-only scenarios have numActive==0; fold sonar update rates in so
+    % the flush cadence is defined (min() over an empty set would error).
+    if hasSonar
+        for k = 1:numel(sonarInfos)
+            try rates(end+1) = sonarInfos(k).sensor.UpdateRate; catch; rates(end+1) = 1; end %#ok<AGROW>
+        end
+    end
+    posRates = rates(rates > 0); if isempty(posRates); posRates = 1; end
+    scanInterval = max(0.5, min(15.0, 1/max(min(posRates), 0.1)));
     fprintf('[runDetections] No mechanical scanner — time-based flush every %.2fs\n', scanInterval);
 end
 
 %% Initialise
 restart(scenario);
+% Sonar needs scene-level acoustics the radar build path does not create:
+% a paired sonarEmitter (ping) per monostatic sonar, HasFalseAlarms OFF,
+% and a tsSignature on each target. Injected once, post-restart.
+if hasSonar; setupSonarPlatforms(scenario, sonarInfos); end
 detBuffer = {}; mssrBuffer = {}; cfgBuffer = {};
 
 % ── M5 §3.2 multi-target Truth log shape contract ─────────────────────
@@ -325,6 +346,8 @@ for k = 1:numActive
     % every Platform (defaults to [0 0 0] for editor-anchored sensors,
     % which is correct — their world coords live in MountingLocation).
     try cov.position = si.platform.Trajectory.Position(:)' + s.MountingLocation(:)'; catch; cov.position = [0 0 0]; end
+    cov.isMoving = false;   % moving ownship (addOwnshipFromDef -> waypointTrajectory)
+    try cov.isMoving = isa(si.platform.Trajectory, 'waypointTrajectory'); catch; end
     try cov.maxRange = s.RangeLimits(2); catch; cov.maxRange = 111120; end
     try cov.mountingYaw = s.MountingAngles(1); catch; cov.mountingYaw = 0; end
     try cov.fov = s.FieldOfView(:)'; catch; cov.fov = [1.4 30]; end
@@ -548,6 +571,14 @@ while advance(scenario)
             detBuffer = [detBuffer; dets]; %#ok<AGROW>
         end
         cfgBuffer{end+1} = sensorCfg; %#ok<AGROW>
+    end
+
+    % ---- Sonar: scene-level emit -> propagate -> detect (once per step) ----
+    % Folded into detBuffer so the flush/log path treats sonar like any
+    % other primary detection. Only sonar SensorIndices are kept.
+    if hasSonar
+        sonarDets = gatherSonarDetections(scenario, simTime, sonarIdxSet);
+        if ~isempty(sonarDets); detBuffer = [detBuffer; sonarDets]; end %#ok<AGROW>
     end
 
     % ---- Scan complete check ----
@@ -931,4 +962,100 @@ function w = computeWeatherSeverity(t, cfg)
             w = double(t >= storm_start && t <= storm_end);
     end
     w = max(0, min(1, w));
+end
+
+
+function setupSonarPlatforms(scenario, sonarInfos) %#ok<INUSD>
+% Inject what the scene chain needs but the radar build path does not:
+% a paired sonarEmitter per monostatic sonar, HasFalseAlarms OFF (raw
+% sonar floods ~6k false alarms/ping over its volume), and a tsSignature
+% on each target so detect() has an echo. Mirrors demoSonar.m.
+    plats = scenario.Platforms;
+    for pp = 1:numel(plats)
+        plat = plats{pp};
+        if ~isempty(plat.Sensors)
+            for ss = 1:numel(plat.Sensors)
+                s = plat.Sensors{ss};
+                if ~isa(s, 'sonarSensor'); continue; end
+                try s.HasFalseAlarms = false; catch; end
+                if ~strcmpi(string(s.DetectionMode), 'monostatic'); continue; end
+                eIdx = s.SensorIndex;
+                try if ~isempty(s.EmitterIndex) && s.EmitterIndex >= 1; eIdx = s.EmitterIndex; end; catch; end
+                hasEmitter = false;
+                if ~isempty(plat.Emitters)
+                    for ee = 1:numel(plat.Emitters)
+                        if isa(plat.Emitters{ee}, 'sonarEmitter'); hasEmitter = true; break; end
+                    end
+                end
+                if ~hasEmitter
+                    em = sonarEmitter(eIdx, 'No scanning');
+                    try em.FieldOfView = [360; 180]; catch; end
+                    try em.SourceLevel = 215; catch; end
+                    try em.UpdateRate  = s.UpdateRate; catch; end
+                    plat.Emitters = [plat.Emitters, {em}];
+                    fprintf('[runDetections] sonar: paired sonarEmitter idx=%d on platform %d\n', eIdx, plat.PlatformID);
+                end
+            end
+        else
+            sigs  = plat.Signatures;
+            hasTs = ~isempty(sigs) && any(cellfun(@(x) isa(x, 'tsSignature'), sigs));
+            if ~hasTs
+                try ts = tsSignature(); catch; ts = tsSignature('Pattern', -10); end
+                plat.Signatures = [sigs, {ts}];
+            end
+        end
+    end
+end
+
+function dets = gatherSonarDetections(scenario, simTime, sonarIdxSet)
+% Run the scene acoustic chain; convert each sonar detection
+% (sensor-spherical [az;el;range]) to a world-frame Cartesian [x;y;z]
+% objectDetection matching the radar path. Keeps only sonar SensorIndices.
+    dets = {};
+    try
+        [emtx, ecfg] = emit(scenario);
+        sig = propagate(scenario, emtx);
+        raw = detect(scenario, sig, ecfg);
+    catch ME
+        warning('trackbench:runDetections:sonarChain', 'Sonar chain failed at t=%.2f: %s', simTime, ME.message);
+        return;
+    end
+    for i = 1:numel(raw)
+        d = raw{i};
+        if ~ismember(d.SensorIndex, sonarIdxSet); continue; end
+        m = d.Measurement; if numel(m) < 3; continue; end
+        az = m(1); el = m(2); r = m(3);
+        % Sonar elevation carries an up/down ambiguity (often a mirror pair
+        % at +/- el). A surface/hull sonar contact is BELOW the sensor, so keep
+        % the downward return and drop the above-surface mirror (v1 assumption:
+        % sonar looks down at a submerged contact).
+        if el > 2; continue; end
+        sPos = sonarSensorWorldPos(scenario, d.SensorIndex);
+        x = sPos(1) + r * cosd(el) * cosd(az);
+        y = sPos(2) + r * cosd(el) * sind(az);
+        z = sPos(3) - r * sind(el);
+        nz = d.MeasurementNoise;
+        if isempty(nz) || ~isequal(size(nz), [3 3]); nz = diag([50 50 50].^2); end
+        dets{end+1} = objectDetection(simTime, [x; y; z], 'MeasurementNoise', nz, 'SensorIndex', d.SensorIndex); %#ok<AGROW>
+    end
+    dets = dets(:);
+end
+
+function p = sonarSensorWorldPos(scenario, sIdx)
+% World NED position of the sonar with SensorIndex sIdx (platform position
+% + mounting location). Stationary stations in v1, so a per-step read is exact.
+    p = [0 0 0];
+    plats = scenario.Platforms;
+    for pp = 1:numel(plats)
+        plat = plats{pp};
+        if isempty(plat.Sensors); continue; end
+        for ss = 1:numel(plat.Sensors)
+            s = plat.Sensors{ss};
+            if isa(s, 'sonarSensor') && s.SensorIndex == sIdx
+                try base = plat.Trajectory.Position(:)'; catch; base = [0 0 0]; end
+                try mloc = s.MountingLocation(:)'; catch; mloc = [0 0 0]; end
+                p = base + mloc; return;
+            end
+        end
+    end
 end

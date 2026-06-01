@@ -35,7 +35,18 @@ function plotInitialScenario(dataLog, animateFlag)
 
     %% 1B. DRAW SENSOR COVERAGE (background layer)
     if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
-        trackbench.reporting.drawSensorCoverage(ax, dataLog.SensorCoverage, true);
+        % Ground rings only for STATIONARY sensors; moving sensors get an
+        % animated cone + marker (a static ground ring would sit at the origin
+        % while the platform flies away).
+        covStatic = dataLog.SensorCoverage;
+        try
+            isMov = arrayfun(@(c) isfield(c,'isMoving') && c.isMoving, covStatic);
+            covStatic = covStatic(~isMov);
+        catch
+        end
+        if ~isempty(covStatic)
+            trackbench.reporting.drawSensorCoverage(ax, covStatic, true);
+        end
     end
 
     %% 1C. DRAW SENSOR COVERAGE VOLUMES (v3.7.5 — replaces drawBeamEnvelope cones)
@@ -44,6 +55,7 @@ function plotInitialScenario(dataLog, animateFlag)
     % patched in altitude-up display coordinates. Colors mirror
     % drawSensorCoverage.m v3.6.15 conventions so each volume aligns with
     % its existing ground ring. drawBeamEnvelope.m retained as fallback.
+    movingCov = struct('patch', {}, 'star', {}, 'baseV', {});
     if isfield(dataLog, 'SensorCoverage') && ~isempty(dataLog.SensorCoverage)
         try
             sf = 1/1000;  % NED meters -> display km
@@ -79,11 +91,28 @@ function plotInitialScenario(dataLog, animateFlag)
                     col = [0.2 0.6 1.0];                 % blue    — PSR / rotator
                 end
 
-                patch(ax, 'Vertices', Vdisp, 'Faces', F, ...
-                    'FaceColor', col, 'FaceAlpha', 0.18, ...
-                    'EdgeColor', col, 'EdgeAlpha', 0.10, ...
-                    'LineWidth', 0.3, ...
-                    'HandleVisibility', 'off');
+                isMovingCov = isfield(cov,'isMoving') && cov.isMoving && ...
+                    isfield(dataLog,'OwnshipPose') && ~isempty(dataLog.OwnshipPose);
+                if isMovingCov
+                    % Moving sensor: keep a handle + base vertices so the loop
+                    % can fly the cone with the ownship (see OwnshipPose update).
+                    hMovP = patch(ax, 'Vertices', Vdisp, 'Faces', F, ...
+                        'FaceColor', col, 'FaceAlpha', 0.18, ...
+                        'EdgeColor', col, 'EdgeAlpha', 0.10, ...
+                        'LineWidth', 0.3, 'HandleVisibility', 'off');
+                    hMovS = line(ax, nan, nan, nan, 'Marker', 'pentagram', ...
+                        'MarkerSize', 16, 'MarkerFaceColor', col, ...
+                        'MarkerEdgeColor', 'w', 'LineStyle', 'none', ...
+                        'HandleVisibility', 'off');
+                    movingCov(end+1) = struct('patch', hMovP, ...
+                        'star', hMovS, 'baseV', Vdisp); %#ok<AGROW>
+                else
+                    patch(ax, 'Vertices', Vdisp, 'Faces', F, ...
+                        'FaceColor', col, 'FaceAlpha', 0.18, ...
+                        'EdgeColor', col, 'EdgeAlpha', 0.10, ...
+                        'LineWidth', 0.3, ...
+                        'HandleVisibility', 'off');
+                end
             end
         catch ME
             fprintf('[WARN] Coverage volume skipped: %s\n', ME.message);
@@ -147,6 +176,20 @@ function plotInitialScenario(dataLog, animateFlag)
             end
         end
         
+        % --- UPDATE MOVING SENSOR COVERAGE (flies with the ownship) ---
+        if ~isempty(movingCov) && isfield(dataLog,'OwnshipPose') && ...
+                k <= numel(dataLog.OwnshipPose)
+            op = dataLog.OwnshipPose(k).Position(:)';
+            if numel(op) >= 3
+                offs = [op(1)*s, op(2)*s, -op(3)*s];
+                for mc = 1:numel(movingCov)
+                    set(movingCov(mc).patch, 'Vertices', movingCov(mc).baseV + offs);
+                    set(movingCov(mc).star, 'XData', offs(1), ...
+                        'YData', offs(2), 'ZData', offs(3));
+                end
+            end
+        end
+
         % --- UPDATE DETECTIONS ---
         if k <= numel(D)
             scanDets = D{k}; 

@@ -1,0 +1,15 @@
+{
+  "description": "Submerged sonar contact - slow transit at 300 m depth (z positive = down, NED). Deeper + closer than v1 so the depression angle is unambiguous (no elevation sign-flip) and the hit rate is higher. No rcs, so the platform keeps its default tsSignature for the acoustic echo.",
+  "duration_s": 60,
+  "targets": [
+    {
+      "behavior": "waypoints",
+      "label": "submarine",
+      "waypoints": [
+        { "pos": [800, -450, 300], "time_s": 0 },
+        { "pos": [700, 0, 300], "time_s": 30 },
+        { "pos": [800, 450, 300], "time_s": 60 }
+      ]
+    }
+  ]
+}

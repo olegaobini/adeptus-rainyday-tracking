@@ -1,0 +1,28 @@
+{
+  "description": "GNN + IMM tuned for a MANEUVERING underwater contact (sonar). Sonar gives range+bearing -> Cartesian, so the standard Cartesian filters apply (no special angle-only filter is needed the way IR requires one). The contact turns, so IMM (CV+CT) with adequate process noise is required - a plain CV or low-noise filter lags the turn and fragments (empirically 650 m vs 4.7 m). The only sonar-specific change from the aircraft default is init_speed 60 km/h (vs 900). Verified ~4.7 m posRMS, single clean track on SONAR_TEST.",
+  "tracker_type": "GNN",
+  "filter_model": "IMM",
+  "volume": 1e9,
+  "beta": 1e-14,
+  "params": {
+    "gate": 50,
+    "far_gnn": 1e-6,
+    "confirm_threshold": 8,
+    "delete_threshold": -10,
+    "gate_jpda": 50,
+    "far_jpda": 1e-6,
+    "far_mht": 1e-6,
+    "beta_jpda": 1e-14,
+    "time_tolerance_jpda": 0.05,
+    "num_tracks_jpda": 500,
+    "tomht_threshold_multiplier": [0.2, 1, 1],
+    "max_branches": 5
+  },
+  "filter": {
+    "init_speed_kmh": 60,
+    "imm_transition_prob": 0.97,
+    "scale_accel_horz": 30,
+    "scale_accel_vert": 15,
+    "scale_omega_dot": 30
+  }
+}

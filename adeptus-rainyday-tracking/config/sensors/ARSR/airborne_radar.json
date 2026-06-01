@@ -1,0 +1,19 @@
+{
+  "name": "Airborne Surveillance Radar",
+  "type": "ARSR",
+  "platform": "ownship",
+  "frequency_hz": 1.3e9,
+  "_note": "Airborne variant of the long-range rotating ARSR, mounted on a MOVING ownship platform (platform='ownship' -> loadRunFile routes via addOwnshipFromDef). HasINS=true so detections report in Scenario (world) frame despite platform motion. Narrow 1.5deg azimuth beam (sparse false alarms, unlike airborne_IRST's 360deg FOV bug). az/el/RANGE measurement -> fully observable, standard CV/IMM tracking (no MSC-RPEKF needed). Reference: MathWorks 'Multiplatform Radar Detection Generation' (airborne rotating fusionRadarSensor with HasINS).",
+  "params": {
+    "rpm": 20,
+    "fov": [1.5, 20],
+    "tilt": 0,
+    "pd": 0.95,
+    "far": 1e-6,
+    "rangeLimits": [0, 40000],
+    "rangeRes": 150,
+    "mountingLoc": [0, 0, 0],
+    "hasINS": true,
+    "hasElevation": true
+  }
+}

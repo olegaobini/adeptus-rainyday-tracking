@@ -150,7 +150,9 @@ function sr = parseOneSensorStruct(tDef, sourceFile)
     end
 
     supportedTypes = ["PSR","SSR","ASR","ARSR","PAR", ...
-                      "MARITIME","WEATHER","TWS"];
+                      "MARITIME","WEATHER","TWS", ...
+                      "ACTIVE_SONAR","PASSIVE_SONAR","TOWED_ARRAY", ...
+                      "IRST","IR_STARING","FLIR"];
     typeStr = "PSR";
     if isfield(tDef, 'type') && ~isempty(tDef.type)
         typeStr = upper(string(tDef.type));
@@ -210,6 +212,9 @@ function sr = parseOneSensorStruct(tDef, sourceFile)
         if isfield(p, 'far');         sr.far        = double(p.far); end
         if isfield(p, 'rangeLimits'); sr.rangeLimits = asRow2(p.rangeLimits, sr.rangeLimits); end
         if isfield(p, 'rangeRes');    sr.rangeResM  = double(p.rangeRes); end
+        if isfield(p, 'detectionMode'); sr.detectionMode = string(p.detectionMode); end
+        if isfield(p, 'updateRate');    sr.updateRate    = double(p.updateRate); end
+        if isfield(p, 'hasElevation');  sr.hasElevation  = logical(p.hasElevation); end
         if isfield(p, 'mountingLoc')
             mL = double(p.mountingLoc(:)');
             if numel(mL) >= 3

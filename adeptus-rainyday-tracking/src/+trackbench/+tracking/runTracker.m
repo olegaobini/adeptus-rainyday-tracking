@@ -203,6 +203,21 @@ end
 %  enough to reject genuinely wrong associations.
 %% ════════════════════════════════════════════════════════════════════
 
+% Guard: an empty run (0 detections -> 0 scans, e.g. a sonar contact that
+% is airborne instead of submerged, or a sensor that never sees the target)
+% has an empty dataLog.Time. Bail with empty results instead of indexing
+% dataLog.Time(end) into an empty array (was: Array indices must be positive).
+if isempty(dataLog.Time)
+    warning('trackbench:runTracker:noDetections', ...
+        ['No detections to track (0 scans). Check sensor/target geometry - ' ...
+         'e.g. a sonar contact must be submerged, not airborne.']);
+    trackSummary = table(); truthSummary = table();
+    trackMetrics = table(); truthMetrics = table();
+    time = dataLog.Time; assignLog = {};
+    swapReport = struct('swapFree', true, 'totalSwaps', 0);
+    return;
+end
+
 scanTime = median(diff(dataLog.Time));
 if isempty(scanTime) || ~isfinite(scanTime) || scanTime <= 0
     scanTime = 0.1;

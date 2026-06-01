@@ -1,0 +1,24 @@
+{
+  "name": "sonar_1",
+  "type": "ACTIVE_SONAR",
+  "platform": "sub_station",
+  "params": {
+    "fov": [
+      360,
+      90
+    ],
+    "rangeLimits": [
+      0,
+      20000
+    ],
+    "rangeRes": 50,
+    "far": 0.0001,
+    "detectionMode": "monostatic",
+    "updateRate": 1,
+    "mountingLoc": [
+      0,
+      0,
+      0
+    ]
+  }
+}

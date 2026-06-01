@@ -1,0 +1,78 @@
+{
+  "description": "Sonar end-to-end test - monostatic active sonar vs a submerged contact",
+  "duration_s": 60,
+  "targets": [
+    {
+      "name": "submarine",
+      "label": "submarine",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            800,
+            -450,
+            300
+          ],
+          "time_s": 0,
+          "speed_kmh": 900
+        },
+        {
+          "pos": [
+            700,
+            0,
+            300
+          ],
+          "time_s": 30,
+          "speed_kmh": 55.31726674375733
+        },
+        {
+          "pos": [
+            800,
+            450,
+            300
+          ],
+          "time_s": 60,
+          "speed_kmh": 55.31726674375733
+        }
+      ]
+    },
+    {
+      "name": "submarine_copy",
+      "label": "submarine_copy",
+      "behavior": "waypoints",
+      "rcs_dbsm": 10,
+      "curve_mode": "straight",
+      "waypoints": [
+        {
+          "pos": [
+            -395.95010572503321,
+            -298.28314960425377,
+            300
+          ],
+          "time_s": 0,
+          "speed_kmh": 53.52
+        },
+        {
+          "pos": [
+            -265.09407893931871,
+            15.592317699785212,
+            300
+          ],
+          "time_s": 22.874021208200585,
+          "speed_kmh": 53.52
+        },
+        {
+          "pos": [
+            -392.441017714829,
+            389.14333810794847,
+            300
+          ],
+          "time_s": 49.420751043221152,
+          "speed_kmh": 53.52
+        }
+      ]
+    }
+  ]
+}

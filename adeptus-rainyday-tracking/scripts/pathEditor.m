@@ -1,4 +1,4 @@
-function fig = pathEditor(projectRoot)
+function fig = pathEditor(projectRoot, domainKey)
 %pathEditor  Launch the interactive target-path editor.
 %
 %   Author:  Michael Harding (Team Adeptus)
@@ -89,7 +89,8 @@ function fig = pathEditor(projectRoot)
     end
 
     % ── Build state + UI ─────────────────────────────────────────────
-    state = trackbench.editor.EditorState(projectRoot);
+    if nargin < 2 || isempty(domainKey); domainKey = "radar"; end
+    state = trackbench.editor.EditorState(projectRoot, domainKey);
     trackbench.editor.buildUI(state);
 
     if nargout > 0

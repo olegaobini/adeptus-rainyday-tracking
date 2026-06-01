@@ -1,54 +1,24 @@
 function outPath = exportSingleSensorToJSON(state, fullPath)
 %exportSingleSensorToJSON  Write the ACTIVE sensor (state.activeSensor)
-%                          to a single sensor config JSON file (v3.5
-%                          step 4c).
+%                          to a single sensor config JSON file.
 %
 %   Author:  Michael Harding (Team Adeptus)
-%   Project: Rainy Day Tracker — UW Senior Capstone, Boeing-sponsored
+%   Project: Rainy Day Tracker - UW Senior Capstone, Boeing-sponsored
 %
-%  Pure function — takes a complete output path. The caller (buildUI's
-%  onSensorsSave callback) shows the uiputfile dialog and resolves the
-%  user's chosen path. Same separation pattern as exportTerrainToJSON.
+%  Pure function - takes a complete output path. The caller (buildUI's
+%  onSensorsSave callback) shows the uiputfile dialog and resolves the path.
 %
-%  This is the single-sensor counterpart to exportSensorsToJSON, which
-%  writes the WHOLE sensors collection (and a run file + targets +
-%  environment) as a scenario bundle. Use this when the user wants
-%  just one sensor written to disk, e.g. to share a tuned PSR config
-%  with a teammate or to save a custom AESA without dragging targets
-%  into it.
+%  SCHEMA (radar)  : { name, type, platform, frequency_hz, params:{...} }
+%  SCHEMA (sonar)  : { name, type, platform, params:{ fov, sector, far,
+%                      rangeLimits, rangeRes, detectionMode, updateRate,
+%                      hasElevation, mountingLoc } }   (no frequency_hz)
+%  SCHEMA (ir)     : { name, type, platform, params:{ rpm?, fov, sector,
+%                      pd, far, rangeLimits, rangeRes, updateRate,
+%                      hasElevation, mountingLoc } }   (no frequency_hz)
 %
-%  INPUTS
-%    state    : trackbench.editor.EditorState instance. Must have an
-%               active sensor (state.hasActiveSensor() == true).
-%    fullPath : absolute path of the .json file to write. Missing
-%               ".json" extension is appended automatically.
+%  UNKNOWN PASSTHROUGH: readOnly sensors emit sr.originalDef verbatim.
 %
-%  OUTPUT
-%    outPath  : the actual path written.
-%
-%  SCHEMA (matches config/sensors/<TYPE>/<stem>.json)
-%    {
-%      "name":         "<sensorName>",
-%      "type":         "<sensorType>",
-%      "platform":     "tower" | "aircraft" | "ship",
-%      "frequency_hz": <double>,
-%      "params": { rpm, fov, tilt, sector, pd, far, rangeLimits,
-%                  rangeRes (optional), mountingLoc, _display_color }
-%    }
-%
-%  UNKNOWN PASSTHROUGH
-%    For readOnly sensors the editor stores the original parsed struct
-%    on sr.originalDef. We emit that verbatim instead of re-synthesizing
-%    from the limited SensorRecord properties — keeps unsupported types
-%    loadable after a Save → Reload round-trip.
-%
-%  DISPLAY COLOR ROUND-TRIP
-%    The per-sensor display color is saved as "_display_color" (the
-%    underscore prefix tells the sim pipeline to ignore the key, but
-%    the editor's loader picks it back up so colors persist across a
-%    Save → Reload). Same trick exportSensorsToJSON uses.
-%
-%  See also: trackbench.editor.SensorRecord,
+%  See also: trackbench.editor.SensorRecord, trackbench.editor.sensorClass,
 %            trackbench.editor.loadSensorsFromJSON,
 %            trackbench.editor.exportSensorsToJSON
 
@@ -80,10 +50,7 @@ function outPath = exportSingleSensorToJSON(state, fullPath)
     end
 
     jsonStr = jsonencode(sDef, 'PrettyPrint', true);
-    % Rename editor-only x_display_color → _display_color (matches the
-    % underscore-prefix convention used in every config/sensors file).
-    % Same trick exportSensorsToJSON uses; safe because no sensor param
-    % is legitimately named "x_display_color".
+    % Rename editor-only x_display_color -> _display_color (config convention).
     jsonStr = strrep(jsonStr, '"x_display_color"', '"_display_color"');
 
     parent = fileparts(fullPath);
@@ -96,12 +63,9 @@ function outPath = exportSingleSensorToJSON(state, fullPath)
         error('trackbench:editor:exportSingleSensorToJSON:openFailed', ...
             'Could not open %s for writing.', fullPath);
     end
-    cleaner = onCleanup(@() fclose(fid));
+    cleaner = onCleanup(@() fclose(fid)); %#ok<NASGU>
     fwrite(fid, jsonStr, 'char');
 
-    % Stamp sourceFile so the Sensor Params panel "Load Sensor…" picker
-    % defaults to this directory next time. sensorsDirty stays true if
-    % OTHER sensors are unsaved — only the active sensor was saved here.
     sr.sourceFile = string(fullPath);
     state.setActiveSensor(sr);
 
@@ -113,20 +77,46 @@ end
 %  Local helpers
 %% ========================================================================
 function sDef = buildSensorStruct(sr)
-%buildSensorStruct  SensorRecord → on-disk schema struct.
-%
-%  Mirrors exportSensorsToJSON's same-named local helper. If the schema
-%  diverges, update both — they're intentionally redundant rather than
-%  coupled.
+%buildSensorStruct  SensorRecord -> on-disk schema struct. Mirrors
+%  exportSensorsToJSON's same-named local helper; keep both in sync.
     sDef = struct();
-    sDef.name         = char(sr.sensorName);
-    sDef.type         = char(sr.sensorType);
-    sDef.platform     = char(sr.platform);
+    sDef.name     = char(sr.sensorName);
+    sDef.type     = char(sr.sensorType);
+    sDef.platform = char(sr.platform);
+
+    p   = struct();
+    cls = sr.sensorClass();
+
+    if cls == "sonar"
+        % buildSonarSensor params (no RF frequency_hz; acoustic chain).
+        p.fov           = sr.fov(:)';
+        p.sector        = sr.sectorDeg(:)';
+        p.far           = sr.far;
+        p.rangeLimits   = sr.rangeLimits(:)';
+        if isfinite(sr.rangeResM) && sr.rangeResM > 0; p.rangeRes = sr.rangeResM; end
+        p.detectionMode = char(sr.detectionMode);
+        if sr.updateRate > 0; p.updateRate = sr.updateRate; end
+        p.hasElevation  = logical(sr.hasElevation);
+        sDef.params     = finishSensorParams(sr, p);
+        return;
+    elseif cls == "ir"
+        % buildIR params (no RF frequency_hz; passive angle-only).
+        if sr.rpm > 0; p.rpm = sr.rpm; end
+        p.fov           = sr.fov(:)';
+        p.sector        = sr.sectorDeg(:)';
+        p.pd            = sr.pd;
+        p.far           = sr.far;
+        p.rangeLimits   = sr.rangeLimits(:)';
+        if isfinite(sr.rangeResM) && sr.rangeResM > 0; p.rangeRes = sr.rangeResM; end
+        if sr.updateRate > 0; p.updateRate = sr.updateRate; end
+        p.hasElevation  = logical(sr.hasElevation);
+        sDef.params     = finishSensorParams(sr, p);
+        return;
+    end
+
+    % --- radar (behavior unchanged from the original) ---
     sDef.frequency_hz = sr.frequencyHz;
 
-    p = struct();
-
-    % ── Scan-kind dispatch ────────────────────────────────────────────
     isRot = sr.isRotator();
     isSec = sr.isSector();
     if isRot || isSec
@@ -151,15 +141,18 @@ function sDef = buildSensorStruct(sr)
         p.rangeRes = sr.rangeResM;
     end
 
-    % World position baked into mountingLoc[0:1] (sim's tower platform
-    % sits at origin, so mountingLoc IS the world offset).
+    sDef.params = finishSensorParams(sr, p);
+end
+
+
+function p = finishSensorParams(sr, p)
+%finishSensorParams  Bake world position into mountingLoc + carry display
+%  color (shared by all modalities; sim tower platform sits at origin so
+%  mountingLoc IS the world offset).
     mZ = sr.mountingLoc(3);
     if ~isfinite(mZ); mZ = -15; end
     p.mountingLoc = [sr.positionEastM, sr.positionNorthM, mZ];
-
     if all(isfinite(sr.displayColor)) && numel(sr.displayColor) == 3
         p.x_display_color = sr.displayColor(:)';
     end
-
-    sDef.params = p;
 end

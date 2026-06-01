@@ -205,9 +205,36 @@ function sDef = buildSensorStruct(sr)
     sDef.name         = char(sr.sensorName);
     sDef.type         = char(sr.sensorType);
     sDef.platform     = char(sr.platform);
-    sDef.frequency_hz = sr.frequencyHz;
 
-    p = struct();
+    p   = struct();
+    cls = sr.sensorClass();
+    if cls == "sonar"
+        p.fov           = sr.fov(:)';
+        p.sector        = sr.sectorDeg(:)';
+        p.far           = sr.far;
+        p.rangeLimits   = sr.rangeLimits(:)';
+        if isfinite(sr.rangeResM) && sr.rangeResM > 0; p.rangeRes = sr.rangeResM; end
+        p.detectionMode = char(sr.detectionMode);
+        if sr.updateRate > 0; p.updateRate = sr.updateRate; end
+        p.hasElevation  = logical(sr.hasElevation);
+        sDef.params     = finishSensorParams(sr, p);
+        return;
+    elseif cls == "ir"
+        if sr.rpm > 0; p.rpm = sr.rpm; end
+        p.fov           = sr.fov(:)';
+        p.sector        = sr.sectorDeg(:)';
+        p.pd            = sr.pd;
+        p.far           = sr.far;
+        p.rangeLimits   = sr.rangeLimits(:)';
+        if isfinite(sr.rangeResM) && sr.rangeResM > 0; p.rangeRes = sr.rangeResM; end
+        if sr.updateRate > 0; p.updateRate = sr.updateRate; end
+        p.hasElevation  = logical(sr.hasElevation);
+        sDef.params     = finishSensorParams(sr, p);
+        return;
+    end
+
+    % radar (frequency_hz + scan-kind dispatch below, unchanged)
+    sDef.frequency_hz = sr.frequencyHz;
 
     % ── Scan-kind dispatch ────────────────────────────────────────────
     isRot    = sr.isRotator();
@@ -258,6 +285,18 @@ function sDef = buildSensorStruct(sr)
     end
 
     sDef.params = p;
+end
+
+
+function p = finishSensorParams(sr, p)
+%finishSensorParams  Bake world position into mountingLoc + carry display
+%  color, for the sonar/IR export branches (radar does this inline above).
+    mZ = sr.mountingLoc(3);
+    if ~isfinite(mZ); mZ = -15; end
+    p.mountingLoc = [sr.positionEastM, sr.positionNorthM, mZ];
+    if all(isfinite(sr.displayColor)) && numel(sr.displayColor) == 3
+        p.x_display_color = sr.displayColor(:)';
+    end
 end
 
 
@@ -314,7 +353,7 @@ function outPath = writeRunFile(root, scenarioName, sensorRefs, targetsPath, ter
     % one terrain region exists. Backward-compat path keeps existing
     % no-region scenarios byte-identical-ish on round-trip.
     runFile.terrain  = buildTerrainField(terrainRef, state);
-    runFile.trackers = {'GNN/default_GNN'};
+    runFile.trackers = {char(trackbench.editor.sensorDomain(state.domain).defaultTracker)};
 
     % M7 §3.4 — authored degradation block (four booleans + derived
     % weather) plus any verbatim extras captured on Open Scenario.

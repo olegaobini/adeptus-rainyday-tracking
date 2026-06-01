@@ -1,30 +1,29 @@
 {
-  "name": "sensor_1",
-  "type": "PSR",
+  "name": "Demo_IRST_(Forward-looking_sector)",
+  "type": "IRST",
   "platform": "tower",
-  "frequency_hz": 2.8E+9,
   "params": {
     "rpm": 12.5,
     "fov": [
-      1.4,
-      30
+      120,
+      20
     ],
-    "tilt": 2,
     "sector": [
       0,
       360
     ],
-    "pd": 0.9,
+    "pd": 0.7,
     "far": 1E-6,
     "rangeLimits": [
       0,
-      111120
+      100000
     ],
     "rangeRes": 93,
+    "hasElevation": true,
     "mountingLoc": [
       0,
       0,
-      -15
+      -10
     ],
     "_display_color": [
       0.85,

@@ -125,12 +125,13 @@ function [outPath, excludedRefCount] = exportToJSON(state, filename)
     end
 
     % ── Build per-target structs ─────────────────────────────────────
+    vsign = trackbench.editor.sensorDomain(state.domain).vertical.sign;
     targetStructs = cell(1, nWritable);
     durations     = zeros(1, nWritable);
     for k = 1:nWritable
         tr = writable(k);
         validateTargetForExport(tr);
-        targetStructs{k} = buildTargetStruct(tr);
+        targetStructs{k} = buildTargetStruct(tr, vsign);
         durations(k) = max(tr.durationS, ceil(tr.waypoints(end, 4)));
     end
 
@@ -204,7 +205,7 @@ function validateTargetForExport(tr)
 end
 
 
-function s = buildTargetStruct(tr)
+function s = buildTargetStruct(tr, vsign)
 %buildTargetStruct  Convert one writable TargetRecord into the JSON
 %                   per-target struct. Pure transform — no state writes.
 %
@@ -214,7 +215,7 @@ function s = buildTargetStruct(tr)
 %      "waypoints" is the densified Nx5 the simulator linearly interpolates
 %      between. addTargetFromDef does not need to know about curves.
     controlStructs = buildWaypointStructs( ...
-        tr.waypoints(:, 1:5), tr.defaultSpeedKmh);
+        tr.waypoints(:, 1:5), tr.defaultSpeedKmh, vsign);
 
     isCurved = (tr.curveMode == "curved");
     if isCurved
@@ -222,7 +223,7 @@ function s = buildTargetStruct(tr)
         [densePts, denseT] = trackbench.editor.catmullRomCurve( ...
             control5, tr.curveDensityPerSeg, tr.curveTensionAlpha);
         dense5 = buildDenseNx5(densePts, denseT, tr.defaultSpeedKmh);
-        simStructs = buildWaypointStructs(dense5, tr.defaultSpeedKmh);
+        simStructs = buildWaypointStructs(dense5, tr.defaultSpeedKmh, vsign);
     else
         simStructs = controlStructs;
     end
@@ -244,11 +245,12 @@ function s = buildTargetStruct(tr)
 end
 
 
-function wpStructs = buildWaypointStructs(wp5, defaultSpeedKmh)
+function wpStructs = buildWaypointStructs(wp5, defaultSpeedKmh, vsign)
 %buildWaypointStructs  Convert an Nx5 [x y alt_pos time_s speed_kmh]
 %                      matrix into the per-waypoint struct array consumed
-%                      by jsonencode. Positive-up altitude flipped to
-%                      NED (negative-down) z on the way out.
+%                      by jsonencode. The editor stores a positive vertical
+%                      MAGNITUDE; the domain vertical sign maps it to NED z
+%                      (radar/IR -1 = altitude up, sonar +1 = depth down).
     n = size(wp5, 1);
     wpStructs = struct('pos', cell(1, n), 'time_s', cell(1, n), ...
                        'speed_kmh', cell(1, n));
@@ -256,7 +258,7 @@ function wpStructs = buildWaypointStructs(wp5, defaultSpeedKmh)
         x = wp5(k, 1);
         y = wp5(k, 2);
         altPos = wp5(k, 3);
-        z = -abs(altPos);
+        z = vsign * abs(altPos);
         wpStructs(k).pos    = [x, y, z];
         wpStructs(k).time_s = wp5(k, 4);
         legKmh = wp5(k, 5);

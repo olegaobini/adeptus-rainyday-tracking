@@ -163,8 +163,22 @@ showVis = true; animVis = true;
 if isfield(config.output, 'show_visuals');    showVis = config.output.show_visuals;    end
 if isfield(config.output, 'animate_visuals'); animVis = config.output.animate_visuals; end
 
+% Modality-aware visuals (v3.7.x). Radar keeps the standard 3D scene +
+% theaterPlot. That Cartesian/altitude view is unhelpful for angle-only IR
+% and underwater sonar, so those route to plotByModality (az-el seeker /
+% depth view) and skip the radar-style plots.
+primaryModality = detectPrimaryModality(sensors);
+isRadarLike = any(strcmp(primaryModality, {'radar','mixed'}));
+radarVis  = showVis && isRadarLike;
+radarAnim = animVis && isRadarLike;
+
 if showVis
-    trackbench.reporting.plotInitialScenario(dataLog, animVis);
+    if isRadarLike
+        trackbench.reporting.plotInitialScenario(dataLog, animVis);
+    else
+        fprintf('[viz] %s modality -> modality-specific view\n', primaryModality);
+        trackbench.reporting.plotByModality(dataLog, primaryModality);
+    end
 end
 
 %% Run trackers
@@ -215,7 +229,7 @@ for c = 1:length(trackerCombos)
         trkGlobal, trkFilter, pd, totalSensors);
 
     [trackSummary, truthSummary, trackMetrics, truthMetrics, time, assignLog, swapReport] = ...
-        trackbench.tracking.runTracker(dataLog, tracker, false, showVis, animVis);
+        trackbench.tracking.runTracker(dataLog, tracker, false, radarVis, radarAnim);
 
     results.(comboName).trackSummary = trackSummary;
     results.(comboName).truthSummary = truthSummary;
@@ -459,4 +473,28 @@ function promptBetweenRuns(scenarioLabel)
     error('runSingleScenario:userAborted', ...
         'Run queue aborted by user after "%s". Remaining queued runs will not execute.', ...
         scenarioLabel);
+end
+
+
+function m = detectPrimaryModality(sensors)
+%detectPrimaryModality  Classify a scenario's primary sensor modality from
+%  the built sensor objects: 'radar', 'ir', 'sonar', or 'mixed'. Drives the
+%  modality-aware visualization branch.
+    nR = 0; nI = 0; nS = 0;
+    pn = fieldnames(sensors);
+    for p = 1:numel(pn)
+        sl = sensors.(pn{p});
+        for k = 1:numel(sl)
+            s = sl{k};
+            if isa(s, 'sonarSensor');  nS = nS + 1;
+            elseif isa(s, 'irSensor'); nI = nI + 1;
+            else;                      nR = nR + 1;
+            end
+        end
+    end
+    if     nS > 0 && nR == 0 && nI == 0; m = 'sonar';
+    elseif nI > 0 && nR == 0 && nS == 0; m = 'ir';
+    elseif nR > 0 && nI == 0 && nS == 0; m = 'radar';
+    else;                                m = 'mixed';
+    end
 end
