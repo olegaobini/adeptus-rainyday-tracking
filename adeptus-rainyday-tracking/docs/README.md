@@ -9,6 +9,8 @@ real-world degraded conditions. Users compose custom scenarios by combining
 independent JSON configuration files for sensors, targets, terrain, trackers,
 and weather — no MATLAB code required.
 
+> **Experimental build (this branch).** Beyond the production radar core, this build adds **sonar**, **infrared (IRST)**, and **moving-platform** sensing as proofs-of-concept. They run end-to-end but are **not validated** to the radar standard - treat them as capability demonstrations. See [Experimental Build](#experimental-build) below and the `Experimental Features` disclosure doc. Radar remains production-grade.
+
 ## Launching the App
 
 Three ways to launch, in order of "least technical":
@@ -217,6 +219,8 @@ config/
 
 ## Available Sensor Types (19)
 
+> **Maturity (this build):** the 10 **radar** types are production-grade. **Sonar** and **IR** are **experimental** (functional, not validated); **LIDAR** and **ADS-B** are **scaffolded** (objects build but are not wired into detection generation). See [Experimental Build](#experimental-build).
+
 | Type | What It Is | Range | Platform |
 |------|-----------|-------|----------|
 | PSR | Primary Search Radar | 60 nm | tower |
@@ -238,6 +242,29 @@ config/
 | LIDAR | Lidar Point Cloud | 200 m | tower |
 | ADSB_TX | ADS-B Transponder | — | aircraft |
 | ADSB_RX | ADS-B Receiver | — | tower |
+
+## Experimental Build
+
+This branch (`Michael-Testing-Maritime`) is the **Experimental** release that ships alongside the **Stable** radar build. The radar pipeline is unchanged; the capabilities below are demonstrated functional but **not validated** to the Stable standard - treat them as capability demonstrations, not sign-off output.
+
+| Family | Status | Functions today | Needs continued work |
+|--------|--------|-----------------|----------------------|
+| **Radar** (10 types) | Stable | Full pipeline: detection, GNN/JPDA/TOMHT x CV/IMM, 3D coverage, editor authoring | Production baseline |
+| **Sonar** (3) | Experimental | Acoustic emit/propagate/detect; GNN+IMM tracking (~single-digit-m RMS on a clean contact); editor depth-target authoring; depth-vs-range plot | Surface mirror ambiguity; tracker tuning for slow contacts |
+| **Infrared** (3) | Experimental | Angle-only detection; range-parameterized MSC-EKF + per-scan observer input; runs on a maneuvering ownship | False-alarm/FOV tuning; range needs a maneuvering observer; no editor authoring |
+| **Moving platform** | Experimental | Any sensor on a waypoint-trajectory ownship; world-frame detections; animated 3D coverage that follows the platform | Authored in JSON (no editor path); banking not fully modeled |
+| **LIDAR**, **ADS-B** | Scaffold | Sensor/transponder objects build | Not wired into detection generation |
+
+**Try it** (run `clear classes; clear all; rehash` first):
+
+| Scenario | Command |
+|----------|---------|
+| Sonar | `runSingleScenario('SONAR_TEST')` |
+| Airborne IR | `runSingleScenario('test_IRST_airborne')` |
+| Airborne radar | `runSingleScenario('AirborneRadar_demo')` |
+| Sonar authoring | Main Menu -> Path Editor -> Maritime Sonar |
+
+Full detail, screenshots, and known limitations are in the **Experimental Features** disclosure document (in the Final Deliverable).
 
 ## Target Behaviors
 
@@ -560,6 +587,12 @@ Boeing Proprietary.
 ---
 
 ## Change Log
+
+### Experimental - June 1, 2026 (Michael-Testing-Maritime branch)
+
+**Stretch sensing: sonar, infrared, and moving-platform - proof-of-concept.**
+
+Adds end-to-end **sonar** (acoustic emit/propagate/detect, GNN+IMM tracking, editor depth-target authoring, depth-view plot), **passive IR ranging** on a maneuvering ownship (MSC-RPEKF + per-scan observer input), and **moving sensor platforms** (any sensor on a waypoint-trajectory ownship, world-frame detections, animated 3D coverage). Demo scenarios: `SONAR_TEST`, `test_IRST_airborne`, `AirborneRadar_demo`. A `%#function` manifest in `mainMenu.m` forces `mcc` to bundle the new toolbox calls into the compiled EXE (verified: all three run in the deployed app). Robustness: `runTracker` returns gracefully on a zero-detection scenario instead of indexing an empty log. Radar core unchanged. **Experimental: functional but not validated.**
 
 ### v3.6.15 — May 26, 2026 (current — SENSORS v3.6.x line)
 
